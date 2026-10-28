@@ -178,6 +178,7 @@ function registry() {
 const WORKER_BRIEF = [
   "You are a worker agent dispatched by a lead agent. Do the task below completely and autonomously in the current directory; do not ask questions, make reasonable assumptions and state them.",
   "Finish with a short report: what you changed (files), what you verified and how, and anything left open.",
+  "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).",
   "",
   "TASK:",
 ].join("\n");
