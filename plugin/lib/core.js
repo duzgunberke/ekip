@@ -129,6 +129,14 @@ export async function key(args) {
   } else die(`unknown: ekip key ${sub}`);
 }
 
+// Like ask(), but the typed or pasted text is shown as dots, so keys stay off the screen.
+export async function askSecret(question) {
+  const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  let muted = false;
+  rl._writeToOutput = (s) => { if (!muted) process.stdout.write(s); else if (s !== "\r\n" && s !== "\n") process.stdout.write("•".repeat(s.length)); };
+  try { const p = rl.question(question); muted = true; return (await p).trim(); } finally { rl.close(); process.stdout.write("\n"); }
+}
+
 export async function ask(question) {
   const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
   try { return (await rl.question(question)).trim(); } finally { rl.close(); }

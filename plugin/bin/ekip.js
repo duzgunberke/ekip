@@ -12,7 +12,7 @@
 //   ekip status | up | down | logs
 import { spawn, spawnSync } from "node:child_process";
 import {
-  CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
+  askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
@@ -52,10 +52,19 @@ async function keyWizard({ all = false } = {}) {
   for (const p of todo) {
     console.log(`── ${p.label}: ${p.note}\n   ${p.url}`);
     openUrl(p.url);
-    const v = await ask("   key: ").catch(() => "q");
+    let v = await askSecret("   key: ").catch(() => "q");
     if (v === "q") break;
     if (!v) continue;
-    if (p.platform === "cloudflare" && !v.includes(":")) { console.log("   skipped: Cloudflare needs ACCOUNT_ID:API_TOKEN"); continue; }
+    if (p.platform === "cloudflare" && !v.includes(":")) {
+      // A bare API token: look up the account it belongs to.
+      const r = await fetch("https://api.cloudflare.com/client/v4/accounts", { headers: { authorization: `Bearer ${v}` }, signal: AbortSignal.timeout(15000) }).then((x) => x.json()).catch(() => null);
+      // A Workers-AI-only token may not list accounts; then ask (Account ID is on the dashboard's
+      // right sidebar, under API).
+      const acct = r?.result?.[0]?.id ?? await ask("   Account ID (dash.cloudflare.com, right sidebar): ");
+      if (!/^[0-9a-f]{32}$/.test(acct ?? "")) { console.log("   skipped: that is not a Cloudflare account id"); continue; }
+      v = `${acct}:${v}`;
+      console.log(`   account ${acct.slice(0, 6)}… found`);
+    }
     const n = cfg.keys.filter((k) => k.platform === p.platform).length;
     cfg.keys.push({ platform: p.platform, key: v, label: `ekip-${n + 1}` });
     writeConfig(cfg);
@@ -64,7 +73,8 @@ async function keyWizard({ all = false } = {}) {
   if (!added) return;
   await restartFree();
   const counts = Object.fromEntries(keyCounts());
-  for (const p of PROVIDERS) if (cfg.keys.some((k) => k.platform === p.platform)) console.log(`${p.label}: ${counts[p.platform] ? "active" : "NOT accepted, see ekip logs"}`);
+  for (const p of PROVIDERS) if (cfg.keys.some((k) => k.platform === p.platform)) console.log(`${p.label}: ${counts[p.platform] ? "added" : "NOT accepted, see ekip logs"}`);
+  console.log("Live status of each provider: ekip status, or the panel.");
 }
 
 // ---- environments of the two non-subscription pools --------------------------------------------
