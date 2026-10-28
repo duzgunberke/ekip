@@ -289,7 +289,16 @@ function skillDocs(o) {
 
 async function runVia(via, o, logFile) {
   const docs = AGENTS[via] ? skillDocs(o) : [];
-  const prompt = `${WORKER_BRIEF}\n${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
+  // The project's own procedures that match this task (learned from past sessions).
+  let procs = "";
+  if (o.project) {
+    try {
+      const { skillSearch } = await import("../lib/memory.js");
+      const hits = await Promise.race([skillSearch(o.project, o.task, 3), sleep(8000).then(() => [])]);
+      if (hits.length) procs = `This project has procedures that may apply. Read the relevant ones before you start with \`ekip skill show ${o.project} <name>\`:\n${hits.map((h) => `- ${h.name}: ${h.description ?? ""}`).join("\n")}\n\n`;
+    } catch { /* memory offline: go without */ }
+  }
+  const prompt = `${WORKER_BRIEF}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
   if (AGENTS[via]) {
     const a = AGENTS[via];
     if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
@@ -978,7 +987,8 @@ ${c.bold("İşçiler")}
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip skill")} ${c.gray("ls|search|show <proje> [sorgu|ad]")}  projenin kendi prosedürleri
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
@@ -997,6 +1007,17 @@ switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
+  case "skill": case "skills": {
+    const mem = await import("../lib/memory.js");
+    const [sub = "ls", proj, ...q] = rest;
+    const pName = proj ?? registry().filter((x) => process.cwd().startsWith(x.path)).sort((a, b) => b.path.length - a.path.length)[0]?.name;
+    if (!pName) die("usage: ekip skill ls|search|show <project> [query|name]");
+    if (sub === "ls") for (const sk of await mem.projectSkills(pName)) console.log(`${c.cyan(sk.name)}  ${c.gray(sk.description ?? "")}`);
+    else if (sub === "search") for (const sk of await mem.skillSearch(pName, q.join(" "), 5)) console.log(`${c.cyan(sk.name)}  ${c.gray(sk.description ?? "")}`);
+    else if (sub === "show") { const sk = await mem.skillGet(pName, q.join(" ")); console.log(`# ${sk.name}\n${sk.description ?? ""}\n\n${sk.content}`); }
+    else die("usage: ekip skill ls|search|show <project> [query|name]");
+    break;
+  }
   case "doctor": code = await (await import("../lib/doctor.js")).main(rest); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");

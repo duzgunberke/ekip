@@ -312,6 +312,54 @@ async function addConversation(p, sessionId, messages) {
   return sent;
 }
 
+// ---- skills (procedures TencentDB extracted from past sessions, per project agent) -------------
+
+// Names of the user's general skills (~/.claude/skills and installed plugins): the importer copied
+// those into every agent, so they are not project knowledge and are filtered out of "project skills".
+let generic = null;
+function genericSkillNames() {
+  if (generic) return generic;
+  generic = new Set();
+  const home = os.homedir();
+  try { for (const n of fs.readdirSync(path.join(home, ".claude/skills"))) generic.add(n); } catch { /* none */ }
+  const r = spawnSync("find", [path.join(home, ".claude/plugins/cache"), "-name", "SKILL.md", "-maxdepth", "6"], { encoding: "utf8" });
+  for (const f of (r.stdout ?? "").split("\n").filter(Boolean)) generic.add(path.basename(path.dirname(f)));
+  return generic;
+}
+
+/** Skills that fit a task, best first (BM25 over name, description and body). */
+export async function skillSearch(project, query, limit = 5, { projectOnly = true } = {}) {
+  const p = resolve(project);
+  await identity();
+  const d = await coreData("/skill/search", { ...scope(p), query: String(query).slice(0, 500), limit: limit * 4, top_k: limit * 4 }, 20000);
+  const items = (d?.items ?? []).filter((s) => !projectOnly || !genericSkillNames().has(s.name));
+  return items.slice(0, limit).map((s) => ({ name: s.name, description: s.description, id: s.skill_id, score: s.score }));
+}
+
+/** Every active skill of the project's agent (project-specific ones unless projectOnly is false). */
+export async function projectSkills(project, { projectOnly = true } = {}) {
+  const p = resolve(project);
+  await identity();
+  const out = [];
+  for (let offset = 0; ; offset += 100) {
+    const d = await coreData("/skill/list", { ...scope(p), filters: { status: ["active"] }, pagination: { limit: 100, offset } }, 30000);
+    const batch = d?.items ?? [];
+    out.push(...batch);
+    if (!batch.length || out.length >= (d?.total ?? 0)) break;
+  }
+  return out.filter((s) => !projectOnly || !genericSkillNames().has(s.name)).map((s) => ({ name: s.name, description: s.description, id: s.skill_id }));
+}
+
+/** One skill's full text (by name or id). */
+export async function skillGet(project, nameOrId) {
+  const p = resolve(project);
+  await identity();
+  const id = /^skl-/.test(nameOrId) ? nameOrId : (await coreData("/skill/get-by-name", { ...scope(p), name: nameOrId }, 20000))?.skill_id;
+  if (!id) throw new Error(`no skill ${nameOrId} for ${p.name}`);
+  const d = await coreData("/skill/get", { ...scope(p), skill_id: id }, 20000);
+  return { name: d.name, description: d.description, content: d.content ?? "", files: (d.manifest ?? []).map((f) => f.path) };
+}
+
 /** Sessions outside any registered project go to the admin's default agent as "genel". */
 export function generalProject() {
   return { name: "genel", path: os.homedir(), tdai: { agentId: SETTINGS.tdaiDefaultAgent ?? null } };

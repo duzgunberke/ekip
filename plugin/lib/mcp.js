@@ -21,6 +21,12 @@ export const TOOLS = [
     inputSchema: { type: "object", properties: { project: P, query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
   { name: "wiki_read", description: "Read project wiki pages by ref (page id or path without .md, as returned by wiki_search). Pass refs: [] to list all pages.",
     inputSchema: { type: "object", properties: { project: P, refs: { type: "array", items: { type: "string" } } }, required: ["refs"] } },
+  { name: "skill_search", description: "Find the project's own procedures (skills TencentDB learned from past sessions: how this project builds, releases, fixes recurring issues). Use it before planning a task in a project; read a hit with skill_get.",
+    inputSchema: { type: "object", properties: { project: P, query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 10 } }, required: ["query"] } },
+  { name: "skill_get", description: "Full text of one project skill (name or id from skill_search / skill_list).",
+    inputSchema: { type: "object", properties: { project: P, name: { type: "string" } }, required: ["name"] } },
+  { name: "skill_list", description: "All of the project's own skills (name and one-line description).",
+    inputSchema: { type: "object", properties: { project: P } } },
   { name: "code_graph", description: "Query the project's code graph (built from its GitHub repo). tool: search {query, kind?, limit?} | explore {query, maxFiles?} | callers {symbol} | callees {symbol} | impact {symbol, depth?} | node {symbol, includeCode?, file?, line?} | files {path?, pattern?, format?} | status {} | get_info {}. For multi-repo projects pass repo (URL or sub-folder) to pick the graph.",
     inputSchema: { type: "object", properties: { project: P, tool: { type: "string", enum: ["search", "explore", "callers", "callees", "impact", "node", "files", "status", "get_info"] }, params: { type: "object" }, repo: { type: "string" } }, required: ["tool"] } },
 ];
@@ -76,6 +82,9 @@ export async function callTool(name, a = {}) {
       if (!a.refs?.length) return mem.knowledgeTool(p.tdai.wikiId, "list_pages", {});
       return mem.knowledgeTool(p.tdai.wikiId, "read_page", { refs: a.refs });
     }
+    case "skill_search": return mem.skillSearch(project(a.project), a.query, a.limit ?? 5);
+    case "skill_get": return mem.skillGet(project(a.project), a.name);
+    case "skill_list": return mem.projectSkills(project(a.project));
     case "code_graph": {
       const p = project(a.project);
       const g = pickGraph(p, a.repo);
