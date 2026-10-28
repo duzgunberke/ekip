@@ -24,12 +24,24 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "vendor", "build", "dist", "o
 // Retries connection-level failures (a busy port forward drops some connections); every call
 // used here is idempotent or append-only on a failure that never reached the server.
 async function post(url, body, headers = {}, timeoutMs = 30000) {
+  // The panel answers 401 INVALID_USER_KEY / 5xx when memory-core is too busy to verify the key
+  // within its own 15 s (seen during heavy extraction and restarts): back off and retry those too.
+  for (let round = 1; ; round++) {
+    try { return await postOnce(url, body, headers, timeoutMs); } catch (e) {
+      const transient = /INVALID_USER_KEY|NOT_TEAM_MEMBER|FORBIDDEN|HTTP 5\d\d|ECONNRESET|ECONNREFUSED|fetch failed|socket/i.test(e.message);
+      if (!transient || round >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * round));
+    }
+  }
+}
+
+async function postOnce(url, body, headers, timeoutMs) {
   let res;
   for (let attempt = 1; ; attempt++) {
     try {
       res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-tdai-service-id": SERVICE, Connection: "close", ...headers },
+        headers: { "Content-Type": "application/json", "x-tdai-service-id": SERVICE, ...headers },
         body: JSON.stringify(body ?? {}),
         signal: AbortSignal.timeout(timeoutMs),
       });
