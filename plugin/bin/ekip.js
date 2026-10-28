@@ -366,9 +366,21 @@ async function hub([sub, url, token]) {
     saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token });
     await hubFetch("/api/heartbeat", { method: "POST", body: JSON.stringify({ client: "mac", host: os.hostname() }) });
     console.log(`linked to ${url}`);
+  } else if (sub === "push") {
+    // The hub works from GitHub, so it gets each project's repo URLs, card and memory ids.
+    const projects = registry().map((p) => ({
+      name: p.name,
+      repo: p.repo ?? null,
+      repos: (p.repos ?? []).map((r) => r.url ?? r).filter(Boolean).slice(0, 50),
+      summary: p.summary ?? "",
+      card: p.card && fs.existsSync(p.card) ? fs.readFileSync(p.card, "utf8") : "",
+      tdai: p.tdai ? { teamId: p.tdai.teamId, agentId: p.tdai.agentId, wikiId: p.tdai.wikiId, codeGraphId: p.tdai.codeGraphId } : undefined,
+    }));
+    const r = await hubFetch("/api/projects", { method: "PUT", body: JSON.stringify({ projects, replace: true }) });
+    console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
   } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));
   else if (sub === "open") openUrl(SETTINGS.hubUrl ?? die("no hub linked"));
-  else die("usage: ekip hub link <url> <token> | status | open");
+  else die("usage: ekip hub link <url> <token> | push | status | open");
 }
 
 // Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together.
@@ -435,6 +447,9 @@ async function lead(args) {
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
   if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
+  if (SETTINGS.hubUrl && SETTINGS.hubToken && !member) {
+    fetch(`${SETTINGS.hubUrl}/api/heartbeat`, { method: "POST", signal: AbortSignal.timeout(4000), headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ client: "mac", host: os.hostname(), agents: autoOrder() }) }).catch(() => {});
+  }
   const r = spawnSync("claude", argv, { stdio: "inherit", env });
   return r.status ?? 1;
 }
