@@ -14,6 +14,8 @@ const stripSlash = (u) => (u ? u.replace(/\/+$/, "") : "");
 const DATA = env.EKIP_DATA ?? "/data";
 
 const cfg = {
+  // "Name|https://url,Name|https://url": other dashboards on the same server, shown as links.
+  links: (env.EKIP_LINKS ?? "").split(",").map((x) => x.split("|")).filter(([n, u]) => n && /^https:\/\//.test(u ?? "")).map(([name, url]) => ({ name: name.trim(), url: url.trim() })),
   port: num(env.PORT, 7777),
   host: env.HOST ?? "0.0.0.0",
   data: DATA,
@@ -187,6 +189,7 @@ async function status() {
     github: { token: !!cfg.githubToken },
     queue: counts,
     workers: worker.status(),
+    links: cfg.links,
     clients: Object.values(store.clients.data).sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? "")),
   };
 }

@@ -196,6 +196,10 @@ function renderStatus() {
       ];
     })) : h("p", { class: "muted small-text" }, "Henüz sinyal yok.")));
 
+  if (s.links?.length) cards.push(h("div", { class: "card" },
+    h("div", { class: "card-head" }, h("h3", {}, "Paneller"), h("span", { class: "muted small-text" }, String(s.links.length))),
+    h("div", { class: "chips" }, s.links.map((l) => h("a", { class: "chip", href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.name)))));
+
   $("#status-grid").replaceChildren(...cards);
 }
 
