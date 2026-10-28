@@ -61,9 +61,9 @@ export async function main([sub = "ls", ...names]) {
   if (sub === "ls") {
     for (const [n, a] of Object.entries(AGENTS)) {
       const s = state()[n];
-      const state = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
+      const st = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
       const label = !has(a.bin) ? c.gray("kurulu değil     ") : s?.ok ? c.green("hazır            ") : s ? c.red("giriş/kota sorunu") : c.yellow("denenmedi        ");
-      console.log(`  ${dot(state)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}`);
+      console.log(`  ${dot(st)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}`);
     }
     console.log(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
   } else if (sub === "install") {
