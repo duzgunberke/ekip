@@ -536,11 +536,13 @@ async function report(run) {
     await Promise.race([recordRun(run.project, run), sleep(15000)]);
   } catch { /* memory is best effort */ }
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
-  fetch(`${SETTINGS.hubUrl}/api/runs`, {
+  const { pending } = await import("../lib/tasks.js");
+  const pr = fetch(`${SETTINGS.hubUrl}/api/runs`, {
     method: "POST", signal: AbortSignal.timeout(5000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify({ ...run, host: os.hostname(), finishedAt: new Date().toISOString() }),
-  }).catch(() => {});
+  }).catch(() => {}).finally(() => pending.delete(pr));
+  pending.add(pr);
 }
 
 // ---- the lead session -------------------------------------------------------------------------
