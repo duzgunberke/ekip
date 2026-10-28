@@ -11,108 +11,12 @@
 //   ekip team up|down|ls          long-lived workers (agy, free) as hoptell peers in tmux
 //   ekip status | up | down | logs
 import { spawn, spawnSync } from "node:child_process";
+import {
+  CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
+} from "../lib/core.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
-// Everything ekip keeps (keys, run transcripts, logs, cloned dependencies) lives inside the repo it
-// runs from, so the whole setup sits on one disk and moves with the folder. EKIP_HOME overrides it.
-const REPO = path.resolve(path.dirname(fs.realpathSync(process.argv[1])), "../..");
-const HOME = process.env.EKIP_HOME ?? path.join(REPO, "data");
-const VENDOR = path.join(REPO, "vendor");
-const SETTINGS_FILE = path.join(HOME, "config.json");
-const SETTINGS = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) : {};
-const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? SETTINGS.freellmapiDir ?? path.join(VENDOR, "freellmapi");
-const FREE_NODE = process.env.EKIP_FREELLMAPI_NODE ?? SETTINGS.freellmapiNode ?? "/opt/homebrew/opt/node@24/bin/node";
-const PORT = Number(process.env.EKIP_FREELLMAPI_PORT ?? SETTINGS.port ?? 3001);
-const FREELLMAPI_REPO = "https://github.com/tashfeenahmed/freellmapi.git";
-const KEYLESS = ["ovh"];
-const URL_ROOT = `http://127.0.0.1:${PORT}`;
-const DB = path.join(FREE_DIR, "server/data/freeapi.db");
-const CONFIG = path.join(HOME, "freellmapi.config.json");
-const PID = path.join(HOME, "freellmapi.pid");
-const LOG = path.join(HOME, "logs/freellmapi.log");
-const RUNS = path.join(HOME, "runs");
-const FREE_CLAUDE_HOME = path.join(HOME, "claude-free");
-
-const die = (msg, code = 1) => { process.stderr.write(`ekip: ${msg}\n`); process.exit(code); };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
-fs.mkdirSync(path.dirname(LOG), { recursive: true });
-fs.mkdirSync(RUNS, { recursive: true });
-
-// ---- freellmapi server ------------------------------------------------------------------------
-
-async function healthy() {
-  try { return (await fetch(`${URL_ROOT}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
-}
-
-async function up({ quiet = false } = {}) {
-  if (await healthy()) return;
-  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) die(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
-  const env = { ...process.env, FREEAPI_ENV_PATH: path.join(FREE_DIR, ".env"), HOST: "127.0.0.1", PORT: String(PORT) };
-  if (fs.existsSync(CONFIG)) env.FREEAPI_CONFIG_PATH = CONFIG;
-  const out = fs.openSync(LOG, "a");
-  const child = spawn(FREE_NODE, ["server/dist/index.js"], { cwd: FREE_DIR, env, detached: true, stdio: ["ignore", out, out] });
-  child.unref();
-  fs.writeFileSync(PID, String(child.pid));
-  for (let i = 0; i < 60; i++) {
-    if (await healthy()) { if (!quiet) console.error(`ekip: freellmapi up on ${URL_ROOT}`); return; }
-    await sleep(500);
-  }
-  die(`freellmapi did not start; see ${LOG}`);
-}
-
-async function down() {
-  let pid = fs.existsSync(PID) ? Number(fs.readFileSync(PID, "utf8")) : null;
-  if (!pid) {
-    // Started some other way (by hand): find the listener on our port.
-    const r = spawnSync("lsof", ["-ti", `tcp:${PORT}`, "-sTCP:LISTEN"], { encoding: "utf8" });
-    pid = Number(r.stdout.trim().split("\n")[0]) || null;
-  }
-  if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
-  fs.rmSync(PID, { force: true });
-  for (let i = 0; i < 20 && (await healthy()); i++) await sleep(250);
-}
-
-function sql(query) {
-  const r = spawnSync("sqlite3", ["-separator", "\t", DB, query], { encoding: "utf8" });
-  if (r.status !== 0) die(`sqlite3 failed: ${r.stderr.trim()}`);
-  return r.stdout.trim();
-}
-
-const unifiedKey = () => sql("select value from settings where key='unified_api_key'");
-const keyCounts = () => sql("select platform, count(*) from api_keys where enabled=1 group by platform")
-  .split("\n").filter(Boolean).map((l) => l.split("\t"));
-
-// ---- provider keys (declarative config, applied by freellmapi on every boot) ------------------
-
-const readConfig = () => (fs.existsSync(CONFIG) ? JSON.parse(fs.readFileSync(CONFIG, "utf8")) : { keys: [] });
-function writeConfig(cfg) {
-  fs.writeFileSync(CONFIG, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
-  fs.chmodSync(CONFIG, 0o600);
-}
-
-async function key(args) {
-  const [sub, platform, value] = args;
-  if (sub === "add") {
-    if (!platform || (!value && !KEYLESS.includes(platform))) die(`usage: ekip key add <platform> <key>   (platforms: google, groq, cerebras, openrouter, mistral, nvidia, cohere, cloudflare, zhipu, ...; keyless: ${KEYLESS.join(", ")})`);
-    const cfg = readConfig();
-    const n = cfg.keys.filter((k) => k.platform === platform).length;
-    if (value) cfg.keys.push({ platform, key: value, label: `ekip-${n + 1}` });
-    else if (!n) cfg.keys.push({ platform, label: "ekip-1" });
-    writeConfig(cfg);
-    await down();
-    await up();
-    const counts = Object.fromEntries(keyCounts());
-    if (!counts[platform]) die(`freellmapi did not accept the ${platform} key; see ${LOG}`);
-    console.log(`${platform}: ${counts[platform]} key(s) active`);
-  } else if (sub === "list" || !sub) {
-    await up({ quiet: true });
-    const rows = keyCounts();
-    console.log(rows.length ? rows.map(([p, c]) => `${p}\t${c}`).join("\n") : "no provider keys yet — ekip key add <platform> <key>");
-  } else die(`unknown: ekip key ${sub}`);
-}
 
 // ---- key wizard: opens each provider's key page, you paste the key -----------------------------
 
@@ -130,13 +34,6 @@ const PROVIDERS = [
   { platform: "zhipu", label: "Z.ai (Zhipu)", url: "https://z.ai/manage-apikey/apikey-list", note: "GLM Flash" },
   { platform: "huggingface", label: "HuggingFace", url: "https://huggingface.co/settings/tokens", note: "token with Inference Providers permission" },
 ];
-
-async function ask(question) {
-  const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
-  try { return (await rl.question(question)).trim(); } finally { rl.close(); }
-}
-
-const openUrl = (url) => spawnSync(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore" });
 
 async function keyWizard({ all = false } = {}) {
   if (!process.stdin.isTTY) die("ekip keys is interactive; run it in a terminal");
@@ -333,34 +230,6 @@ async function lead(args) {
 
 // ---- setup -----------------------------------------------------------------------------------
 
-function sh(cmd, argv, opts = {}) {
-  console.error(`$ ${cmd} ${argv.join(" ")}`);
-  const r = spawnSync(cmd, argv, { stdio: "inherit", ...opts });
-  if (r.status !== 0) die(`${cmd} failed (exit ${r.status})`);
-}
-
-// Dependencies ekip clones when this machine has none configured (config.json can point elsewhere).
-const DEPS = {
-  freellmapi: { repo: "https://github.com/tashfeenahmed/freellmapi.git", key: "freellmapiDir" },
-  hoptell: { repo: "https://github.com/EminUZUN/hoptell.git", key: "hoptellDir" },
-  tdai: { repo: "https://github.com/TencentCloud/TencentDB-Agent-Memory.git", key: "tdaiDir" },
-};
-const depDir = (name) => SETTINGS[DEPS[name].key] ?? path.join(VENDOR, name);
-const saveSettings = (patch) => {
-  Object.assign(SETTINGS, patch);
-  fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify(SETTINGS, null, 2)}\n`);
-};
-
-function clone(name) {
-  const dir = depDir(name);
-  if (!fs.existsSync(path.join(dir, ".git"))) {
-    fs.mkdirSync(path.dirname(dir), { recursive: true });
-    sh("git", ["clone", "--depth", "50", DEPS[name].repo, dir]);
-  }
-  saveSettings({ [DEPS[name].key]: dir });
-  return dir;
-}
-
 // freellmapi needs Node >=20.18 <25; the default node may be newer.
 function findOldNode() {
   const candidates = [SETTINGS.freellmapiNode, "/opt/homebrew/opt/node@24/bin/node", "/opt/homebrew/opt/node@22/bin/node",
@@ -431,13 +300,6 @@ async function init({ skipKeys = false } = {}) {
 
 // ---- TencentDB Agent Memory ---------------------------------------------------------------------
 
-const TDAI_PORTS = { core: 8420, panel: 8125, knowledge: 8424, proxy: 8096 };
-const tdaiDeploy = () => path.join(depDir("tdai"), "deploy/global-images");
-const tdaiUp = async () => {
-  try { return (await fetch(`http://127.0.0.1:${TDAI_PORTS.proxy}/health`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
-};
-const containerRunning = (n) => spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", n], { encoding: "utf8" }).stdout.trim() === "true";
-
 function setEnvValues(file, values) {
   let text = fs.readFileSync(file, "utf8");
   for (const [k, v] of Object.entries(values)) {
@@ -476,11 +338,6 @@ function memoryDown() {
   sh("./stop-all.sh", [], { cwd: tdaiDeploy() });
 }
 
-const adminKey = () => {
-  const f = path.join(tdaiDeploy(), ".admin-key");
-  return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
-};
-
 async function memory([sub = "status"]) {
   if (sub === "up") await memoryUp();
   else if (sub === "down") memoryDown();
@@ -494,15 +351,6 @@ async function memory([sub = "status"]) {
 async function memoryMcp() { /* filled in once the knowledge MCP wiring is verified */ }
 
 // ---- open team members in terminal windows ---------------------------------------------------
-
-function openTerminal(command) {
-  if (process.platform !== "darwin") { console.log(`run in a new terminal: ${command}`); return; }
-  const app = process.env.TERM_PROGRAM === "iTerm.app" ? "iTerm" : "Terminal";
-  const script = app === "iTerm"
-    ? `tell application "iTerm" to create window with default profile command ${JSON.stringify(command)}`
-    : `tell application "Terminal" to do script ${JSON.stringify(command)}`;
-  spawnSync("osascript", ["-e", script, "-e", `tell application "${app}" to activate`], { stdio: "ignore" });
-}
 
 // ---- team (hoptell peers in tmux) -------------------------------------------------------------
 
