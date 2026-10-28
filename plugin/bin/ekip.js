@@ -15,6 +15,7 @@ import {
   CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
+import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -609,6 +610,7 @@ switch (cmd) {
   case "agents": await agentsMain(rest); break;
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;
+  case "vps": await vpsMain(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;

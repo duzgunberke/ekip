@@ -20,13 +20,25 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "vendor", "build", "dist", "o
 
 // ---- HTTP -------------------------------------------------------------------------------------
 
+// Retries connection-level failures (a busy port forward drops some connections); every call
+// used here is idempotent or append-only on a failure that never reached the server.
 async function post(url, body, headers = {}, timeoutMs = 30000) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-tdai-service-id": SERVICE, ...headers },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let res;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-tdai-service-id": SERVICE, Connection: "close", ...headers },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      break;
+    } catch (e) {
+      const why = e.cause?.code ?? e.cause?.message ?? e.message;
+      if (attempt >= 3 || e.name === "TimeoutError") throw new Error(`${url.replace(/^https?:\/\/[^/]+/, "")}: ${why}`);
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
   const text = await res.text();
   let j;
   try { j = JSON.parse(text); } catch { throw new Error(`${url}: HTTP ${res.status} ${text.slice(0, 200)}`); }

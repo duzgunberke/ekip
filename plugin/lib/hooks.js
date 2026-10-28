@@ -3,10 +3,9 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME, REPO } from "./core.js";
+import { HOME } from "./core.js";
 import { findProject } from "./projects.js";
 
-const EKIP_JS = path.join(REPO, "plugin/bin/ekip.js");
 const CARD_LINES = 80;
 
 async function readStdin(timeoutMs = 2000) {
@@ -58,7 +57,10 @@ export async function main([sub, ...rest] = []) {
       if (input.transcript_path && findProject(cwd)) {
         fs.mkdirSync(path.join(HOME, "logs"), { recursive: true });
         const out = fs.openSync(path.join(HOME, "logs/capture.log"), "a");
-        spawn(process.execPath, [EKIP_JS, "hook", "capture", input.transcript_path, input.session_id ?? "", cwd],
+        // Runs this module directly (not via ekip.js) so capture never depends on CLI dispatch.
+        const self = new URL(import.meta.url).href;
+        const code = `const m = await import(${JSON.stringify(self)}); await m.main(["capture", ...process.argv.slice(1)]);`;
+        spawn(process.execPath, ["--input-type=module", "-e", code, input.transcript_path, input.session_id ?? "", cwd],
           { detached: true, stdio: ["ignore", out, out] }).unref();
       }
     } else if (sub === "capture") {
