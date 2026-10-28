@@ -847,7 +847,7 @@ async function importHistory() {
 function reindex() {
   const script = path.join(ROOT, "hub/tools/tdai-backfill-vectors.mjs");
   const env = `-e EMBED_URL=http://freellmapi:3001/v1 -e EMBED_KEY="$(grep ^MEMORY_LLM_API_KEY= .env | cut -d= -f2)" -e EMBED_MODEL="$(grep ^MEMORY_EMBEDDING_MODEL= .env | cut -d= -f2)"`;
-  const cmd = (dir, src) => `cd ${dir} && docker cp ${src} tdai-memory-core:/tmp/backfill.mjs && (docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo "already running" || (docker exec -d ${env} tdai-memory-core node /tmp/backfill.mjs && echo started))`;
+  const cmd = (dir, src) => `cd ${dir} && docker cp ${src} tdai-memory-core:/tmp/backfill.mjs && (docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo "already running" || (docker exec -d ${env} tdai-memory-core node /tmp/backfill.mjs && echo started))`;
   if (REMOTE) {
     spawnSync("scp", ["-q", script, `${REMOTE.ssh}:${REMOTE.dir}/tdai-backfill-vectors.mjs`], { stdio: "inherit" });
     console.log(ssh(cmd(`${REMOTE.dir}/tdai/deploy/global-images`, `${REMOTE.dir}/tdai-backfill-vectors.mjs`)).stdout.trim());

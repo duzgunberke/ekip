@@ -31,11 +31,18 @@ const metaModel = meta.model;
 if (!dims) { log("no embedding_meta yet (start memory-core with embeddings first)"); process.exit(1); }
 if (metaModel && metaModel !== MODEL) log(`warning: index model is ${metaModel}, backfilling with ${MODEL}`);
 
+// NVIDIA's embedder treats an inline "data:image/..." URI as an image and rejects the whole batch,
+// so neutralize those (and long base64 runs) before sending; the meaning of the text is kept.
+const clean = (t) => (t || " ").replace(/data:(image|video|audio)\//gi, "data-$1/").replace(/[A-Za-z0-9+/=]{200,}/g, "[base64]").slice(0, MAXC) || " ";
+
+// A 400 from upstream is about the input, not the rate: retrying the same batch never succeeds.
+const isInputError = (status, body) => status === 400 || (status === 502 && /upstream 400/.test(body));
+
 async function embed(texts) {
   for (let attempt = 0; ; attempt++) {
     const r = await fetch(`${URL_}/embeddings`, {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${KEY}` },
-      body: JSON.stringify({ model: MODEL, input: texts.map((t) => (t || " ").slice(0, MAXC)) }),
+      body: JSON.stringify({ model: MODEL, input: texts.map(clean) }),
       signal: AbortSignal.timeout(120000),
     }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
     if (r.ok) {
@@ -44,8 +51,15 @@ async function embed(texts) {
       if (out.some((v) => v.length !== dims)) throw new Error(`model returned ${out[0].length} dims, index has ${dims}`);
       return out;
     }
+    const body = await r.text();
+    if (isInputError(r.status, body)) {
+      // Split the batch so one bad record cannot block the rest; a single bad record is skipped.
+      if (texts.length === 1) { log(`skip record: ${body.slice(0, 200)}`); return [null]; }
+      const half = Math.ceil(texts.length / 2);
+      return [...(await embed(texts.slice(0, half))), ...(await embed(texts.slice(half)))];
+    }
     const wait = Math.min(15 * 60_000, 5000 * 2 ** attempt);
-    log(`embed HTTP ${r.status}: ${(await r.text()).slice(0, 160)} · retry in ${Math.round(wait / 1000)}s`);
+    log(`embed HTTP ${r.status}: ${body.slice(0, 160)} · retry in ${Math.round(wait / 1000)}s`);
     await sleep(wait);
   }
 }
@@ -63,7 +77,7 @@ async function layer(name, rowsSql, vecTable, timeCol) {
     const vecs = await embed(batch.map((r) => r.text));
     db.exec("BEGIN");
     try {
-      batch.forEach((r, k) => { del.run(r.record_id); ins.run(r.record_id, Buffer.from(vecs[k].buffer), r.t ?? ""); });
+      batch.forEach((r, k) => { if (!vecs[k]) return; del.run(r.record_id); ins.run(r.record_id, Buffer.from(vecs[k].buffer), r.t ?? ""); });
       db.exec("COMMIT");
     } catch (e) { try { db.exec("ROLLBACK"); } catch { /* ignore */ } log(`${name}: write failed, will retry later: ${e.message}`); await sleep(10000); i -= BATCH; continue; }
     done += batch.length;
