@@ -1,3 +1,6 @@
 .env
 freellmapi.config.json
 data/
+# Vite build of web/ (built in the Docker image; locally: cd web && pnpm build)
+public/
+web/node_modules/

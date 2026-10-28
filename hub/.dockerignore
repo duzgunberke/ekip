@@ -5,3 +5,9 @@ freellmapi.config.json
 data
 node_modules
 .DS_Store
+# the panel is built inside the image (web stage); never ship a local build or deps
+public
+web/node_modules
+web/dist
+web/*.tsbuildinfo
+web/node_modules/.tmp

@@ -1,6 +1,20 @@
 import React from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
+import {
+  ArrowRight,
+  ExternalLink,
+  FolderGit2,
+  Laptop,
+  LogOut,
+  Moon,
+  Plus,
+  RefreshCw,
+  Sun,
+} from 'lucide-react'
+import { useProjects, useStatus } from '@/hooks/queries'
+import { useSignOut } from '@/hooks/use-sign-out'
+import { useNewJob } from '@/context/new-job-provider'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
 import {
@@ -11,16 +25,21 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  CommandShortcut,
 } from '@/components/ui/command'
-import { sidebarData } from './layout/data/sidebar-data'
-import { ScrollArea } from './ui/scroll-area'
+import { navGroups } from './layout/nav'
 
 export function CommandMenu() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { setTheme } = useTheme()
   const { open, setOpen } = useSearch()
+  const { openNewJob } = useNewJob()
+  const signOut = useSignOut()
+  const projects = useProjects()
+  const status = useStatus()
 
-  const runCommand = React.useCallback(
+  const run = React.useCallback(
     (command: () => unknown) => {
       setOpen(false)
       command()
@@ -29,62 +48,99 @@ export function CommandMenu() {
   )
 
   return (
-    <CommandDialog modal open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder='Type a command or search...' />
-      <CommandList>
-        <ScrollArea type='hover' className='h-72 pe-1'>
-          <CommandEmpty>No results found.</CommandEmpty>
-          {sidebarData.navGroups.map((group) => (
-            <CommandGroup key={group.title} heading={group.title}>
-              {group.items.map((navItem, i) => {
-                if (navItem.url)
-                  return (
-                    <CommandItem
-                      key={`${navItem.url}-${i}`}
-                      value={navItem.title}
-                      onSelect={() => {
-                        runCommand(() => navigate({ to: navItem.url }))
-                      }}
-                    >
-                      <div className='flex size-4 items-center justify-center'>
-                        <ArrowRight className='size-2 text-muted-foreground/80' />
-                      </div>
-                      {navItem.title}
-                    </CommandItem>
-                  )
-
-                return navItem.items?.map((subItem, i) => (
-                  <CommandItem
-                    key={`${navItem.title}-${subItem.url}-${i}`}
-                    value={`${navItem.title}-${subItem.url}`}
-                    onSelect={() => {
-                      runCommand(() => navigate({ to: subItem.url }))
-                    }}
-                  >
-                    <div className='flex size-4 items-center justify-center'>
-                      <ArrowRight className='size-2 text-muted-foreground/80' />
-                    </div>
-                    {navItem.title} <ChevronRight /> {subItem.title}
-                  </CommandItem>
-                ))
-              })}
-            </CommandGroup>
-          ))}
-          <CommandSeparator />
-          <CommandGroup heading='Theme'>
-            <CommandItem onSelect={() => runCommand(() => setTheme('light'))}>
-              <Sun /> <span>Light</span>
-            </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => setTheme('dark'))}>
-              <Moon className='scale-90' />
-              <span>Dark</span>
-            </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => setTheme('system'))}>
-              <Laptop />
-              <span>System</span>
-            </CommandItem>
+    <CommandDialog
+      modal
+      open={open}
+      onOpenChange={setOpen}
+      title='Komut paleti'
+      description='Sayfaya git, iş başlat veya tema değiştir'
+    >
+      <CommandInput placeholder='Komut yazın veya arayın…' />
+      <CommandList className='max-h-[min(24rem,70svh)]'>
+        <CommandEmpty>Sonuç yok.</CommandEmpty>
+        <CommandGroup heading='Eylemler'>
+          <CommandItem value='yeni iş başlat' onSelect={() => run(() => openNewJob())}>
+            <Plus />
+            Yeni iş
+          </CommandItem>
+          <CommandItem
+            value='verileri yenile'
+            onSelect={() => run(() => qc.invalidateQueries())}
+          >
+            <RefreshCw />
+            Verileri yenile
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+        {navGroups.map((group) => (
+          <CommandGroup key={group.title} heading={group.title}>
+            {group.items.map((item) =>
+              item.url ? (
+                <CommandItem
+                  key={String(item.url)}
+                  value={`git ${item.title}`}
+                  onSelect={() => run(() => navigate({ to: item.url }))}
+                >
+                  {item.icon ? <item.icon /> : <ArrowRight />}
+                  {item.title}
+                </CommandItem>
+              ) : null
+            )}
           </CommandGroup>
-        </ScrollArea>
+        ))}
+        {!!projects.data?.length && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading='Projeler'>
+              {projects.data.map((p) => (
+                <CommandItem
+                  key={p.name}
+                  value={`proje ${p.name}`}
+                  onSelect={() => run(() => navigate({ to: '/projeler', search: { p: p.name } }))}
+                >
+                  <FolderGit2 />
+                  {p.name}
+                  <CommandShortcut className='tracking-normal'>kartı aç</CommandShortcut>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+        {!!status.data?.links.length && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading='Paneller'>
+              {status.data.links.map((l) => (
+                <CommandItem
+                  key={l.url}
+                  value={`panel ${l.name}`}
+                  onSelect={() => run(() => window.open(l.url, '_blank', 'noopener,noreferrer'))}
+                >
+                  <ExternalLink />
+                  {l.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+        <CommandSeparator />
+        <CommandGroup heading='Tema'>
+          <CommandItem value='tema açık' onSelect={() => run(() => setTheme('light'))}>
+            <Sun /> Açık
+          </CommandItem>
+          <CommandItem value='tema koyu' onSelect={() => run(() => setTheme('dark'))}>
+            <Moon /> Koyu
+          </CommandItem>
+          <CommandItem value='tema sistem' onSelect={() => run(() => setTheme('system'))}>
+            <Laptop /> Sistem
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading='Oturum'>
+          <CommandItem value='çıkış yap' onSelect={() => run(signOut)}>
+            <LogOut /> Çıkış yap
+          </CommandItem>
+        </CommandGroup>
       </CommandList>
     </CommandDialog>
   )

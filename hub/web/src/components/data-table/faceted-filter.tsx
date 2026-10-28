@@ -36,7 +36,7 @@ export function DataTableFacetedFilter<TData, TValue>({
   options,
 }: DataTableFacetedFilterProps<TData, TValue>) {
   const facets = column?.getFacetedUniqueValues()
-  const seçiliValues = new Set(column?.getFilterValue() as string[])
+  const selectedValues = new Set(column?.getFilterValue() as string[])
 
   return (
     <Popover>
@@ -63,7 +63,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                   </Badge>
                 ) : (
                   options
-                    .filter((option) => seçiliValues.has(option.value))
+                    .filter((option) => selectedValues.has(option.value))
                     .map((option) => (
                       <Badge
                         variant='secondary'
@@ -86,15 +86,15 @@ export function DataTableFacetedFilter<TData, TValue>({
             <CommandEmpty>Sonuç yok.</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
-                const isSelected = seçiliValues.has(option.value)
+                const isSelected = selectedValues.has(option.value)
                 return (
                   <CommandItem
                     key={option.value}
                     onSelect={() => {
                       if (isSelected) {
-                        seçiliValues.delete(option.value)
+                        selectedValues.delete(option.value)
                       } else {
-                        seçiliValues.add(option.value)
+                        selectedValues.add(option.value)
                       }
                       const filterValues = Array.from(selectedValues)
                       column?.setFilterValue(

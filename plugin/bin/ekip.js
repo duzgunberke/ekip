@@ -124,7 +124,19 @@ async function memoryRoute(project) {
 
 const VIAS = ["auto", "free", "claude", ...Object.keys(AGENTS)];
 
+const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR] [--model ID] [--plugin NAME] [--skill NAME] [--no-watch] "task"
+       ekip run ... -            read the task from stdin (use for long briefs: ekip run - <<'EOF' ... EOF)
+
+  --via      auto (default) | ${Object.keys(AGENTS).filter((n) => !AGENTS[n].hidden?.()).join(" | ")} | free | claude
+             a,b,c runs the same task on several pools, each in its own git worktree and branch
+  --project  a registered project (ekip project ls); sets the folder and its memory
+  --plugin   load an installed Claude plugin into a free/claude worker (e.g. lemo-opuscar)
+  --skill    load a skill from ~/.claude/skills into a free/claude worker
+  --no-watch don't open a terminal window that shows the worker live
+The worker's final report is printed to stdout; its full log is under data/runs/.`;
+
 function parseRun(args) {
+  if (!args.length || args.includes("--help") || args.includes("-h")) { console.log(RUN_HELP); process.exit(0); }
   const o = { via: "auto", cwd: process.cwd(), model: null, task: null, plugins: [], skills: [], project: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -134,6 +146,9 @@ function parseRun(args) {
     else if (a === "--plugin") o.plugins.push(args[++i]);
     else if (a === "--skill") o.skills.push(args[++i]);
     else if (a === "--project") o.project = args[++i];
+    else if (a === "--no-watch") o.watch = false;
+    else if (a === "--watch") o.watch = true;
+    else if (a.startsWith("--")) die(`unknown option ${a} (ekip run --help)`);
     else if (a === "-") o.task = fs.readFileSync(0, "utf8");
     else if (o.task == null) o.task = a;
     else o.task += ` ${a}`;

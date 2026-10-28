@@ -71,3 +71,7 @@ export function normalizeRunStatus(s: string | null | undefined): string {
   }
   return map[(s ?? '').toLowerCase()] ?? (s || 'unknown')
 }
+
+/** Summaries are markdown one-liners; show them as plain text on cards. */
+export const stripMd = (s: string) =>
+  s.replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')

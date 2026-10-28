@@ -1,4 +1,16 @@
 # ekip hub: job runner + control panel. Build: docker build -t ekip-hub .
+
+# ---- panel build (hub/web, Vite + React; output -> /src/public) ------------------------------
+FROM node:22-bookworm-slim AS web
+ARG PNPM_VERSION=10.34.5
+RUN npm i -g "pnpm@${PNPM_VERSION}" && npm cache clean --force
+WORKDIR /src/web
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY web/ ./
+RUN pnpm run build
+
+# ---- runtime ---------------------------------------------------------------------------------
 FROM node:22-bookworm-slim
 
 ARG CLAUDE_CODE_VERSION=2.1.312
@@ -14,7 +26,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --chown=root:root package.json ./
 COPY --chown=root:root src ./src
-COPY --chown=root:root public ./public
+COPY --from=web --chown=root:root /src/public ./public
 
 ENV NODE_ENV=production \
     PORT=7777 \

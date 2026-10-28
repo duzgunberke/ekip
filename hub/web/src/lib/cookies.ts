@@ -30,7 +30,7 @@ export function setCookie(
 ): void {
   if (typeof document === 'undefined') return
 
-  document.cookie = `${name}=${value}; path=/; max-age=${maxAge}`
+  document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; samesite=lax`
 }
 
 /**

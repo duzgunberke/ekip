@@ -58,14 +58,73 @@ const worker = new Worker({ cfg, store });
 
 // ---- http helpers --------------------------------------------------------------------------------
 
-const PUBLIC = path.join(path.dirname(new URL(import.meta.url).pathname), "../public");
-const STATIC = {
-  "/": ["index.html", "text/html; charset=utf-8"],
-  "/app.js": ["app.js", "text/javascript; charset=utf-8"],
-  "/app.css": ["app.css", "text/css; charset=utf-8"],
-  "/favicon.svg": ["favicon.svg", "image/svg+xml"],
+// The panel is a Vite build (hub/web -> hub/public): index.html plus content-hashed /assets/*.
+const PUBLIC = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../public");
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".txt": "text/plain; charset=utf-8",
 };
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
+// No inline scripts or <style> elements anywhere (the build strips the few vendor ones); React and
+// Radix only set element styles through the CSSOM, which style-src does not govern.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+const staticCache = new Map(); // path -> { body, type } (the build is immutable inside the image)
+
+function staticFile(rel) {
+  if (staticCache.has(rel)) return staticCache.get(rel);
+  const abs = path.resolve(PUBLIC, `.${rel}`);
+  let hit = null;
+  if (abs.startsWith(PUBLIC + path.sep) && !rel.split("/").some((seg) => seg.startsWith("."))) {
+    try {
+      if (fs.statSync(abs).isFile()) hit = { body: fs.readFileSync(abs), type: MIME[path.extname(abs).toLowerCase()] ?? "application/octet-stream" };
+    } catch { /* missing */ }
+  }
+  if (hit || staticCache.size < 500) staticCache.set(rel, hit);
+  return hit;
+}
+
+function serveStatic(req, res, p) {
+  let rel;
+  try { rel = decodeURIComponent(p); } catch { return send(res, 400, "bad path"); }
+  if (rel.includes("\0")) return send(res, 400, "bad path");
+  const isAsset = rel.startsWith("/assets/");
+  let file = rel !== "/" && rel !== "/index.html" ? staticFile(rel) : null;
+  let cache = isAsset ? "public, max-age=31536000, immutable" : "public, max-age=3600";
+  if (!file) {
+    // SPA fallback for client routes (/isler/abc, /login, ...); missing files with an extension 404.
+    if (isAsset || /\.[a-z0-9]+$/i.test(rel)) return send(res, 404, "not found");
+    file = staticFile("/index.html");
+    cache = "no-cache";
+    if (!file) return send(res, 503, "panel not built (run npm run build in hub/web)");
+  }
+  res.writeHead(200, {
+    "content-type": file.type,
+    "content-length": file.body.length,
+    "cache-control": cache,
+    "content-security-policy": CSP,
+    "cross-origin-opener-policy": "same-origin",
+  });
+  return res.end(req.method === "HEAD" ? undefined : file.body);
+}
 
 function send(res, code, body, headers = {}) {
   const isJson = typeof body !== "string" && !Buffer.isBuffer(body);
@@ -278,6 +337,7 @@ async function api(req, res, url) {
       project: str(b.project, 128, "project") ?? null,
       task: str(b.task, 50_000, "task") ?? "",
       status: str(b.status, 40, "status") ?? null,
+      host: str(b.host, 200, "host") ?? null,
       report: str(b.report, 100_000, "report") ?? "",
       startedAt: str(b.startedAt, 40, "startedAt") ?? null,
       finishedAt: str(b.finishedAt, 40, "finishedAt") ?? null,
@@ -347,12 +407,7 @@ async function handle(req, res) {
     return send(res, 200, { ok: true }, { "set-cookie": auth.cookie("", 0) });
   }
 
-  const s = STATIC[p];
-  if (s && (req.method === "GET" || req.method === "HEAD")) {
-    const body = fs.readFileSync(path.join(PUBLIC, s[0]));
-    res.writeHead(200, { "content-type": s[1], "content-security-policy": CSP, "cache-control": p === "/" ? "no-cache" : "public, max-age=300" });
-    return res.end(req.method === "HEAD" ? undefined : body);
-  }
+  if (req.method === "GET" || req.method === "HEAD") return serveStatic(req, res, p);
   return send(res, 404, "not found");
 }
 

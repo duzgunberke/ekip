@@ -6,28 +6,21 @@ type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
   minimal?: boolean
 }
 
-export function GeneralError({
-  className,
-  minimal = false,
-}: GeneralErrorProps) {
+export function GeneralError({ className, minimal = false }: GeneralErrorProps) {
   const navigate = useNavigate()
   const { history } = useRouter()
   return (
     <div className={cn('h-svh w-full', className)}>
-      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        {!minimal && (
-          <h1 className='text-[7rem] leading-tight font-bold'>500</h1>
-        )}
-        <span className='font-medium'>Oops! Something went wrong {`:')`}</span>
-        <p className='text-center text-muted-foreground'>
-          We apologize for the inconvenience. <br /> Please try again later.
-        </p>
+      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2 px-4'>
+        {!minimal && <h1 className='text-[7rem] leading-tight font-bold'>500</h1>}
+        <span className='font-medium'>Bir şeyler ters gitti</span>
+        <p className='text-center text-muted-foreground'>Sayfayı yenileyin ya da biraz sonra tekrar deneyin.</p>
         {!minimal && (
           <div className='mt-6 flex gap-4'>
             <Button variant='outline' onClick={() => history.go(-1)}>
-              Go Back
+              Geri dön
             </Button>
-            <Button onClick={() => navigate({ to: '/' })}>Back to Home</Button>
+            <Button onClick={() => navigate({ to: '/' })}>Genel bakışa git</Button>
           </div>
         )}
       </div>
