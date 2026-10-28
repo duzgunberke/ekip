@@ -53,7 +53,7 @@ export function Tasks() {
             description="Mac'teki ekip bir isteği işlemeye başladığında ilerlemesi burada canlı görünür."
           />
         ) : (
-          <div className='grid gap-8'>
+          <div className='grid grid-cols-[minmax(0,1fr)] gap-8'>
             <section aria-labelledby='active-h' aria-live='polite'>
               <h2 id='active-h' className='sr-only'>
                 Aktif görevler
@@ -63,7 +63,7 @@ export function Tasks() {
                   Şu an çalışan görev yok.
                 </div>
               ) : (
-                <div className='grid gap-4'>
+                <div className='grid grid-cols-[minmax(0,1fr)] gap-4'>
                   {active.map((t) => (
                     <ActiveTaskCard key={t.id} task={t} now={now} />
                   ))}

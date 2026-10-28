@@ -42,7 +42,8 @@ export function etaText(t: Task, now: number) {
   if (!t.eta) return null
   const ms = Date.parse(t.eta) - now
   if (Number.isNaN(ms)) return null
-  return ms > 0 ? `tahmini bitiş ${clock(t.eta)} · ${span(ms)} kaldı` : `tahmini bitiş ${clock(t.eta)} · süre aşıldı`
+  return ms > 0
+    ? `tahmini bitiş ${clock(t.eta)} · ${ms < 60_000 ? '1 dk’dan az' : span(Math.ceil(ms / 60_000) * 60_000)} kaldı` : `tahmini bitiş ${clock(t.eta)} · süre aşıldı`
 }
 
 export const elapsed = (from: string | null | undefined, to: string | null | undefined, now: number) =>

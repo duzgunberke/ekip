@@ -606,8 +606,13 @@ async function lead(args) {
     if (args[0] === "--free") free = true; else member = true;
     args = args.slice(1);
   }
+  // The lead runs without permission prompts by default, so a long team run never stalls on a
+  // dialog; `ekip --safe` keeps Claude Code's normal prompts. An explicit mode in args wins.
+  const safe = args.includes("--safe");
+  args = args.filter((a) => a !== "--safe");
+  const explicit = args.some((a) => a === "--permission-mode" || a === "--dangerously-skip-permissions");
   const env = free ? await freeEnv() : process.env;
-  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...args];
+  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
@@ -917,6 +922,7 @@ const HELP = () => `${banner()}
 ${c.bold("Günlük")}
   ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
+  ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
   ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
 
 ${c.bold("İşçiler")}

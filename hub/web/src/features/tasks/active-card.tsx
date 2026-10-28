@@ -6,14 +6,22 @@ import { StatusDot } from '@/components/ekip/status-badge'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ProgressBar, StepList, currentStep, elapsed, etaText } from './parts'
 
+const WORKER_STATUS: Record<string, string> = {
+  running: 'çalışıyor',
+  done: 'bitti',
+  failed: 'başarısız',
+  cancelled: 'iptal',
+  queued: 'sırada',
+}
+
 export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
   const cur = currentStep(t)
   const eta = etaText(t, now)
   const workers = t.workers.filter((w) => w.status === 'running' || (!w.endedAt && w.status !== 'done' && w.status !== 'failed'))
   const note = t.notes[t.notes.length - 1]
   return (
-    <Card className='gap-5 border-status-running/30'>
-      <CardHeader className='gap-3'>
+    <Card className='min-w-0 gap-5 border-status-running/30'>
+      <CardHeader className='grid-cols-[minmax(0,1fr)] gap-3'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div className='min-w-0 flex-[1_1_16rem]'>
             <div className='mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
@@ -61,7 +69,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
           )}
         </div>
       </CardHeader>
-      <CardContent className='grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'>
+      <CardContent className='grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'>
         <section aria-label='Adımlar'>
           <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Adımlar</h3>
           <StepList task={t} now={now} />
@@ -80,7 +88,9 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
                     <Bot className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
                     <div className='min-w-0 flex-1'>
                       <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? 'ajan'}</p>
-                      <p className='truncate text-xs text-muted-foreground'>{[w.via, w.status].filter(Boolean).join(' · ')}</p>
+                      <p className='truncate text-xs text-muted-foreground'>
+                        {[w.via, w.status && (WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
                     <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{elapsed(w.startedAt, w.endedAt, now)}</span>
                   </li>
