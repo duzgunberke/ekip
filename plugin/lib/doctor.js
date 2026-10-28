@@ -83,6 +83,16 @@ export async function main(args = []) {
     if (badGraphs.length) repairs.push(["graph", r.p]);
   }
 
+  console.log(title("Vektör indeksi"));
+  const st = REMOTE
+    ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo RUNNING"], { encoding: "utf8" }).stdout
+    : spawnSync("sh", ["-c", "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo RUNNING"], { encoding: "utf8" }).stdout;
+  let bf = null; try { bf = JSON.parse((st ?? "").split("\n")[0]); } catch { /* none */ }
+  const running = /RUNNING/.test(st ?? "");
+  if (bf?.layer === "done") line("ok", "vektörler", "tüm kayıtlar vektörlü");
+  else if (bf) { line(running ? "warn" : "bad", "vektörler", `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? " · dolduruluyor" : " · durdu"}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
+  else line("warn", "vektörler", "doldurma hiç çalışmadı (ekip memory reindex)");
+
   console.log(title("Geçmiş oturumlar"));
   let done = 0;
   try { done = JSON.parse(fs.readFileSync(path.join(HOME, "memory-state/asset-import.json"), "utf8")).done?.length ?? 0; } catch { /* none */ }

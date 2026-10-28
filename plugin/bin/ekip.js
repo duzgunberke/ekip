@@ -761,9 +761,10 @@ async function memoryUp() {
   patchTdaiScripts(dir);
   setEnvValues(env, {
     CODE_SOURCE_ENABLED: "gongfeng",
-    // Real vector search: a pinned embedding model (dimensions must never change for one index).
+    // Real vector search: one pinned embedding model for the whole index (nemotron-3-embed-1b, 2048-d:
+    // served by NVIDIA and OpenRouter free, so a limit on one falls back to the other with identical vectors).
     MEMORY_EMBEDDING_PROVIDER: "openai", MEMORY_EMBEDDING_BASE_URL: `http://host.docker.internal:${PORT}/v1`,
-    MEMORY_EMBEDDING_API_KEY: key, MEMORY_EMBEDDING_MODEL: "gemini-embedding-001", MEMORY_EMBEDDING_DIMENSIONS: "768",
+    MEMORY_EMBEDDING_API_KEY: key, MEMORY_EMBEDDING_MODEL: "nemotron-3-embed-1b", MEMORY_EMBEDDING_DIMENSIONS: "2048",
     MEMORY_LLM_MODEL: "auto:memory",
   });
   if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every(containerRunning)) { console.log("memory stack already running"); return; }
@@ -832,8 +833,21 @@ async function importHistory() {
   }
 }
 
+// ekip memory reindex: (re)start the vector backfill inside memory-core (resumable; only records
+// without a vector are embedded). Runs where the memory stack runs: the VPS hub or local Docker.
+function reindex() {
+  const script = path.join(ROOT, "hub/tools/tdai-backfill-vectors.mjs");
+  const env = `-e EMBED_URL=http://freellmapi:3001/v1 -e EMBED_KEY="$(grep ^MEMORY_LLM_API_KEY= .env | cut -d= -f2)" -e EMBED_MODEL="$(grep ^MEMORY_EMBEDDING_MODEL= .env | cut -d= -f2)"`;
+  const cmd = (dir, src) => `cd ${dir} && docker cp ${src} tdai-memory-core:/tmp/backfill.mjs && (docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo "already running" || (docker exec -d ${env} tdai-memory-core node /tmp/backfill.mjs && echo started))`;
+  if (REMOTE) {
+    spawnSync("scp", ["-q", script, `${REMOTE.ssh}:${REMOTE.dir}/tdai-backfill-vectors.mjs`], { stdio: "inherit" });
+    console.log(ssh(cmd(`${REMOTE.dir}/tdai/deploy/global-images`, `${REMOTE.dir}/tdai-backfill-vectors.mjs`)).stdout.trim());
+  } else console.log(spawnSync("sh", ["-c", cmd(tdaiDeploy(), script)], { encoding: "utf8" }).stdout.trim());
+}
+
 async function memory([sub = "status", ...rest]) {
   if (sub === "import-history") return importHistory();
+  if (sub === "reindex") return reindex();
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
