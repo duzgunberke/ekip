@@ -1,0 +1,7 @@
+.env
+*.md
+docker-compose.yml
+freellmapi.config.json
+data
+node_modules
+.DS_Store

@@ -23,7 +23,7 @@ export const AGENTS = {
     argv: (p, o) => ["exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-C", o.cwd, ...model(o), p],
   },
   gemini: {
-    bin: "gemini", pkg: "@google/gemini-cli", quota: "Gemini CLI (Google account free tier)", login: ["gemini"],
+    bin: "gemini", pkg: "@google/gemini-cli", quota: "Gemini API key (GEMINI_API_KEY; the personal free tier moved to agy)", login: null,
     argv: (p, o) => ["-p", p, "--yolo", "--skip-trust", ...model(o)],
   },
   copilot: {
