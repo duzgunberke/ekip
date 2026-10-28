@@ -15,10 +15,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const HOME = path.join(os.homedir(), ".ekip");
+// Everything ekip keeps (keys, run transcripts, logs, cloned dependencies) lives inside the repo it
+// runs from, so the whole setup sits on one disk and moves with the folder. EKIP_HOME overrides it.
+const REPO = path.resolve(path.dirname(fs.realpathSync(process.argv[1])), "../..");
+const HOME = process.env.EKIP_HOME ?? path.join(REPO, "data");
+const VENDOR = path.join(REPO, "vendor");
 const SETTINGS_FILE = path.join(HOME, "config.json");
 const SETTINGS = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) : {};
-const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? SETTINGS.freellmapiDir ?? path.join(HOME, "freellmapi");
+const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? SETTINGS.freellmapiDir ?? path.join(VENDOR, "freellmapi");
 const FREE_NODE = process.env.EKIP_FREELLMAPI_NODE ?? SETTINGS.freellmapiNode ?? "/opt/homebrew/opt/node@24/bin/node";
 const PORT = Number(process.env.EKIP_FREELLMAPI_PORT ?? SETTINGS.port ?? 3001);
 const FREELLMAPI_REPO = "https://github.com/tashfeenahmed/freellmapi.git";
@@ -108,6 +112,58 @@ async function key(args) {
     const rows = keyCounts();
     console.log(rows.length ? rows.map(([p, c]) => `${p}\t${c}`).join("\n") : "no provider keys yet — ekip key add <platform> <key>");
   } else die(`unknown: ekip key ${sub}`);
+}
+
+// ---- key wizard: opens each provider's key page, you paste the key -----------------------------
+
+// Free tiers worth having for agent work (tool calling, long context), best first. URLs as in
+// freellmapi's dashboard (client/src/components/keys/shared.tsx).
+const PROVIDERS = [
+  { platform: "groq", label: "Groq", url: "https://console.groq.com/keys", note: "very fast; ~14k requests/day" },
+  { platform: "google", label: "Google AI Studio", url: "https://aistudio.google.com/apikey", note: "Gemini Flash; ~1k requests/day" },
+  { platform: "cerebras", label: "Cerebras", url: "https://cloud.cerebras.ai", note: "very fast (API Keys in the left menu)" },
+  { platform: "openrouter", label: "OpenRouter", url: "https://openrouter.ai/keys", note: ":free models" },
+  { platform: "nvidia", label: "NVIDIA NIM", url: "https://build.nvidia.com/settings/api-keys", note: "large models (Nemotron Ultra)" },
+  { platform: "mistral", label: "Mistral", url: "https://console.mistral.ai/api-keys/", note: "pick the free Experiment plan" },
+  { platform: "cloudflare", label: "Cloudflare Workers AI", url: "https://dash.cloudflare.com/profile/api-tokens", note: "paste as ACCOUNT_ID:API_TOKEN (token with Workers AI permission)" },
+  { platform: "cohere", label: "Cohere", url: "https://dashboard.cohere.com/api-keys", note: "trial key" },
+  { platform: "zhipu", label: "Z.ai (Zhipu)", url: "https://z.ai/manage-apikey/apikey-list", note: "GLM Flash" },
+  { platform: "huggingface", label: "HuggingFace", url: "https://huggingface.co/settings/tokens", note: "token with Inference Providers permission" },
+];
+
+async function ask(question) {
+  const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
+  try { return (await rl.question(question)).trim(); } finally { rl.close(); }
+}
+
+const openUrl = (url) => spawnSync(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore" });
+
+async function keyWizard({ all = false } = {}) {
+  if (!process.stdin.isTTY) die("ekip keys is interactive; run it in a terminal");
+  const cfg = readConfig();
+  const have = new Set(cfg.keys.map((k) => k.platform));
+  const todo = PROVIDERS.filter((p) => all || !have.has(p.platform));
+  if (!todo.length) { console.log("Every provider already has a key (ekip keys --all to add more)."); return; }
+  console.log("For each provider, its key page opens in your browser: sign in with your own account, create a key, paste it here.");
+  console.log("Enter = skip this provider, q = stop. Use one account per provider; extra accounts to dodge limits break their terms.\n");
+  let added = 0;
+  for (const p of todo) {
+    console.log(`── ${p.label}: ${p.note}\n   ${p.url}`);
+    openUrl(p.url);
+    const v = await ask("   key: ");
+    if (v === "q") break;
+    if (!v) continue;
+    if (p.platform === "cloudflare" && !v.includes(":")) { console.log("   skipped: Cloudflare needs ACCOUNT_ID:API_TOKEN"); continue; }
+    const n = cfg.keys.filter((k) => k.platform === p.platform).length;
+    cfg.keys.push({ platform: p.platform, key: v, label: `ekip-${n + 1}` });
+    writeConfig(cfg);
+    added++;
+  }
+  if (!added) return;
+  await down();
+  await up();
+  const counts = Object.fromEntries(keyCounts());
+  for (const p of PROVIDERS) if (cfg.keys.some((k) => k.platform === p.platform)) console.log(`${p.label}: ${counts[p.platform] ? "active" : "NOT accepted, see ekip logs"}`);
 }
 
 // ---- environments of the two non-subscription pools --------------------------------------------
@@ -283,30 +339,169 @@ function sh(cmd, argv, opts = {}) {
   if (r.status !== 0) die(`${cmd} failed (exit ${r.status})`);
 }
 
-async function setup() {
-  const self = fs.realpathSync(process.argv[1]);
-  // 1. freellmapi: needs Node >=20.18 <25.
-  if (!fs.existsSync(FREE_NODE)) die(`no Node 20-24 at ${FREE_NODE}. Install one (brew install node@24) or set EKIP_FREELLMAPI_NODE`);
-  if (!fs.existsSync(path.join(FREE_DIR, "package.json"))) sh("git", ["clone", FREELLMAPI_REPO, FREE_DIR]);
-  const nodeEnv = { ...process.env, PATH: `${path.dirname(FREE_NODE)}:${process.env.PATH}` };
-  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) {
-    sh("./scripts/dev-bootstrap.sh", [], { cwd: FREE_DIR, env: nodeEnv });
-    sh("npm", ["run", "build"], { cwd: FREE_DIR, env: nodeEnv });
+// Dependencies ekip clones when this machine has none configured (config.json can point elsewhere).
+const DEPS = {
+  freellmapi: { repo: "https://github.com/tashfeenahmed/freellmapi.git", key: "freellmapiDir" },
+  hoptell: { repo: "https://github.com/EminUZUN/hoptell.git", key: "hoptellDir" },
+  tdai: { repo: "https://github.com/TencentCloud/TencentDB-Agent-Memory.git", key: "tdaiDir" },
+};
+const depDir = (name) => SETTINGS[DEPS[name].key] ?? path.join(VENDOR, name);
+const saveSettings = (patch) => {
+  Object.assign(SETTINGS, patch);
+  fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify(SETTINGS, null, 2)}\n`);
+};
+
+function clone(name) {
+  const dir = depDir(name);
+  if (!fs.existsSync(path.join(dir, ".git"))) {
+    fs.mkdirSync(path.dirname(dir), { recursive: true });
+    sh("git", ["clone", "--depth", "50", DEPS[name].repo, dir]);
   }
-  fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify({ ...SETTINGS, freellmapiDir: FREE_DIR, freellmapiNode: FREE_NODE }, null, 2)}\n`);
-  await up();
-  if (!readConfig().keys.length) await key(["add", "ovh"]);
-  // 2. the ekip command on PATH.
+  saveSettings({ [DEPS[name].key]: dir });
+  return dir;
+}
+
+// freellmapi needs Node >=20.18 <25; the default node may be newer.
+function findOldNode() {
+  const candidates = [SETTINGS.freellmapiNode, "/opt/homebrew/opt/node@24/bin/node", "/opt/homebrew/opt/node@22/bin/node",
+    "/usr/local/opt/node@24/bin/node", "/usr/local/opt/node@22/bin/node", "node"].filter(Boolean);
+  for (const c of candidates) {
+    const r = spawnSync(c, ["-p", "process.versions.node"], { encoding: "utf8" });
+    const major = Number(r.stdout?.split(".")[0]);
+    if (r.status === 0 && major >= 21 && major < 25) return c === "node" ? spawnSync("sh", ["-c", "command -v node"], { encoding: "utf8" }).stdout.trim() : c;
+  }
+  return null;
+}
+
+const step = (n, title) => console.log(`\n━━ ${n}. ${title}`);
+
+async function init({ skipKeys = false } = {}) {
+  const self = fs.realpathSync(process.argv[1]);
+  step(1, "prerequisites");
+  const need = ["git", "claude", "sqlite3", "tmux", "docker"];
+  const missing = need.filter((b) => !has(b));
+  if (missing.length) die(`missing: ${missing.join(", ")}. On macOS: brew install ${missing.filter((b) => b !== "claude" && b !== "docker").join(" ")}; Claude Code from claude.com/claude-code; Docker Desktop or OrbStack`);
+  if (spawnSync("docker", ["info"], { stdio: "ignore" }).status !== 0) die("docker is installed but not running; start Docker Desktop / OrbStack and run ekip init again");
+  const oldNode = findOldNode();
+  if (!oldNode) die("freellmapi needs Node 22-24 next to your default node: brew install node@24");
+  saveSettings({ freellmapiNode: oldNode });
+  console.log(`ok (freellmapi node: ${oldNode}; agy: ${has("agy") ? "found" : "not found, optional"})`);
+
+  step(2, "ekip on PATH");
   const link = path.join(os.homedir(), ".local/bin/ekip");
   fs.mkdirSync(path.dirname(link), { recursive: true });
   fs.rmSync(link, { force: true });
   fs.symlinkSync(self, link);
-  console.error(`ekip: linked ${link} -> ${self}`);
-  // 3. what else is there.
-  console.log(`\nagy:     ${has("agy") ? "ok" : "missing — install Antigravity CLI for the agy pool"}`);
-  console.log(`hoptell: ${has("hoptell") ? "ok (ekip team up)" : "missing — optional, only for ekip team (github.com/EminUZUN/hoptell)"}`);
-  console.log(`plugin:  claude plugin marketplace add ${path.resolve(path.dirname(self), "../..")} && claude plugin install ekip@ekip`);
-  console.log(`keys:    ekip key add <platform> <key>   (google, groq, cerebras, openrouter, mistral, nvidia, ...)`);
+  console.log(`${link} -> ${self}${(process.env.PATH ?? "").split(":").includes(path.dirname(link)) ? "" : "  (add ~/.local/bin to PATH)"}`);
+
+  step(3, "freellmapi (free-tier router)");
+  const fdir = clone("freellmapi");
+  const nodeEnv = { ...process.env, PATH: `${path.dirname(oldNode)}:${process.env.PATH}` };
+  if (!fs.existsSync(path.join(fdir, "server/dist/index.js"))) {
+    sh("./scripts/dev-bootstrap.sh", [], { cwd: fdir, env: nodeEnv });
+    sh("npm", ["run", "build"], { cwd: fdir, env: nodeEnv });
+  }
+  if (!readConfig().keys.length) { const c = readConfig(); c.keys.push({ platform: "ovh", label: "ekip-1" }); writeConfig(c); }
+  await up();
+
+  step(4, "hoptell (agent-to-agent relay)");
+  if (!has("hoptell")) {
+    const hdir = clone("hoptell");
+    sh("npm", ["install"], { cwd: hdir });
+    sh("npm", ["link"], { cwd: hdir });
+  }
+  spawnSync("hoptell", ["local-relay", "install"], { stdio: "inherit" });
+  if (spawnSync("claude", ["mcp", "get", "hoptell"], { stdio: "ignore" }).status !== 0) sh("claude", ["mcp", "add", "-s", "user", "hoptell", "--", "hoptell", "mcp"]);
+
+  step(5, "TencentDB Agent Memory (memory, LLM wiki, code graph)");
+  clone("tdai");
+  await memoryUp();
+
+  step(6, "Claude Code plugin (the ekip skill in every session)");
+  spawnSync("claude", ["plugin", "marketplace", "add", REPO], { stdio: "inherit" });
+  spawnSync("claude", ["plugin", "install", "ekip@ekip"], { stdio: "inherit" });
+  await memoryMcp();
+
+  if (!skipKeys && process.stdin.isTTY) {
+    step(7, "free-tier keys");
+    await keyWizard();
+  }
+  console.log("\nDone. Start with: ekip    (status: ekip status, more keys: ekip keys)");
+}
+
+// ---- TencentDB Agent Memory ---------------------------------------------------------------------
+
+const TDAI_PORTS = { core: 8420, panel: 8125, knowledge: 8424, proxy: 8096 };
+const tdaiDeploy = () => path.join(depDir("tdai"), "deploy/global-images");
+const tdaiUp = async () => {
+  try { return (await fetch(`http://127.0.0.1:${TDAI_PORTS.proxy}/health`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
+};
+const containerRunning = (n) => spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", n], { encoding: "utf8" }).stdout.trim() === "true";
+
+function setEnvValues(file, values) {
+  let text = fs.readFileSync(file, "utf8");
+  for (const [k, v] of Object.entries(values)) {
+    const re = new RegExp(`^${k}=.*$`, "m");
+    text = re.test(text) ? text.replace(re, `${k}=${v}`) : `${text}\n${k}=${v}\n`;
+  }
+  fs.writeFileSync(file, text, { mode: 0o600 });
+}
+
+// The stack's LLM (memory extraction, wiki ingest) and the proxy's upstream both go to freellmapi,
+// so memory costs no paid quota. Data volumes are bind mounts under data/tdai.
+async function memoryUp() {
+  await up({ quiet: true });
+  const dir = tdaiDeploy();
+  if (!fs.existsSync(dir)) die(`TencentDB Agent Memory is not cloned (${depDir("tdai")}); run ekip init`);
+  const env = path.join(dir, ".env");
+  if (!fs.existsSync(env)) fs.copyFileSync(path.join(dir, ".env.example"), env);
+  const key = unifiedKey();
+  const coreData = path.join(HOME, "tdai/core"), panelData = path.join(HOME, "tdai/panel");
+  fs.mkdirSync(coreData, { recursive: true });
+  fs.mkdirSync(panelData, { recursive: true });
+  setEnvValues(env, {
+    MEMORY_LLM_BASE_URL: `http://host.docker.internal:${PORT}/v1`, MEMORY_LLM_API_KEY: key, MEMORY_LLM_MODEL: "auto", MEMORY_LLM_PROTOCOL: "openai",
+    PROXY_UPSTREAM_URL: `http://host.docker.internal:${PORT}`, PROXY_UPSTREAM_API_KEY: key, PROXY_UPSTREAM_MODEL: "auto",
+    MEMORY_CORE_VOLUME: coreData, PANEL_VOLUME: panelData,
+  });
+  if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every(containerRunning)) { console.log("memory stack already running"); return; }
+  // start-all.sh probes the LLM from the host, where host.docker.internal does not resolve; the
+  // three service scripts it wraps need no probe.
+  for (const script of ["start-memory-core.sh", "start-memory-hub.sh", "start-proxy.sh"]) {
+    sh(`./${script}`, [], { cwd: dir, env: { ...process.env, PROXY_FULL_STACK: "1" } });
+  }
+}
+
+function memoryDown() {
+  sh("./stop-all.sh", [], { cwd: tdaiDeploy() });
+}
+
+const adminKey = () => {
+  const f = path.join(tdaiDeploy(), ".admin-key");
+  return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
+};
+
+async function memory([sub = "status"]) {
+  if (sub === "up") await memoryUp();
+  else if (sub === "down") memoryDown();
+  else if (sub === "open") openUrl(`http://127.0.0.1:${TDAI_PORTS.panel}`);
+  else if (sub === "status") {
+    for (const n of ["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"]) console.log(`${n}: ${containerRunning(n) ? "running" : "stopped"}`);
+    console.log(`panel: http://127.0.0.1:${TDAI_PORTS.panel}   admin key: ${adminKey() ? path.join(tdaiDeploy(), ".admin-key") : "not created yet"}`);
+  } else die("usage: ekip memory up|down|status|open");
+}
+
+async function memoryMcp() { /* filled in once the knowledge MCP wiring is verified */ }
+
+// ---- open team members in terminal windows ---------------------------------------------------
+
+function openTerminal(command) {
+  if (process.platform !== "darwin") { console.log(`run in a new terminal: ${command}`); return; }
+  const app = process.env.TERM_PROGRAM === "iTerm.app" ? "iTerm" : "Terminal";
+  const script = app === "iTerm"
+    ? `tell application "iTerm" to create window with default profile command ${JSON.stringify(command)}`
+    : `tell application "Terminal" to do script ${JSON.stringify(command)}`;
+  spawnSync("osascript", ["-e", script, "-e", `tell application "${app}" to activate`], { stdio: "ignore" });
 }
 
 // ---- team (hoptell peers in tmux) -------------------------------------------------------------
@@ -338,6 +533,8 @@ const tmuxHas = (name) => spawnSync("tmux", ["has-session", "-t", `=hoptell-${na
 
 async function team([sub = "ls", ...names]) {
   if (!has("hoptell") || !has("tmux")) die("ekip team needs hoptell and tmux");
+  const open = names.includes("--open");
+  names = names.filter((n) => n !== "--open");
   const pick = names.length ? names.map((n) => (n.startsWith("ekip-") ? n : `ekip-${n}`)) : Object.keys(TEAM);
   for (const n of pick) if (!TEAM[n]) die(`unknown member ${n} (${Object.keys(TEAM).join(", ")})`);
   if (sub === "up") {
@@ -349,11 +546,14 @@ async function team([sub = "ls", ...names]) {
       const r = spawnSync("hoptell", ["tmux", n, "--roles", m.roles, "--detach", "--", ...m.cmd], { stdio: "inherit" });
       console.log(`${n}: ${r.status === 0 ? `started (tmux attach -t hoptell-${n})` : "failed"}`);
     }
+    if (open) for (const n of pick) if (tmuxHas(n)) openTerminal(`tmux attach -t '=hoptell-${n}'`);
+  } else if (sub === "open") {
+    for (const n of pick) if (tmuxHas(n)) openTerminal(`tmux attach -t '=hoptell-${n}'`); else console.log(`${n}: not running (ekip team up)`);
   } else if (sub === "down") {
     for (const n of pick) if (tmuxHas(n)) { spawnSync("tmux", ["kill-session", "-t", `=hoptell-${n}`]); console.log(`${n}: stopped`); }
   } else if (sub === "ls") {
     for (const n of Object.keys(TEAM)) console.log(`${n}: ${tmuxHas(n) ? "running" : "stopped"}`);
-  } else die("usage: ekip team up|down|ls [agy|free]");
+  } else die("usage: ekip team up|down|ls|open [agy|free] [--open]");
 }
 
 // ---- status -----------------------------------------------------------------------------------
@@ -378,8 +578,13 @@ const HELP = `ekip — lead Claude session + workers on other quotas
   ekip --free [claude args]       same, but the lead runs on free-tier models
   ekip run [--via auto|agy|free] [--cwd DIR] [--model M] "task"
                                   run one headless worker and print its report
-  ekip setup                      install freellmapi, link ekip, enable the keyless pool
-  ekip team up|down|ls [agy|free] long-lived workers as hoptell peers in tmux
+  ekip init                       one-time setup: clones and starts freellmapi, hoptell and TencentDB
+                                  Agent Memory, installs the Claude plugin, runs the key wizard
+  ekip memory up|down|status|open TencentDB Agent Memory stack (memory, LLM wiki, code graph)
+  ekip team up|down|ls|open [agy|free] [--open]
+                                  long-lived workers as hoptell peers in tmux; --open / open shows
+                                  each one in its own terminal window
+  ekip keys [--all]               key wizard: opens each provider's key page, you paste the key
   ekip key add <platform> <key>   add a free provider key (google, groq, cerebras, openrouter, ...)
   ekip key list                   show provider keys
   ekip status                     pools and recent runs
@@ -390,9 +595,11 @@ const [cmd, ...rest] = process.argv.slice(2);
 let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
-  case "key": case "keys": await key(rest); break;
+  case "key": await key(rest); break;
+  case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;
-  case "setup": await setup(); break;
+  case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys") }); break;
+  case "memory": await memory(rest); break;
   case "team": await team(rest); break;
   case "up": await up(); break;
   case "down": await down(); console.error("ekip: freellmapi stopped"); break;

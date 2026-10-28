@@ -14,8 +14,9 @@ worker agents on quotas other than yours:
 | `free` | Claude Code `--bare` on freellmapi (pooled free tiers) | weaker, varies | small, precise, mechanical tasks |
 | `auto` (default) | agy, then free when agy fails or is out of quota | | |
 
-First check what is usable: `ekip status`. If `ekip` is missing, or `freellmapi` shows down with no
-keys, run `ekip setup` once (clones and builds freellmapi, links `ekip`, enables the keyless OVH pool).
+First check what is usable: `ekip status`. If `ekip` is missing or nothing is set up, the user runs
+`ekip init` once in their own terminal. It is interactive: it clones and starts everything, then
+opens each free provider's key page. If free keys are missing, tell the user to run `ekip keys`.
 
 ## One-shot workers: `ekip run`
 
@@ -51,7 +52,9 @@ every pool failed.
 
 Use them for multi-step work that benefits from a conversation. Use `ekip run` for everything else.
 `ekip team ls` shows which members are running. `ekip team down` stops them.
-To watch a member: `tmux attach -t hoptell-ekip-agy`.
+
+When the user wants to watch the team work, use `ekip team up --open`, or `ekip team open` if the
+members are already running. Each member then opens in its own terminal window.
 
 ## When the Claude limit is out
 
