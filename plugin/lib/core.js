@@ -28,7 +28,8 @@ export const LOG = path.join(HOME, "logs/freellmapi.log");
 export const RUNS = path.join(HOME, "runs");
 export const FREE_CLAUDE_HOME = path.join(HOME, "claude-free");
 
-export const die = (msg, code = 1) => { process.stderr.write(`ekip: ${msg}\n`); process.exit(code); };
+const errTTY = process.stderr.isTTY && !process.env.NO_COLOR;
+export const die = (msg, code = 1) => { process.stderr.write(`${errTTY ? "\x1b[31mekip ✗\x1b[39m" : "ekip:"} ${msg}\n`); process.exit(code); };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
 fs.mkdirSync(path.dirname(LOG), { recursive: true });

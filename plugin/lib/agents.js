@@ -4,6 +4,7 @@
 // and marks the agent usable for --via auto.
 import { spawnSync } from "node:child_process";
 import { SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
+import { c, dot } from "./ui.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
 
@@ -60,9 +61,11 @@ export async function main([sub = "ls", ...names]) {
   if (sub === "ls") {
     for (const [n, a] of Object.entries(AGENTS)) {
       const s = state()[n];
-      console.log(`${n.padEnd(9)} ${has(a.bin) ? "installed" : "missing  "}  ${s?.ok ? "ok      " : s ? "failing " : "untested"}  ${a.quota}`);
+      const state = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
+      const label = !has(a.bin) ? c.gray("kurulu değil     ") : s?.ok ? c.green("hazır            ") : s ? c.red("giriş/kota sorunu") : c.yellow("denenmedi        ");
+      console.log(`  ${dot(state)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}`);
     }
-    console.log(`\nauto order: ${autoOrder().join(" → ")}`);
+    console.log(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
   } else if (sub === "install") {
     const pkgs = pick.filter((n) => AGENTS[n].pkg && !has(AGENTS[n].bin)).map((n) => AGENTS[n].pkg);
     if (pkgs.length) spawnSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });
@@ -88,6 +91,6 @@ async function test(names) {
     const r = spawnSync(a.bin, a.argv("Reply with exactly: OK", { cwd: process.cwd(), model: null }), { encoding: "utf8", timeout: 180_000 });
     const ok = r.status === 0 && /\bOK\b/.test(r.stdout ?? "");
     setState(n, { ok, testedAt: new Date().toISOString() });
-    console.log(`${n}: ${ok ? "ok" : `failing (${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 160) ?? "no output"})`}`);
+    console.log(`  ${dot(ok ? "ok" : "bad")} ${n.padEnd(9)} ${ok ? c.green("hazır") : c.red(`sorun: ${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "çıktı yok"}`)}`);
   }
 }

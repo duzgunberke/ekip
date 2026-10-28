@@ -16,6 +16,7 @@ import {
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
+import { banner, c, dot, rows, say, title, warn } from "../lib/ui.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -235,10 +236,10 @@ async function runOne(o, via, id) {
   const order = via === "auto" ? autoOrder() : [via];
   let last = null;
   for (const v of order) {
-    process.stderr.write(`ekip: worker via ${v} in ${o.cwd} (log: ${logFile})\n`);
+    say(`${c.bold(v, process.stderr)} çalışıyor ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
     if (!failed(last)) return { ok: true, via: v, out: last.out.trim(), logFile };
-    process.stderr.write(`ekip: ${v} failed (exit ${last.code}): ${last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300)}\n`);
+    warn(`${c.bold(v, process.stderr)} başarısız (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
   }
   return { ok: false, via, out: last?.out.trim() ?? "", logFile };
 }
@@ -457,6 +458,14 @@ async function lead(args) {
   }
   const env = free ? await freeEnv() : process.env;
   const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...args];
+  const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
+  if (interactive) {
+    const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
+    console.log(banner());
+    console.log(`  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
+    if (SETTINGS.hubUrl) console.log(`  ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
+    console.log("");
+  }
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
   if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
@@ -481,7 +490,7 @@ function findOldNode() {
   return null;
 }
 
-const step = (n, title) => console.log(`\n━━ ${n}. ${title}`);
+const step = (n, t) => console.log(`\n${c.magenta(`━━ ${n}.`)} ${c.bold(t)}`);
 
 async function init({ skipKeys = false } = {}) {
   const self = fs.realpathSync(process.argv[1]);
@@ -719,36 +728,67 @@ async function team([sub = "ls", ...names]) {
 // ---- status -----------------------------------------------------------------------------------
 
 async function status() {
-  const ok = await healthy();
-  console.log(`freellmapi: ${ok ? `up (${URL_ROOT}, dashboard ${URL_ROOT}/)` : "down (starts on demand; ekip up)"}`);
-  if (ok) {
-    const rows = keyCounts();
-    console.log(`  provider keys: ${rows.length ? rows.map(([p, c]) => `${p}×${c}`).join(", ") : "none — ekip key add <platform> <key>"}`);
+  console.log(banner());
+  const free = await healthy();
+  const counts = free ? keyCounts() : [];
+  const mem = await tdaiUp();
+  console.log(title("Havuzlar"));
+  console.log(rows([
+    [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} sağlayıcı ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}` : c.red("kapalı (ekip up)")],
+    ...Object.entries(AGENTS).map(([n, a]) => {
+      const st = SETTINGS.agents?.[n];
+      const state = !has(a.bin) ? "off" : st?.ok ? "ok" : st ? "bad" : "warn";
+      const label = !has(a.bin) ? c.gray("kurulu değil") : st?.ok ? c.green("hazır") : st ? c.red("giriş/kota sorunu") : c.yellow("denenmedi");
+      return [`${dot(state)} ${n}`, `${label} ${c.gray(a.quota)}`];
+    }),
+    [`${dot("ok")} claude`, `${c.green("hazır")} ${c.gray("aboneliğin (lead)")}`],
+  ]));
+  console.log(`  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
+
+  console.log(title("Hafıza ve hub"));
+  console.log(rows([
+    [`${dot(mem ? "ok" : "bad")} TencentDB`, mem ? `açık ${c.gray(REMOTE ? `VPS ${REMOTE.ssh} (tünel)` : "yerel")}` : c.red("kapalı")],
+    [`${dot(SETTINGS.hubUrl ? "ok" : "off")} panel`, SETTINGS.hubUrl ? c.under(SETTINGS.hubUrl) : c.gray("bağlı değil (ekip hub link)")],
+    [`${dot(registry().length ? "ok" : "off")} projeler`, `${registry().length} kayıtlı ${c.gray("(ekip project ls)")}`],
+  ]));
+  if (has("tmux")) {
+    console.log(title("Ekip"));
+    console.log(rows(Object.keys(TEAM).map((n) => [`${dot(tmuxHas(n) ? "ok" : "off")} ${n}`, tmuxHas(n) ? c.green("çalışıyor") : c.gray("durdu")])));
   }
-  console.log(`agy: ${has("agy") ? "installed" : "not installed"}`);
-  console.log(`claude: ${has("claude") ? "installed" : "not installed"}`);
-  if (has("tmux")) console.log(`team: ${Object.keys(TEAM).map((n) => `${n} ${tmuxHas(n) ? "running" : "stopped"}`).join(", ")}`);
-  const recent = fs.readdirSync(RUNS).sort().slice(-5);
-  if (recent.length) console.log(`recent runs:\n${recent.map((f) => `  ${path.join(RUNS, f)}`).join("\n")}`);
+  const recent = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")).sort().slice(-5).reverse();
+  if (recent.length) {
+    console.log(title("Son çalıştırmalar"));
+    console.log(recent.map((f) => `  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`).join("\n"));
+  }
+  console.log("");
 }
 
-const HELP = `ekip — lead Claude session + workers on other quotas
+const HELP = () => `${banner()}
 
-  ekip [claude args]              start the lead Claude Code session (your subscription)
-  ekip --free [claude args]       same, but the lead runs on free-tier models
-  ekip run [--via auto|agy|free] [--cwd DIR] [--model M] "task"
-                                  run one headless worker and print its report
-  ekip init                       one-time setup: clones and starts freellmapi, hoptell and TencentDB
-                                  Agent Memory, installs the Claude plugin, runs the key wizard
-  ekip memory up|down|status|open TencentDB Agent Memory stack (memory, LLM wiki, code graph)
-  ekip team up|down|ls|open [agy|free] [--open]
-                                  long-lived workers as hoptell peers in tmux; --open / open shows
-                                  each one in its own terminal window
-  ekip keys [--all]               key wizard: opens each provider's key page, you paste the key
-  ekip key add <platform> <key>   add a free provider key (google, groq, cerebras, openrouter, ...)
-  ekip key list                   show provider keys
-  ekip status                     pools and recent runs
-  ekip up | down | logs           freellmapi server control
+${c.bold("Günlük")}
+  ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır
+  ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
+  ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
+
+${c.bold("İşçiler")}
+  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "iş"')}
+  ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
+  ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
+  ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
+
+${c.bold("Projeler ve hafıza")}
+  ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|up|down|status|open")}
+
+${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
+  ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
+
+${c.bold("Kurulum")}
+  ${c.cyan("ekip init")}                     tek seferlik kurulum
+  ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         ücretsiz sağlayıcı anahtarları (sayfaları açar)
+  ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `;
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -778,7 +818,7 @@ switch (cmd) {
   case "up": await up(); break;
   case "down": await down(); console.error("ekip: freellmapi stopped"); break;
   case "logs": spawnSync("tail", ["-n", "60", LOG], { stdio: "inherit" }); break;
-  case "help": case "-h": case "--help": process.stdout.write(HELP); break;
+  case "help": case "-h": case "--help": process.stdout.write(HELP()); break;
   default:
     // Only flags (or nothing) start the lead session; an unknown word is a typo, not a prompt.
     if (cmd && !cmd.startsWith("-")) die(`unknown command ${cmd} (ekip help)`);
