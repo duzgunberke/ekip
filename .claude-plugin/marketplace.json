@@ -1,0 +1,12 @@
+{
+  "name": "ekip",
+  "owner": { "name": "Berke Düzgün", "url": "https://github.com/duzgunberke" },
+  "metadata": { "description": "ekip: a lead Claude Code session that hands work to agents on other quotas (Antigravity, freellmapi free tiers, hoptell peers)." },
+  "plugins": [
+    {
+      "name": "ekip",
+      "source": "./plugin",
+      "description": "Delegate work from Claude Code to worker agents on other quotas: agy (Antigravity) and pooled free-tier models via freellmapi, one-shot or as hoptell peers."
+    }
+  ]
+}

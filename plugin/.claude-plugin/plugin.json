@@ -1,0 +1,7 @@
+{
+  "name": "ekip",
+  "version": "0.1.0",
+  "description": "Delegate work from Claude Code to worker agents on other quotas: agy (Antigravity) and pooled free-tier models via freellmapi, one-shot or as hoptell peers.",
+  "author": { "name": "Berke Düzgün", "url": "https://github.com/duzgunberke" },
+  "license": "MIT"
+}

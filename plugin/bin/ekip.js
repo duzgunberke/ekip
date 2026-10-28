@@ -7,6 +7,8 @@
 //                                 headless worker; prints its final report (the lead calls this)
 //   ekip key add <platform> <key> add a free-tier provider key to freellmapi (restarts it)
 //   ekip key list                 configured provider keys
+//   ekip setup                    install freellmapi, link ekip on PATH, enable the keyless pool
+//   ekip team up|down|ls          long-lived workers (agy, free) as hoptell peers in tmux
 //   ekip status | up | down | logs
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,9 +16,13 @@ import os from "node:os";
 import path from "node:path";
 
 const HOME = path.join(os.homedir(), ".ekip");
-const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? "/Volumes/SSD/Projects/freellmapi";
-const FREE_NODE = process.env.EKIP_FREELLMAPI_NODE ?? "/opt/homebrew/opt/node@24/bin/node";
-const PORT = Number(process.env.EKIP_FREELLMAPI_PORT ?? 3001);
+const SETTINGS_FILE = path.join(HOME, "config.json");
+const SETTINGS = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) : {};
+const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? SETTINGS.freellmapiDir ?? path.join(HOME, "freellmapi");
+const FREE_NODE = process.env.EKIP_FREELLMAPI_NODE ?? SETTINGS.freellmapiNode ?? "/opt/homebrew/opt/node@24/bin/node";
+const PORT = Number(process.env.EKIP_FREELLMAPI_PORT ?? SETTINGS.port ?? 3001);
+const FREELLMAPI_REPO = "https://github.com/tashfeenahmed/freellmapi.git";
+const KEYLESS = ["ovh"];
 const URL_ROOT = `http://127.0.0.1:${PORT}`;
 const DB = path.join(FREE_DIR, "server/data/freeapi.db");
 const CONFIG = path.join(HOME, "freellmapi.config.json");
@@ -86,10 +92,11 @@ function writeConfig(cfg) {
 async function key(args) {
   const [sub, platform, value] = args;
   if (sub === "add") {
-    if (!platform || !value) die("usage: ekip key add <platform> <key>   (platforms: google, groq, cerebras, openrouter, mistral, nvidia, github, cohere, cloudflare, ...)");
+    if (!platform || (!value && !KEYLESS.includes(platform))) die(`usage: ekip key add <platform> <key>   (platforms: google, groq, cerebras, openrouter, mistral, nvidia, cohere, cloudflare, zhipu, ...; keyless: ${KEYLESS.join(", ")})`);
     const cfg = readConfig();
     const n = cfg.keys.filter((k) => k.platform === platform).length;
-    cfg.keys.push({ platform, key: value, label: `ekip-${n + 1}` });
+    if (value) cfg.keys.push({ platform, key: value, label: `ekip-${n + 1}` });
+    else if (!n) cfg.keys.push({ platform, label: "ekip-1" });
     writeConfig(cfg);
     await down();
     await up();
@@ -123,6 +130,8 @@ async function freeEnv() {
     ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
     CLAUDE_CONFIG_DIR: FREE_CLAUDE_HOME,
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    // "auto" is no model Claude Code knows; give it a window every routed free model can hold.
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.EKIP_FREE_WINDOW ?? "100000",
   });
 }
 
@@ -233,16 +242,95 @@ How to use them:
   how to verify, and what to report back.
 - If a worker's result is wrong, fix it yourself or re-dispatch with a sharper brief; don't trust it blindly.
 - \`ekip status\` shows which pools are usable.
+
+Long-lived team members (optional, via hoptell): \`ekip team up\` starts \`ekip-agy\` and \`ekip-free\` as
+hoptell peers in tmux. They keep their context between tasks: send them work with the hoptell
+send_message tool (to their name, or \`@worker\`) and wait for the reply. Use them for multi-step work
+that benefits from a conversation; use \`ekip run\` for one-shot tasks.
 `;
 
+const MEMBER_PROMPT = `# ekip team member
+You are a long-running worker in an ekip team. Other agents send you tasks over hoptell. When the
+inbox notice appears, read your inbox, do each task completely and autonomously, and reply to the
+sender with send_message (reply_to the message id): what you changed, how you verified it, what is open.`;
+
+const HOPTELL_MCP = JSON.stringify({ mcpServers: { hoptell: { command: "hoptell", args: ["mcp"] } } });
+
 async function lead(args) {
-  const free = args[0] === "--free";
-  if (free) args = args.slice(1);
+  let free = false, member = false;
+  while (args[0] === "--free" || args[0] === "--member") {
+    if (args[0] === "--free") free = true; else member = true;
+    args = args.slice(1);
+  }
   const env = free ? await freeEnv() : process.env;
-  const argv = ["--append-system-prompt", LEAD_PROMPT, ...args];
-  if (free) console.error("ekip: lead session on free-tier models (freellmapi)");
+  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...args];
+  // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
+  if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
+  if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
   const r = spawnSync("claude", argv, { stdio: "inherit", env });
   return r.status ?? 1;
+}
+
+// ---- setup -----------------------------------------------------------------------------------
+
+function sh(cmd, argv, opts = {}) {
+  console.error(`$ ${cmd} ${argv.join(" ")}`);
+  const r = spawnSync(cmd, argv, { stdio: "inherit", ...opts });
+  if (r.status !== 0) die(`${cmd} failed (exit ${r.status})`);
+}
+
+async function setup() {
+  const self = fs.realpathSync(process.argv[1]);
+  // 1. freellmapi: needs Node >=20.18 <25.
+  if (!fs.existsSync(FREE_NODE)) die(`no Node 20-24 at ${FREE_NODE}. Install one (brew install node@24) or set EKIP_FREELLMAPI_NODE`);
+  if (!fs.existsSync(path.join(FREE_DIR, "package.json"))) sh("git", ["clone", FREELLMAPI_REPO, FREE_DIR]);
+  const nodeEnv = { ...process.env, PATH: `${path.dirname(FREE_NODE)}:${process.env.PATH}` };
+  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) {
+    sh("./scripts/dev-bootstrap.sh", [], { cwd: FREE_DIR, env: nodeEnv });
+    sh("npm", ["run", "build"], { cwd: FREE_DIR, env: nodeEnv });
+  }
+  fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify({ ...SETTINGS, freellmapiDir: FREE_DIR, freellmapiNode: FREE_NODE }, null, 2)}\n`);
+  await up();
+  if (!readConfig().keys.length) await key(["add", "ovh"]);
+  // 2. the ekip command on PATH.
+  const link = path.join(os.homedir(), ".local/bin/ekip");
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.rmSync(link, { force: true });
+  fs.symlinkSync(self, link);
+  console.error(`ekip: linked ${link} -> ${self}`);
+  // 3. what else is there.
+  console.log(`\nagy:     ${has("agy") ? "ok" : "missing — install Antigravity CLI for the agy pool"}`);
+  console.log(`hoptell: ${has("hoptell") ? "ok (ekip team up)" : "missing — optional, only for ekip team (github.com/EminUZUN/hoptell)"}`);
+  console.log(`plugin:  claude plugin marketplace add ${path.resolve(path.dirname(self), "../..")} && claude plugin install ekip@ekip`);
+  console.log(`keys:    ekip key add <platform> <key>   (google, groq, cerebras, openrouter, mistral, nvidia, ...)`);
+}
+
+// ---- team (hoptell peers in tmux) -------------------------------------------------------------
+
+const TEAM = {
+  "ekip-agy": { roles: "worker,agy", cmd: ["agy", "--dangerously-skip-permissions"], needs: "agy" },
+  "ekip-free": { roles: "worker,free", cmd: ["ekip", "--free", "--member", "--permission-mode", "bypassPermissions"], needs: null },
+};
+const tmuxHas = (name) => spawnSync("tmux", ["has-session", "-t", `=hoptell-${name}`], { stdio: "ignore" }).status === 0;
+
+async function team([sub = "ls", ...names]) {
+  if (!has("hoptell") || !has("tmux")) die("ekip team needs hoptell and tmux");
+  const pick = names.length ? names.map((n) => (n.startsWith("ekip-") ? n : `ekip-${n}`)) : Object.keys(TEAM);
+  for (const n of pick) if (!TEAM[n]) die(`unknown member ${n} (${Object.keys(TEAM).join(", ")})`);
+  if (sub === "up") {
+    for (const n of pick) {
+      const m = TEAM[n];
+      if (tmuxHas(n)) { console.log(`${n}: already running`); continue; }
+      if (m.needs && !has(m.needs)) { console.log(`${n}: skipped, ${m.needs} not installed`); continue; }
+      if (n === "ekip-free") await freeEnv();
+      const r = spawnSync("hoptell", ["tmux", n, "--roles", m.roles, "--detach", "--", ...m.cmd], { stdio: "inherit" });
+      console.log(`${n}: ${r.status === 0 ? `started (tmux attach -t hoptell-${n})` : "failed"}`);
+    }
+  } else if (sub === "down") {
+    for (const n of pick) if (tmuxHas(n)) { spawnSync("tmux", ["kill-session", "-t", `=hoptell-${n}`]); console.log(`${n}: stopped`); }
+  } else if (sub === "ls") {
+    for (const n of Object.keys(TEAM)) console.log(`${n}: ${tmuxHas(n) ? "running" : "stopped"}`);
+  } else die("usage: ekip team up|down|ls [agy|free]");
 }
 
 // ---- status -----------------------------------------------------------------------------------
@@ -256,6 +344,7 @@ async function status() {
   }
   console.log(`agy: ${has("agy") ? "installed" : "not installed"}`);
   console.log(`claude: ${has("claude") ? "installed" : "not installed"}`);
+  if (has("tmux")) console.log(`team: ${Object.keys(TEAM).map((n) => `${n} ${tmuxHas(n) ? "running" : "stopped"}`).join(", ")}`);
   const recent = fs.readdirSync(RUNS).sort().slice(-5);
   if (recent.length) console.log(`recent runs:\n${recent.map((f) => `  ${path.join(RUNS, f)}`).join("\n")}`);
 }
@@ -266,6 +355,8 @@ const HELP = `ekip — lead Claude session + workers on other quotas
   ekip --free [claude args]       same, but the lead runs on free-tier models
   ekip run [--via auto|agy|free] [--cwd DIR] [--model M] "task"
                                   run one headless worker and print its report
+  ekip setup                      install freellmapi, link ekip, enable the keyless pool
+  ekip team up|down|ls [agy|free] long-lived workers as hoptell peers in tmux
   ekip key add <platform> <key>   add a free provider key (google, groq, cerebras, openrouter, ...)
   ekip key list                   show provider keys
   ekip status                     pools and recent runs
@@ -278,6 +369,8 @@ switch (cmd) {
   case "run": code = await run(rest); break;
   case "key": case "keys": await key(rest); break;
   case "status": await status(); break;
+  case "setup": await setup(); break;
+  case "team": await team(rest); break;
   case "up": await up(); break;
   case "down": await down(); console.error("ekip: freellmapi stopped"); break;
   case "logs": spawnSync("tail", ["-n", "60", LOG], { stdio: "inherit" }); break;

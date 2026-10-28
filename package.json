@@ -1,0 +1,9 @@
+{
+  "name": "ekip",
+  "version": "0.1.0",
+  "description": "A lead Claude Code session that hands work to agents on other quotas.",
+  "type": "module",
+  "bin": { "ekip": "plugin/bin/ekip.js" },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
