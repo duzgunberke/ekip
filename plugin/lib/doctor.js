@@ -75,19 +75,23 @@ export async function main(args = []) {
     const busy = r.graphs.length - ready - badGraphs.length - unknown;
     const w = r.wiki?.status ?? "-";
     const wikiBad = w === "failed";
+    // A finished ingest can still have sources the model failed on; re-ingesting is incremental,
+    // so it retries only those.
+    const wikiFailedSources = w === "ready" ? r.wiki.progress?.failed ?? 0 : 0;
+    const pct = r.wiki?.progress?.percent;
     const state = badGraphs.length || wikiBad ? "bad" : busy || unknown || !["ready", "-"].includes(w) ? "warn" : "ok";
     if (state === "bad") problems++;
-    const wikiText = wikiBad ? c.red("başarısız") : w === "ready" ? c.green(`hazır${r.wiki.pages ? ` · ${r.wiki.pages} sayfa` : ""}`) : w === "error" ? c.gray("sorgulanamadı") : c.yellow(w === "processing" ? "işleniyor" : w);
+    const wikiText = wikiBad ? c.red("başarısız") : w === "ready" ? c.green(`hazır${r.wiki.pages ? ` · ${r.wiki.pages} sayfa` : ""}`) + (wikiFailedSources ? c.yellow(` (${wikiFailedSources} dosya tekrar denenecek)`) : "") : w === "error" ? c.gray("sorgulanamadı") : c.yellow(w === "processing" ? `işleniyor${pct != null ? ` %${pct}` : ""}` : w);
     line(state, r.p.name, `${c.gray("graph")} ${ready}/${r.graphs.length}${busy ? c.yellow(` (${busy} işleniyor)`) : ""}${badGraphs.length ? c.red(` (${badGraphs.length} hatalı)`) : ""}${unknown ? c.gray(` (${unknown} sorgulanamadı)`) : ""}  ${c.gray("wiki")} ${wikiText}  ${c.gray("hafıza")} ${r.hits ? c.green(`${r.hits}+ kayıt`) : c.gray("henüz yok")}`);
-    if (wikiBad) repairs.push(["wiki", r.p]);
+    if (wikiBad || wikiFailedSources) repairs.push(["wiki", r.p]);
     if (badGraphs.length) repairs.push(["graph", r.p]);
   }
 
   console.log(title("Vektör indeksi"));
   const st = REMOTE
-    ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo RUNNING"], { encoding: "utf8" }).stdout
-    : spawnSync("sh", ["-c", "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core pgrep -f backfill.mjs >/dev/null && echo RUNNING"], { encoding: "utf8" }).stdout;
-  let bf = null; try { bf = JSON.parse((st ?? "").split("\n")[0]); } catch { /* none */ }
+    ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout
+    : spawnSync("sh", ["-c", "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout;
+  let bf = null; try { bf = JSON.parse((st ?? "").replace(/RUNNING/g, "").trim().split("\n")[0]); } catch { /* none */ }
   const running = /RUNNING/.test(st ?? "");
   if (bf?.layer === "done") line("ok", "vektörler", "tüm kayıtlar vektörlü");
   else if (bf) { line(running ? "warn" : "bad", "vektörler", `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? " · dolduruluyor" : " · durdu"}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
