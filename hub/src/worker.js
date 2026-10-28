@@ -195,7 +195,7 @@ export class Worker {
 
   async runJob(job) {
     const { cfg } = this;
-    fs.writeFileSync(this.logFile(job.id), this.redact(`job ${job.id}  project: ${job.project}  push: ${job.push}\nstarted: ${job.startedAt}\ntask:\n${job.task}\n\n`));
+    this.append(job.id, `${fs.existsSync(this.logFile(job.id)) ? "\n==========\n" : ""}job ${job.id}  project: ${job.project}  push: ${job.push}\nstarted: ${job.startedAt}\ntask:\n${job.task}\n\n`);
     const project = this.store.projects.data.find((p) => p.name === job.project);
     if (!project) throw new Error(`unknown project ${job.project}`);
     const remote = resolveRepo(project.repo, { allowLocal: cfg.allowLocalRepos });
@@ -226,7 +226,7 @@ export class Worker {
       if (fs.existsSync(wt)) await this.git(job, clone, ["worktree", "remove", "--force", wt], { allowFail: true });
       await this.git(job, clone, ["worktree", "prune"], { allowFail: true, quiet: true });
       await this.git(job, clone, ["branch", "-D", branch], { allowFail: true, quiet: true });
-      await this.git(job, clone, ["worktree", "add", "-b", branch, wt, def]);
+      await this.git(job, clone, ["worktree", "add", "--no-track", "-b", branch, wt, def]);
       const sha = (await this.git(job, wt, ["rev-parse", "HEAD"], { quiet: true })).stdout.trim();
       Object.assign(job, { branch, baseBranch: def.replace(/^origin\//, ""), baseSha: sha });
       this.store.jobs.save();

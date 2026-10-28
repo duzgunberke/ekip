@@ -1,0 +1,62 @@
+# ekip hub stack for the VPS. TDAI (memory) runs separately via its own scripts on the
+# `tdai-memory-stack` network; Coolify's Traefik routes ai.sazora.io -> http://ekip-hub:7777
+# over the external `coolify` network (dynamic file written by hand).
+#
+#   cp .env.example .env    # fill it in
+#   cp freellmapi.config.example.json freellmapi.config.json
+#   docker compose up -d --build
+#
+# No port is published publicly: everything binds 127.0.0.1 (reach freellmapi / TDAI from the Mac
+# over an SSH tunnel).
+name: ekip
+
+services:
+  ekip-hub:
+    build: .
+    image: ekip-hub:latest
+    container_name: ekip-hub
+    env_file: .env
+    environment:
+      FREELLMAPI_URL: http://freellmapi:3001
+      TDAI_PROXY_URL: ${TDAI_PROXY_URL:-http://tdai-proxy:8096}
+      EKIP_TRUST_PROXY: "1"
+    volumes:
+      - ekip-hub-data:/data
+    ports:
+      - "127.0.0.1:7777:7777"
+    networks: [default, tdai, coolify]
+    depends_on:
+      freellmapi:
+        condition: service_started
+    restart: unless-stopped
+
+  freellmapi:
+    build: https://github.com/tashfeenahmed/freellmapi.git
+    image: freellmapi:local
+    container_name: freellmapi
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      ENCRYPTION_KEY: ${FREELLMAPI_ENCRYPTION_KEY:?set FREELLMAPI_ENCRYPTION_KEY in .env}
+      FREEAPI_CONFIG_PATH: /config/freellmapi.config.json
+    volumes:
+      - freellmapi-data:/app/server/data
+      - ./freellmapi.config.json:/config/freellmapi.config.json:ro
+    ports:
+      - "127.0.0.1:3001:3001"
+    # On `tdai` too, so the TDAI proxy/memory-core can use http://freellmapi:3001 as their LLM.
+    networks: [default, tdai]
+    restart: unless-stopped
+
+networks:
+  default: {}
+  tdai:
+    name: tdai-memory-stack
+    external: true
+  coolify:
+    name: coolify
+    external: true
+
+volumes:
+  ekip-hub-data:
+  freellmapi-data:
