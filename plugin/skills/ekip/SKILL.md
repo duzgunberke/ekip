@@ -1,69 +1,77 @@
 ---
 name: ekip
-description: Hand work to worker agents that run on other quotas (Antigravity/agy, pooled free-tier models through freellmapi, or long-lived hoptell peers), so your own Claude limit lasts. Use when a task splits into well-scoped parts (mechanical edits, tests, docs, research, isolated fixes), when the user asks to delegate, parallelize, "ekibe dağıt", save Claude limits, or when the Claude limit is running out; also to set up or check the ekip pools (ekip setup, ekip status, ekip key add).
+description: Lead a team of worker agents on other quotas (Antigravity/agy, Codex, Copilot, Qwen, OpenCode, Grok, pooled free-tier models, or a headless Claude), with each registered project's card, memory, LLM wiki and code graph, and a VPS hub that keeps working when the Mac is off. Use when a task splits into well-scoped parts, when the user asks to delegate, parallelize, "ekibe dağıt", compare models, save Claude limits, queue work on the VPS, work in one of their registered projects, or manage the VPS/Coolify; also for ekip setup and status.
 ---
 
-# ekip: workers on other quotas
+# ekip: lead a team on other quotas
 
-`ekip` is a CLI on PATH (`~/.local/bin/ekip`, or run `${CLAUDE_PLUGIN_ROOT}/bin/ekip.js`). It runs
-worker agents on quotas other than yours:
+The user has Claude Max and wants your effort spent on judgment: understanding the request, design,
+splitting the work, integration and review. Everything well-scoped goes to workers through the CLI
+`ekip`, which is on PATH. If it is not, use `${CLAUDE_PLUGIN_ROOT}/bin/ekip.js`.
 
-| pool | what runs | strength | use for |
-|------|-----------|----------|---------|
-| `agy` | Antigravity CLI headless (Gemini and others), Google quota | strong | most delegated work |
-| `free` | Claude Code `--bare` on freellmapi (pooled free tiers) | weaker, varies | small, precise, mechanical tasks |
-| `auto` (default) | agy, then free when agy fails or is out of quota | | |
+## Pools: `ekip run --via ...`
 
-First check what is usable: `ekip status`. If `ekip` is missing or nothing is set up, the user runs
-`ekip init` once in their own terminal. It is interactive: it clones and starts everything, then
-opens each free provider's key page. If free keys are missing, tell the user to run `ekip keys`.
+| --via | what | use for |
+|---|---|---|
+| `auto` (default) | first usable of the tested agents, then `free` | most delegated work |
+| `agy` | Antigravity (strong models, Google quota) | substantial coding, research |
+| `codex`, `copilot`, `qwen`, `opencode` | other vendors' CLIs on their own accounts | same work, with a different model family |
+| `grok`, `free` | harnesses on pooled free-tier models (freellmapi) | small, precise, mechanical tasks |
+| `claude` | headless Claude on the subscription, with all of the user's skills and plugins | hard or skill-heavy work you would otherwise do yourself |
 
-## One-shot workers: `ekip run`
+`ekip agents` shows which pools are installed and tested.
 
 ```bash
-ekip run [--via auto|agy|free] [--cwd DIR] [--model ID] "brief"
-ekip run --via agy --cwd /path/to/repo - <<'EOF'
+ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR] [--model ID] [--plugin NAME] [--skill NAME] "brief"
+ekip run --via agy --project lumareef - <<'EOF'
 long brief...
 EOF
 ```
 
-A worker runs headless with full file and shell access in its cwd. It cannot ask questions. It prints
-its final report to stdout, and the full transcript goes to `~/.ekip/runs/`. Exit code 1 means
-every pool failed.
+**Options**
 
-- Run independent workers in parallel: call Bash with `run_in_background: true`, one call per worker.
-  You are notified when each one exits.
-- Never let two concurrent workers edit the same files. If they must work heavily in the same repo,
-  give each one its own `git worktree add` directory as `--cwd`.
-- Write each brief as for a capable colleague with no context. Include the goal, the files and paths,
-  the constraints, how to verify, and what to report back.
-- Keep these for yourself: understanding the request, design decisions, splitting the work,
-  integration, and review. Check every result (`git diff`, run the tests) before you report it.
-  When a result is wrong, fix it or send it again with a sharper brief.
-- Prefer these workers over your own subagents for well-scoped work. Subagents spend your Claude limit.
+- `--project NAME` works in a registered project. It sets the folder, and free workers get that project's memory through the memory proxy.
+- `--plugin NAME` or `--skill NAME` loads a Claude plugin or skill into a `free` or `claude` worker. Examples: `--plugin lemo-opuscar` for films, `--skill blender-modeling` for Blender.
+- `--via agy,codex,free` puts several models on the same task. Each one works in its own git worktree and branch, and you get each diffstat and report. Compare them, `git merge` the best branch, then run `ekip clean <id>`. Use this when quality matters or the approach is uncertain.
 
-## Long-lived team members: `ekip team` (hoptell)
+**How to delegate**
 
-`ekip team up [agy|free]` starts `ekip-agy` and `ekip-free` as hoptell peers in tmux, with the
-`worker` role. They keep their context between tasks:
+- Workers are headless: they have full file and shell access, cannot ask questions, and print a final report.
+- Brief each one like a capable colleague with no context: the goal, the files, the constraints, how to verify, and what to report back.
+- Run independent workers in parallel with Bash `run_in_background`; you are notified when each one exits.
+- Never put two concurrent workers on the same files unless they use worktrees.
+- Review every result (`git diff`, the tests) before you report it to the user.
 
-- Send work with the hoptell `send_message` tool, addressed `to: "@worker"` or to a peer name from `list_peers`.
-- Wait with `wait_for_message`.
+## Projects, memory, wiki, code graph
 
-Use them for multi-step work that benefits from a conversation. Use `ekip run` for everything else.
-`ekip team ls` shows which members are running. `ekip team down` stops them.
+- `ekip project ls` and `ekip project show NAME` show the registered projects and their cards: stack, commands, frequent tasks and gotchas.
+- The **ekip MCP** tools give per-project access:
+  - `memory_search` and `memory_remember` for memory;
+  - `wiki_search` and `wiki_read` for the LLM wiki built from the project's docs and notes;
+  - `code_graph` for the TencentDB code graph.
+- The **codegraph** MCP explores the local code index.
+- Prefer these tools over reading many files: they cost far fewer tokens.
+- When you learn a durable fact (a decision, a constraint, a "don't touch X"), save it with `memory_remember`.
 
-When the user wants to watch the team work, use `ekip team up --open`, or `ekip team open` if the
-members are already running. Each member then opens in its own terminal window.
+## The VPS hub (keeps working when the Mac is off)
 
-## When the Claude limit is out
+- `ekip job "<task>" --project NAME` queues a job on the hub. A free worker clones the repo, works on the branch `ekip/job-<id>`, pushes it, and the hub keeps the report.
+- `ekip job ls` lists jobs and `ekip job show ID` shows one.
+- The panel is at https://ai.sazora.io. It shows projects, jobs, runs from the Mac and the pool status.
+- `ekip vps sh "<cmd>"` runs a command on the server over SSH.
+- `ekip vps apps|deploy|logs|restart <app>` uses the Coolify API.
 
-The user can start `ekip --free`. That session is Claude Code with freellmapi as its model, and the
-same delegation applies.
+## Long-lived peers (hoptell)
 
-## Pool management (when the user asks)
+- `ekip team up --open` starts `ekip-agy` and `ekip-free` as hoptell peers, each in its own terminal window.
+- Message them with the hoptell `send_message` tool and wait for the reply with `wait_for_message`.
+- `ekip team ls` shows which members are running; `ekip team down` stops them.
 
-- `ekip key add <platform> <key>` adds a free-tier key and restarts freellmapi. Platforms: google,
-  groq, cerebras, openrouter, mistral, nvidia, cohere, cloudflare, zhipu. `ekip key add ovh` needs no key.
-- `ekip key list`, `ekip up`, `ekip down`, `ekip logs`.
-- freellmapi dashboard: http://127.0.0.1:3001
+## Setup and pool management (when the user asks)
+
+- `ekip init` is the one-time setup. `ekip status` shows the overall state.
+- Keys and logins:
+  - `ekip keys` opens each free provider's key page so the user can paste a key.
+  - `ekip agents login` signs in to codex, qwen and the other CLIs.
+  - These are interactive, so the user runs them in their own terminal.
+- When the Claude limit is out, the user can run `ekip --free`: the lead itself then runs on free models.
