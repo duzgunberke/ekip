@@ -116,14 +116,16 @@ async function freeEnv() {
   await up({ quiet: true });
   if (!keyCounts().length) die("no free provider keys yet — add one with: ekip key add <platform> <key>");
   const env = { ...process.env };
-  delete env.ANTHROPIC_AUTH_TOKEN;
+  // Interactive sessions use AUTH_TOKEN (an API_KEY there triggers a "use this key?" dialog);
+  // runWorker swaps it for API_KEY, the only credential --bare reads.
+  delete env.ANTHROPIC_API_KEY;
   fs.mkdirSync(FREE_CLAUDE_HOME, { recursive: true });
   const state = path.join(FREE_CLAUDE_HOME, ".claude.json");
   if (!fs.existsSync(state)) fs.writeFileSync(state, JSON.stringify({ hasCompletedOnboarding: true }));
   const model = process.env.EKIP_FREE_MODEL ?? "auto";
   return Object.assign(env, {
     ANTHROPIC_BASE_URL: URL_ROOT,
-    ANTHROPIC_API_KEY: unifiedKey(),
+    ANTHROPIC_AUTH_TOKEN: unifiedKey(),
     ANTHROPIC_MODEL: model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: model,
     ANTHROPIC_DEFAULT_SONNET_MODEL: model,
@@ -186,6 +188,8 @@ async function runVia(via, o, logFile) {
     return runChild("agy", argv, { cwd: o.cwd }, logFile);
   }
   const env = await freeEnv();
+  env.ANTHROPIC_API_KEY = env.ANTHROPIC_AUTH_TOKEN;
+  delete env.ANTHROPIC_AUTH_TOKEN;
   if (o.model) Object.assign(env, { ANTHROPIC_MODEL: o.model, ANTHROPIC_DEFAULT_SONNET_MODEL: o.model, ANTHROPIC_DEFAULT_OPUS_MODEL: o.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: o.model });
   // --bare: no user hooks, plugins or memory, so the free models get a small, plain context.
   const argv = ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions"];
@@ -311,6 +315,25 @@ const TEAM = {
   "ekip-agy": { roles: "worker,agy", cmd: ["agy", "--dangerously-skip-permissions"], needs: "agy" },
   "ekip-free": { roles: "worker,free", cmd: ["ekip", "--free", "--member", "--permission-mode", "bypassPermissions"], needs: null },
 };
+// A team member starts unattended, so it cannot answer Claude Code's first-run dialogs. Starting it
+// in a folder is the user's trust decision for that folder; the bypass-mode prompt follows the
+// user's own Claude setting (skipDangerousModePermissionPrompt), never more.
+function preTrustFree(cwd) {
+  const state = path.join(FREE_CLAUDE_HOME, ".claude.json");
+  const d = fs.existsSync(state) ? JSON.parse(fs.readFileSync(state, "utf8")) : {};
+  d.hasCompletedOnboarding = true;
+  d.projects ??= {};
+  d.projects[cwd] = { ...d.projects[cwd], hasTrustDialogAccepted: true };
+  fs.writeFileSync(state, JSON.stringify(d, null, 2));
+  const userSettings = path.join(os.homedir(), ".claude/settings.json");
+  let skip = false;
+  try { skip = JSON.parse(fs.readFileSync(userSettings, "utf8")).skipDangerousModePermissionPrompt === true; } catch { /* none */ }
+  const freeSettings = path.join(FREE_CLAUDE_HOME, "settings.json");
+  const fsd = fs.existsSync(freeSettings) ? JSON.parse(fs.readFileSync(freeSettings, "utf8")) : {};
+  if (skip) fsd.skipDangerousModePermissionPrompt = true; else delete fsd.skipDangerousModePermissionPrompt;
+  fs.writeFileSync(freeSettings, JSON.stringify(fsd, null, 2));
+}
+
 const tmuxHas = (name) => spawnSync("tmux", ["has-session", "-t", `=hoptell-${name}`], { stdio: "ignore" }).status === 0;
 
 async function team([sub = "ls", ...names]) {
@@ -322,7 +345,7 @@ async function team([sub = "ls", ...names]) {
       const m = TEAM[n];
       if (tmuxHas(n)) { console.log(`${n}: already running`); continue; }
       if (m.needs && !has(m.needs)) { console.log(`${n}: skipped, ${m.needs} not installed`); continue; }
-      if (n === "ekip-free") await freeEnv();
+      if (n === "ekip-free") { await freeEnv(); preTrustFree(process.cwd()); }
       const r = spawnSync("hoptell", ["tmux", n, "--roles", m.roles, "--detach", "--", ...m.cmd], { stdio: "inherit" });
       console.log(`${n}: ${r.status === 0 ? `started (tmux attach -t hoptell-${n})` : "failed"}`);
     }
