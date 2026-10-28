@@ -2,10 +2,11 @@
 FROM node:22-bookworm-slim
 
 ARG CLAUDE_CODE_VERSION=2.1.312
+ARG COPILOT_VERSION=1.0.105
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates tini \
   && rm -rf /var/lib/apt/lists/* \
-  && npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+  && npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@github/copilot@${COPILOT_VERSION}" \
   && npm cache clean --force \
   && mkdir -p /data \
   && chown node:node /data

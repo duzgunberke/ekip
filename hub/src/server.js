@@ -16,6 +16,7 @@ const DATA = env.EKIP_DATA ?? "/data";
 const cfg = {
   // "Name|https://url,Name|https://url": other dashboards on the same server, shown as links.
   links: (env.EKIP_LINKS ?? "").split(",").map((x) => x.split("|")).filter(([n, u]) => n && /^https:\/\//.test(u ?? "")).map(([name, url]) => ({ name: name.trim(), url: url.trim() })),
+  copilotToken: env.COPILOT_GITHUB_TOKEN || null,
   port: num(env.PORT, 7777),
   host: env.HOST ?? "0.0.0.0",
   data: DATA,
@@ -186,7 +187,7 @@ async function status() {
       version: tdai?.body?.version ?? null,
       memory: !!cfg.tdaiUserKey,
     },
-    github: { token: !!cfg.githubToken },
+    github: { token: !!cfg.githubToken, copilot: !!cfg.copilotToken },
     queue: counts,
     workers: worker.status(),
     links: cfg.links,
@@ -235,8 +236,9 @@ async function api(req, res, url) {
     if (!store.projects.data.some((x) => x.name === project)) bad(`unknown project "${project}"`);
     const task = str(b.task, 50_000, "task", { required: true });
     if (!task.trim()) bad("task is empty");
-    const via = b.via ?? "free";
-    if (via !== "free") bad('via must be "free" (the hub only runs the free pool)');
+    const via = b.via ?? "auto";
+    if (!["auto", "free", "copilot"].includes(via)) bad('via must be "auto", "free" or "copilot"');
+    if (via === "copilot" && !cfg.copilotToken) bad("copilot needs COPILOT_GITHUB_TOKEN on the hub");
     const model = str(b.model, 100, "model");
     if (model && !/^[\w.:/@-]+$/.test(model)) bad("invalid model id");
     if (b.push != null && typeof b.push !== "boolean") bad("push must be a boolean");

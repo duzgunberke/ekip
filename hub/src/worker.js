@@ -37,7 +37,7 @@ export class Worker {
     this.slots = Array.from({ length: cfg.workers }, (_, i) => ({ slot: i + 1, jobId: null, since: null }));
     this.locks = new Map(); // project -> promise chain (serialises git ops on the shared clone)
     this.children = new Map(); // jobId -> running child process
-    this.secrets = [cfg.githubToken, cfg.freellmapiKey, cfg.tdaiUserKey, cfg.hubToken, cfg.hubPassword].filter((s) => s && s.length >= 6);
+    this.secrets = [cfg.githubToken, cfg.freellmapiKey, cfg.tdaiUserKey, cfg.hubToken, cfg.hubPassword, cfg.copilotToken].filter((s) => s && s.length >= 6);
     if (cfg.githubToken) this.secrets.push(Buffer.from(`x-access-token:${cfg.githubToken}`).toString("base64"));
     fs.mkdirSync(cfg.jobsDir, { recursive: true });
     fs.mkdirSync(cfg.workDir, { recursive: true });
@@ -235,13 +235,30 @@ export class Worker {
     if (job.cancelRequested) return this.finishCancelled(job, clone, wt, branch);
 
     // 2. the worker
-    const env = await this.claudeEnv(job, project);
     const prompt = `${WORKER_BRIEF}\n${job.task}`;
-    this.append(job.id, `\n--- claude worker via ${job.pool} (model ${env.ANTHROPIC_MODEL}) ---\n`);
-    const r = await this.exec(job, "claude", ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions"], {
-      cwd: wt, env, timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
-    });
-    this.append(job.id, `\n[claude exit ${r.code}]\n`);
+    // copilot: GitHub Copilot CLI on the user's Copilot quota (strong models, needs
+    // COPILOT_GITHUB_TOKEN). free: claude --bare on freellmapi through the memory proxy.
+    // auto: copilot when configured, falling back to free if it fails.
+    const pools = job.via === "copilot" ? ["copilot"] : job.via === "free" ? ["free"] : [cfg.copilotToken ? "copilot" : null, "free"].filter(Boolean);
+    let r;
+    for (const pool of pools) {
+      if (pool === "copilot") {
+        this.append(job.id, "\n--- worker via copilot ---\n");
+        r = await this.exec(job, "copilot", ["-p", prompt, "--allow-all-tools", "--allow-all-paths", ...(job.model ? ["--model", job.model] : [])], {
+          cwd: wt, env: this.copilotEnv(), timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
+        });
+      } else {
+        const env = await this.claudeEnv(job, project);
+        this.append(job.id, `\n--- claude worker via ${job.pool} (model ${env.ANTHROPIC_MODEL}) ---\n`);
+        r = await this.exec(job, "claude", ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions"], {
+          cwd: wt, env, timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
+        });
+      }
+      this.append(job.id, `\n[${pool} exit ${r.code}]\n`);
+      job.ranVia = pool;
+      if (r.code === 0 && r.stdout.trim() && !(r.stdout.length < 600 && LIMIT_RE.test(r.stdout))) break;
+      if (job.cancelRequested) break;
+    }
     if (job.cancelRequested) return this.finishCancelled(job, clone, wt, branch);
     const report = r.stdout.trim();
     job.report = this.redact(report.slice(-20_000));
@@ -284,6 +301,11 @@ export class Worker {
       await this.git(job, clone, ["branch", "-D", branch], { allowFail: true, quiet: true });
     });
     job.branch = null;
+  }
+
+  // Env for the Copilot CLI: only what it needs, never the hub or git secrets.
+  copilotEnv() {
+    return { PATH: process.env.PATH, HOME: this.cfg.data, LANG: "C.UTF-8", COPILOT_GITHUB_TOKEN: this.cfg.copilotToken };
   }
 
   // Env for `claude --bare`: a clean environment (no hub/GitHub secrets), the TDAI memory proxy when

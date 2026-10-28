@@ -343,20 +343,21 @@ async function hubFetch(pathname, init = {}) {
 // ekip job "task" --project NAME [--no-push]: queue work on the hub; it runs even when the Mac is off.
 async function job(args) {
   if (args[0] === "ls" || !args.length) {
-    const { jobs = [] } = await hubFetch("/api/jobs");
-    for (const j of jobs.slice(0, 20)) console.log(`${j.id}  ${j.status.padEnd(8)} ${j.project ?? "-"}  ${String(j.task).split("\n")[0].slice(0, 70)}${j.branch ? `  [${j.branch}]` : ""}`);
+    const jobs = await hubFetch("/api/jobs");
+    for (const j of (Array.isArray(jobs) ? jobs : jobs.jobs ?? []).slice(0, 20)) console.log(`${j.id}  ${j.status.padEnd(8)} ${j.project ?? "-"}  ${String(j.task).split("\n")[0].slice(0, 70)}${j.branch ? `  [${j.branch}]` : ""}`);
     return;
   }
   if (args[0] === "show") { const j = await hubFetch(`/api/jobs/${args[1]}`); console.log(JSON.stringify(j, null, 2)); return; }
-  let project = null, push = true, task = [];
+  let project = null, push = true, task = [], via;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--project") project = args[++i];
+    else if (args[i] === "--via") via = args[++i];
     else if (args[i] === "--no-push") push = false;
     else task.push(args[i]);
   }
   project ??= registry().filter((x) => process.cwd().startsWith(x.path)).sort((a, b) => b.path.length - a.path.length)[0]?.name;
-  if (!project || !task.length) die('usage: ekip job "task" --project NAME [--no-push] | ekip job ls | ekip job show ID');
-  const j = await hubFetch("/api/jobs", { method: "POST", body: JSON.stringify({ project, task: task.join(" "), push }) });
+  if (!project || !task.length) die('usage: ekip job "task" --project NAME [--via auto|copilot|free] [--no-push] | ekip job ls | ekip job show ID');
+  const j = await hubFetch("/api/jobs", { method: "POST", body: JSON.stringify({ project, task: task.join(" "), push, ...(via ? { via } : {}) }) });
   console.log(`queued ${j.id ?? JSON.stringify(j)} on ${SETTINGS.hubUrl} (ekip job show ${j.id})`);
 }
 
