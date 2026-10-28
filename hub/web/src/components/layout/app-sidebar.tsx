@@ -37,7 +37,9 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size='lg' asChild tooltip='ekip hub'>
               <Link to='/' onClick={() => setOpenMobile(false)}>
-                <Logo className='size-8 rounded-lg' />
+                <span className='flex size-8 shrink-0 items-center justify-center'>
+                  <Logo className='size-8! rounded-lg' />
+                </span>
                 <div className='grid flex-1 text-start text-sm leading-tight'>
                   <span className='truncate font-semibold'>ekip hub</span>
                   <span className='truncate text-xs text-muted-foreground'>

@@ -1,4 +1,5 @@
-import { Brain, ExternalLink, FileText, GitBranch, Send } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Brain, ExternalLink, FileText, GitBranch, Network, Send } from 'lucide-react'
 import { useState } from 'react'
 import { stripMd } from '@/lib/format'
 import { projectRepos } from '@/lib/repo'
@@ -100,8 +101,10 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
             </div>
 
             <SheetFooter className='border-t px-6 py-4 sm:flex-row sm:justify-end'>
-              <Button variant='outline' onClick={() => onOpenChange(false)}>
-                Kapat
+              <Button variant='outline' asChild>
+                <Link to='/kod-haritasi' search={{ proje: p.name }}>
+                  <Network /> Kod haritası
+                </Link>
               </Button>
               <Button
                 onClick={() => {

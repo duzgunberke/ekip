@@ -132,7 +132,9 @@ const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR
   --project  a registered project (ekip project ls); sets the folder and its memory
   --plugin   load an installed Claude plugin into a free/claude worker (e.g. lemo-opuscar)
   --skill    load a skill from ~/.claude/skills into a free/claude worker
-  --no-watch don't open a terminal window that shows the worker live
+  --task ID  show this worker under a task (ekip task new ...) while it runs
+  --label T  a short name for the worker in the task view
+  --no-watch don't open a pane that shows the worker live
 The worker's final report is printed to stdout; its full log is under data/runs/.`;
 
 function parseRun(args) {
@@ -147,6 +149,8 @@ function parseRun(args) {
     else if (a === "--skill") o.skills.push(args[++i]);
     else if (a === "--project") o.project = args[++i];
     else if (a === "--no-watch") o.watch = false;
+    else if (a === "--task") o.taskId = args[++i];
+    else if (a === "--label") o.label = args[++i];
     else if (a === "--watch") o.watch = true;
     else if (a.startsWith("--")) die(`unknown option ${a} (ekip run --help)`);
     else if (a === "-") o.task = fs.readFileSync(0, "utf8");
@@ -295,7 +299,14 @@ async function runVia(via, o, logFile) {
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 
 async function runOne(o, via, id) {
+  const r = await runOneInner(o, via, id);
+  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed");
+  return r;
+}
+
+async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
+  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
@@ -515,6 +526,18 @@ async function report(run) {
 // ---- the lead session -------------------------------------------------------------------------
 
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
+
+## Progress the user can see (mandatory)
+For EVERY user request that takes more than a minute, before doing anything else:
+  id=$(ekip task new "<short Turkish title>" --project <name if any> --steps "<step 1>; <step 2>; ...")
+Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Render; Kontrol"). Then keep it true:
+- \`ekip task step $id N running\` when you start step N (\`--pct 40\` for partial progress inside a long step),
+  \`ekip task step $id N done\` when it is done, \`failed\` / \`skipped\` when that happens; \`ekip task add $id "new step"\`
+  if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
+- Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.
+- \`ekip task done $id "<one-line result>"\` at the end (\`ekip task fail $id "<why>"\` if you must stop).
+The user watches percent, current step and estimated finish live in a pane and on the panel; a
+request without a task is invisible to them. Several requests = several tasks, worked in parallel.
 The user has Claude Max and wants YOUR effort spent on judgment: understanding, design, splitting,
 integration and review. Hand everything well-scoped to workers that run on other accounts and
 quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pools are usable):
@@ -901,6 +924,17 @@ switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
+  case "task": case "tasks": {
+    const t = await import("../lib/tasks.js");
+    if (cmd === "task" && rest[0] === "new") {
+      // The first task of a lead session opens the live task pane under the lead (iTerm2).
+      const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
+      const flag = lead && path.join(HOME, "panes", `${lead}-tasks`);
+      await t.main(rest);
+      if (flag && !fs.existsSync(flag)) { fs.mkdirSync(path.dirname(flag), { recursive: true }); fs.writeFileSync(flag, "1"); openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true }); }
+    } else await t.main(cmd === "tasks" && !rest.length ? ["ls"] : rest);
+    break;
+  }
   case "agents": await agentsMain(rest); break;
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;

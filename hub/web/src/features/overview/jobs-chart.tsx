@@ -41,8 +41,8 @@ export function JobsChart({ jobs }: { jobs: Job[] }) {
   const total = data.reduce((n, d) => n + SERIES.reduce((m, k) => m + d[k], 0), 0)
 
   return (
-    <div className='relative h-64 w-full' role='img' aria-label={`Son ${DAYS} günde ${total} iş`}>
-      <ResponsiveContainer width='100%' height='100%'>
+    <div className='relative h-full min-h-64 w-full' role='img' aria-label={`Son ${DAYS} günde ${total} iş`}>
+      <ResponsiveContainer width='100%' height='100%' initialDimension={{ width: 600, height: 256 }}>
         <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke='var(--border)' />
           <XAxis

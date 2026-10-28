@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedProjelerRouteImport } from './routes/_authenticated/projeler'
 import { Route as AuthenticatedPanellerRouteImport } from './routes/_authenticated/paneller'
+import { Route as AuthenticatedKodHaritasiRouteImport } from './routes/_authenticated/kod-haritasi'
 import { Route as AuthenticatedHavuzlarRouteImport } from './routes/_authenticated/havuzlar'
 import { Route as AuthenticatedCalistirmalarRouteImport } from './routes/_authenticated/calistirmalar'
 import { Route as AuthenticatedIslerIndexRouteImport } from './routes/_authenticated/isler/index'
@@ -43,6 +44,12 @@ const AuthenticatedPanellerRoute = AuthenticatedPanellerRouteImport.update({
   path: '/paneller',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedKodHaritasiRoute =
+  AuthenticatedKodHaritasiRouteImport.update({
+    id: '/kod-haritasi',
+    path: '/kod-haritasi',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedHavuzlarRoute = AuthenticatedHavuzlarRouteImport.update({
   id: '/havuzlar',
   path: '/havuzlar',
@@ -70,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/calistirmalar': typeof AuthenticatedCalistirmalarRoute
   '/havuzlar': typeof AuthenticatedHavuzlarRoute
+  '/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
   '/paneller': typeof AuthenticatedPanellerRoute
   '/projeler': typeof AuthenticatedProjelerRoute
   '/isler/$id': typeof AuthenticatedIslerIdRoute
@@ -79,6 +87,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/calistirmalar': typeof AuthenticatedCalistirmalarRoute
   '/havuzlar': typeof AuthenticatedHavuzlarRoute
+  '/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
   '/paneller': typeof AuthenticatedPanellerRoute
   '/projeler': typeof AuthenticatedProjelerRoute
   '/': typeof AuthenticatedIndexRoute
@@ -91,6 +100,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/calistirmalar': typeof AuthenticatedCalistirmalarRoute
   '/_authenticated/havuzlar': typeof AuthenticatedHavuzlarRoute
+  '/_authenticated/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
   '/_authenticated/paneller': typeof AuthenticatedPanellerRoute
   '/_authenticated/projeler': typeof AuthenticatedProjelerRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/calistirmalar'
     | '/havuzlar'
+    | '/kod-haritasi'
     | '/paneller'
     | '/projeler'
     | '/isler/$id'
@@ -113,6 +124,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/calistirmalar'
     | '/havuzlar'
+    | '/kod-haritasi'
     | '/paneller'
     | '/projeler'
     | '/'
@@ -124,6 +136,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/calistirmalar'
     | '/_authenticated/havuzlar'
+    | '/_authenticated/kod-haritasi'
     | '/_authenticated/paneller'
     | '/_authenticated/projeler'
     | '/_authenticated/'
@@ -173,6 +186,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPanellerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/kod-haritasi': {
+      id: '/_authenticated/kod-haritasi'
+      path: '/kod-haritasi'
+      fullPath: '/kod-haritasi'
+      preLoaderRoute: typeof AuthenticatedKodHaritasiRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/havuzlar': {
       id: '/_authenticated/havuzlar'
       path: '/havuzlar'
@@ -207,6 +227,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCalistirmalarRoute: typeof AuthenticatedCalistirmalarRoute
   AuthenticatedHavuzlarRoute: typeof AuthenticatedHavuzlarRoute
+  AuthenticatedKodHaritasiRoute: typeof AuthenticatedKodHaritasiRoute
   AuthenticatedPanellerRoute: typeof AuthenticatedPanellerRoute
   AuthenticatedProjelerRoute: typeof AuthenticatedProjelerRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -217,6 +238,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCalistirmalarRoute: AuthenticatedCalistirmalarRoute,
   AuthenticatedHavuzlarRoute: AuthenticatedHavuzlarRoute,
+  AuthenticatedKodHaritasiRoute: AuthenticatedKodHaritasiRoute,
   AuthenticatedPanellerRoute: AuthenticatedPanellerRoute,
   AuthenticatedProjelerRoute: AuthenticatedProjelerRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,

@@ -1,6 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Job, Project, Run, Status, Via } from '@/lib/types'
+import type {
+  Job,
+  Project,
+  ProjectRepos,
+  RepoGraph,
+  Run,
+  Status,
+  SymbolInfo,
+  Via,
+} from '@/lib/types'
 
 export const qk = {
   session: ['session'] as const,
@@ -78,3 +87,33 @@ export function useCancelJob() {
     },
   })
 }
+
+const enc = encodeURIComponent
+
+export const useProjectRepos = (project: string | undefined) =>
+  useQuery({
+    queryKey: ['codemap', project, 'repos'],
+    queryFn: ({ signal }) => api<ProjectRepos>(`/api/projects/${enc(project!)}/repos`, { signal }),
+    enabled: !!project,
+    staleTime: 5 * 60_000,
+  })
+
+export const repoGraphQuery = (project: string, repo: string) => ({
+  queryKey: ['codemap', project, 'graph', repo],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    api<RepoGraph>(`/api/projects/${enc(project)}/graph?repo=${enc(repo)}`, { signal }),
+  staleTime: 10 * 60_000,
+  retry: 1,
+})
+
+export const useSymbols = (project: string, repo: string | undefined, file: string | undefined) =>
+  useQuery({
+    queryKey: ['codemap', project, 'symbols', repo, file],
+    queryFn: ({ signal }) =>
+      api<{ available: boolean; symbols: SymbolInfo[] }>(
+        `/api/projects/${enc(project)}/symbols?repo=${enc(repo!)}&file=${enc(file!)}`,
+        { signal }
+      ),
+    enabled: !!repo && !!file,
+    staleTime: 10 * 60_000,
+  })

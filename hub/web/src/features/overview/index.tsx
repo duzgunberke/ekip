@@ -128,7 +128,7 @@ export function Overview() {
               <CardTitle>Günlük işler</CardTitle>
               <CardDescription>Son 14 gün, duruma göre</CardDescription>
             </CardHeader>
-            <CardContent className='ps-2'>
+            <CardContent className='flex flex-1 flex-col ps-2'>
               {jobs.isLoading ? (
                 <Skeleton className='ms-4 h-64' />
               ) : jobs.isError ? (

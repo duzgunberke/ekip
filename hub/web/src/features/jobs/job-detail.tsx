@@ -78,7 +78,7 @@ export function JobDetail() {
         ) : j ? (
           <>
             <div className='mb-6 flex flex-wrap items-start justify-between gap-4'>
-              <div className='min-w-0 flex-1'>
+              <div className='min-w-0 flex-[1_1_20rem]'>
                 <div className='mb-2 flex flex-wrap items-center gap-2'>
                   <StatusBadge status={j.status} />
                   <Badge variant='secondary' className='font-mono font-normal'>
@@ -195,9 +195,9 @@ export function JobDetail() {
                       {j.model && <Row k='Model'><span className='font-mono text-xs'>{j.model}</span></Row>}
                       <Row k='Dal'>
                         {j.branch ? (
-                          <span className='font-mono text-xs break-all'>
-                            {j.branch}
-                            {j.baseBranch && <span className='text-muted-foreground'> ← {j.baseBranch}</span>}
+                          <span className='grid font-mono text-xs'>
+                            <span className='break-all'>{j.branch}</span>
+                            {j.baseBranch && <span className='text-muted-foreground'>← {j.baseBranch}</span>}
                           </span>
                         ) : (
                           '—'

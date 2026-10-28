@@ -189,7 +189,7 @@ export const adminKey = () => {
 // In iTerm2, a worker opens as a split pane next to the lead's own session (ITERM_SESSION_ID is
 // inherited from the lead): the first one splits the lead vertically, later ones stack under the
 // previous worker pane. Elsewhere it falls back to a new window.
-export function openPane(command) {
+export function openPane(command, { below = false } = {}) {
   const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
   if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "iTerm.app" || !lead) return openTerminal(command);
   const stateFile = path.join(HOME, "panes", `${lead}.txt`);
@@ -212,6 +212,7 @@ export function openPane(command) {
   return id of n
 end tell`;
   const run = (anchor, how) => spawnSync("osascript", ["-e", script(anchor, how)], { encoding: "utf8" }).stdout.trim();
+  if (below) { if (!run(lead, "horizontally")) openTerminal(command); return; }
   const id = (prev && run(prev, "horizontally")) || run(lead, "vertically");
   if (id) fs.writeFileSync(stateFile, id); else openTerminal(command);
 }

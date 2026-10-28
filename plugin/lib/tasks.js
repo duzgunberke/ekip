@@ -1,0 +1,152 @@
+// Tasks: one per user request. The lead creates it with its steps, marks steps as it goes and links
+// workers to it, so the user sees percent done, the current step and an estimated finish time —
+// in a live pane next to the lead (`ekip tasks --watch`), with `ekip tasks`, and on the hub panel.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { HOME, SETTINGS, die, sleep } from "./core.js";
+import { c, dot, mark } from "./ui.js";
+
+const FILE = path.join(HOME, "tasks.json");
+const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
+const write = (all) => { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(`${FILE}.tmp`, JSON.stringify(all, null, 2)); fs.renameSync(`${FILE}.tmp`, FILE); };
+const now = () => new Date().toISOString();
+const newId = () => `g${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 4)}`;
+
+function update(id, fn) {
+  const all = read();
+  const t = all.find((x) => x.id === id) ?? die(`no task ${id} (ekip tasks)`);
+  fn(t);
+  t.updatedAt = now();
+  write(all);
+  push(t);
+  return t;
+}
+
+/** Percent done: finished steps count fully, the running step by its own percent (or half). */
+export function percent(t) {
+  if (t.status === "done") return 100;
+  const steps = t.steps ?? [];
+  if (!steps.length) return t.pct ?? 0;
+  const part = steps.reduce((sum, s) => sum + (s.status === "done" || s.status === "skipped" ? 1 : s.status === "running" ? (s.pct ?? 50) / 100 : 0), 0);
+  return Math.min(99, Math.round((part / steps.length) * 100));
+}
+
+/** Estimated finish: elapsed time scaled by what is left, once anything is measurable. */
+export function eta(t) {
+  const p = percent(t);
+  if (t.status !== "running" || p < 5) return null;
+  const elapsed = Date.now() - Date.parse(t.createdAt);
+  return new Date(Date.now() + elapsed * (100 - p) / p).toISOString();
+}
+
+const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? "<1 dk" : m < 60 ? `${m} dk` : `${Math.floor(m / 60)} sa ${m % 60} dk`; };
+const notify = (title, body) => process.platform === "darwin" && spawnSync("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore" });
+
+function push(t) {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
+  fetch(`${SETTINGS.hubUrl}/api/tasks`, {
+    method: "PUT", signal: AbortSignal.timeout(4000),
+    headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
+    body: JSON.stringify({ ...t, pct: percent(t), eta: eta(t), host: os.hostname() }),
+  }).catch(() => {});
+}
+
+export function create({ title, project, steps = [] }) {
+  if (!title) die('usage: ekip task new "title" [--project NAME] [--steps "a; b; c"]');
+  const t = { id: newId(), title, project: project ?? null, status: "running", createdAt: now(), updatedAt: now(), steps: steps.map((s) => ({ title: s, status: "pending" })), workers: [], notes: [] };
+  const all = read();
+  all.push(t);
+  write(all);
+  push(t);
+  return t;
+}
+
+/** Mark step n (1-based): running [pct] | done | failed | skipped; starting one finishes earlier running ones. */
+export function step(id, n, status = "done", { pct, note } = {}) {
+  return update(id, (t) => {
+    const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
+    if (status === "running") for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
+    Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
+    if (note) t.notes.push({ at: now(), text: note });
+    if (status === "failed") notify(`ekip · ${t.title}`, `Adım takıldı: ${s.title}`);
+  });
+}
+
+export function addSteps(id, titles) { return update(id, (t) => t.steps.push(...titles.map((s) => ({ title: s, status: "pending" })))); }
+
+export function finish(id, status = "done", note) {
+  const t = update(id, (x) => {
+    x.status = status;
+    x.endedAt = now();
+    for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status, endedAt: now() });
+    if (note) x.notes.push({ at: now(), text: note });
+  });
+  notify(`ekip · ${status === "done" ? "bitti" : "durdu"}`, `${t.title}${note ? ` — ${note}` : ""}`);
+  return t;
+}
+
+/** Called by `ekip run --task ID`: the worker shows under the task while it runs. */
+export function linkWorker(id, w) { try { update(id, (t) => { t.workers.push({ ...w, startedAt: now(), status: "running" }); }); } catch { /* unknown task: ignore */ } }
+export function endWorker(id, runId, status) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); }); } catch { /* ignore */ } }
+
+export function active() { return read().filter((t) => t.status === "running"); }
+
+// ---- rendering ---------------------------------------------------------------------------------
+
+function bar(p, width = 24) {
+  const full = Math.round((p / 100) * width);
+  return `${c.cyan("█".repeat(full))}${c.gray("░".repeat(width - full))}`;
+}
+
+function render(t) {
+  const p = percent(t);
+  const e = eta(t);
+  const elapsed = Date.now() - Date.parse(t.createdAt);
+  const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : c.yellow("sürüyor");
+  const head = `${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`;
+  const line = `  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(`geçen ${fmtDur(elapsed)}`)}${e ? c.gray(` · tahmini bitiş ${new Date(e).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} (${fmtDur(Date.parse(e) - Date.now())} kaldı)`) : ""}`;
+  const steps = t.steps.map((s, i) => {
+    const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
+    const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
+    const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
+    return `    ${icon} ${i + 1}. ${label}${extra}`;
+  });
+  const workers = t.workers.filter((w) => w.status === "running").map((w) => {
+    const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
+    return `    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? " · 10 dk'dır çıktı yok" : ""}`)}`;
+  });
+  const last = t.notes.at(-1);
+  return [head, line, ...steps, ...workers, ...(last ? [`    ${c.gray(`↳ ${last.text}`)}`] : [])].join("\n");
+}
+
+export async function main([sub = "ls", ...args]) {
+  const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
+  const rest = () => args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
+  if (sub === "new") {
+    const t = create({ title: rest()[0], project: opt("--project"), steps: (opt("--steps") ?? "").split(";").map((s) => s.trim()).filter(Boolean) });
+    console.log(t.id);
+  } else if (sub === "step") {
+    const [id, n, status = "done"] = rest();
+    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note") });
+  } else if (sub === "add") {
+    const [id, ...titles] = rest();
+    addSteps(id, titles.join(" ").split(";").map((s) => s.trim()).filter(Boolean));
+  } else if (sub === "note") {
+    const [id, ...text] = rest();
+    update(id, (t) => t.notes.push({ at: now(), text: text.join(" ") }));
+  } else if (sub === "done" || sub === "fail" || sub === "cancel") {
+    const [id, ...text] = rest();
+    finish(id, sub === "done" ? "done" : sub === "fail" ? "failed" : "cancelled", text.join(" ") || undefined);
+  } else if (sub === "ls" || sub === "--watch" || sub === "watch") {
+    const watching = sub !== "ls" || args.includes("--watch");
+    const all = args.includes("--all");
+    do {
+      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 30 * 60 * 1000).slice(-8);
+      const out = `${mark()}  ${c.gray("görevler")}\n\n${list.length ? list.map(render).join("\n\n") : c.gray("  aktif görev yok")}\n`;
+      if (watching) process.stdout.write(`\x1b[H\x1b[2J${out}`); else console.log(out);
+      if (watching) await sleep(2000);
+    } while (watching);
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
+}

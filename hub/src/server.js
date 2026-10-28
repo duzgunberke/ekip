@@ -5,6 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { Auth } from "./auth.js";
+import { CodeMap } from "./codemap.js";
 import { openStore, trim } from "./store.js";
 import { Worker } from "./worker.js";
 
@@ -36,6 +37,8 @@ const cfg = {
   tdaiUrl: stripSlash(env.TDAI_PROXY_URL),
   tdaiUserKey: env.TDAI_USER_KEY ?? "",
   githubToken: env.GITHUB_TOKEN ?? "",
+  // TencentDB knowledge service (code graphs) for the panel's code map.
+  knowledgeUrl: stripSlash(env.KNOWLEDGE_URL ?? "http://tdai-memory-hub:8424"),
 };
 
 if (cfg.hubToken.length < 16) { console.error("EKIP_HUB_TOKEN must be set (at least 16 characters)"); process.exit(1); }
@@ -55,6 +58,7 @@ function serverSecret() {
 const store = openStore(DATA);
 const auth = new Auth({ token: cfg.hubToken, password: cfg.hubPassword, secret: serverSecret(), sessionHours: cfg.sessionHours });
 const worker = new Worker({ cfg, store });
+const codemap = new CodeMap({ githubToken: cfg.githubToken, knowledgeUrl: cfg.knowledgeUrl });
 
 // ---- http helpers --------------------------------------------------------------------------------
 
@@ -197,6 +201,24 @@ function cleanProject(p) {
       const v = p.tdai[k];
       if (v != null && v !== "") out.tdai[k] = str(String(v), 200, `tdai.${k}`);
     }
+    if (p.tdai.codeGraphs != null) {
+      const cgs = p.tdai.codeGraphs;
+      if (!Array.isArray(cgs) || cgs.length > 50) bad("tdai.codeGraphs must be an array (max 50)");
+      out.tdai.codeGraphs = cgs.map((g, i) => {
+        const f = `tdai.codeGraphs[${i}]`;
+        if (!g || typeof g !== "object") bad(`${f} must be an object`);
+        const id = str(g.id, 100, `${f}.id`, { required: true });
+        if (!/^[\w.-]+$/.test(id)) bad(`${f}.id is invalid`);
+        if (g.private != null && typeof g.private !== "boolean") bad(`${f}.private must be a boolean`);
+        return {
+          repo: str(g.repo, 300, `${f}.repo`, { required: true }),
+          id,
+          branch: str(g.branch, 200, `${f}.branch`) ?? null,
+          private: g.private ?? null,
+          status: str(g.status, 40, `${f}.status`) ?? null,
+        };
+      });
+    }
   }
   return out;
 }
@@ -280,6 +302,21 @@ async function api(req, res, url) {
     store.projects.data.sort((a, b) => a.name.localeCompare(b.name));
     store.projects.save();
     return send(res, 200, { ok: true, count: store.projects.data.length });
+  }
+  if ((match = p.match(/^\/api\/projects\/([^/]+)\/(repos|graph|symbols)$/)) && m === "GET") {
+    const project = store.projects.data.find((x) => x.name === decodeURIComponent(match[1]));
+    if (!project) return send(res, 404, { error: "no such project" });
+    const fresh = url.searchParams.get("fresh") === "1";
+    try {
+      if (match[2] === "repos") return send(res, 200, await codemap.repos(project, { fresh }));
+      const repo = str(url.searchParams.get("repo"), 300, "repo", { required: true });
+      if (match[2] === "graph") return send(res, 200, await codemap.graph(project, repo, { fresh }));
+      const file = str(url.searchParams.get("file"), 500, "file", { required: true });
+      return send(res, 200, await codemap.symbols(project, repo, file));
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      return send(res, e.code === 404 ? 404 : 502, { error: worker.redact(e.message ?? String(e)) });
+    }
   }
   if ((match = p.match(/^\/api\/projects\/([^/]+)$/)) && m === "DELETE") {
     const name = decodeURIComponent(match[1]);

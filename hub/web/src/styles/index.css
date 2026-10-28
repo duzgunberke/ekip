@@ -108,3 +108,37 @@
   font-variant-ligatures: none;
   tab-size: 4;
 }
+
+/* React Flow (code map) — theme it with our tokens */
+.ekip-flow {
+  --xy-background-color: transparent;
+  --xy-background-pattern-dots-color-default: var(--border);
+  --xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  --xy-edge-stroke-width-default: 1.25;
+  --xy-node-border-radius-default: 0.75rem;
+  --xy-minimap-background-color-default: var(--card);
+  --xy-minimap-mask-background-color-default: color-mix(in oklch, var(--background) 70%, transparent);
+  --xy-minimap-node-background-color-default: var(--muted);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-background-color-hover-default: var(--muted);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-border-color-default: var(--border);
+}
+.ekip-flow .react-flow__node {
+  cursor: pointer;
+}
+.ekip-flow .react-flow__node:focus-visible > div {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ekip-flow .react-flow__controls {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+.ekip-flow .react-flow__minimap {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}

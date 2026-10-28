@@ -3,6 +3,7 @@ import {
   History,
   LayoutDashboard,
   ListChecks,
+  Network,
   PanelsTopLeft,
   ServerCog,
 } from 'lucide-react'
@@ -14,6 +15,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: 'Genel bakış', url: '/', icon: LayoutDashboard },
       { title: 'Projeler', url: '/projeler', icon: FolderGit2 },
+      { title: 'Kod haritası', url: '/kod-haritasi', icon: Network },
       { title: 'İşler', url: '/isler', icon: ListChecks },
       { title: 'Çalıştırmalar', url: '/calistirmalar', icon: History },
     ],

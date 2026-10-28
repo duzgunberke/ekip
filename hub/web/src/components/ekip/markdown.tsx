@@ -12,7 +12,7 @@ export function Md({ children, className }: { children: string; className?: stri
         'prose-a:text-primary prose-a:underline-offset-4',
         'prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
         'prose-pre:border prose-pre:bg-muted/60 prose-pre:text-foreground',
-        'prose-table:block prose-table:overflow-x-auto prose-th:text-start',
+        'prose-table:my-0 prose-th:text-start',
         'break-words',
         className
       )}
@@ -21,6 +21,11 @@ export function Md({ children, className }: { children: string; className?: stri
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ node: _n, ...props }) => <a {...props} target='_blank' rel='noopener noreferrer' />,
+          table: ({ node: _n, ...props }) => (
+            <div className='my-4 overflow-x-auto'>
+              <table {...props} />
+            </div>
+          ),
           img: ({ node: _n, alt }) => <span className='text-muted-foreground'>[görsel: {alt}]</span>,
         }}
       >

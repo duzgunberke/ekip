@@ -84,8 +84,9 @@ export function Panels() {
                         className='row-span-2 size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground'
                         aria-hidden='true'
                       />
-                      <CardDescription className='truncate'>
-                        {desc} · <span className='font-mono text-xs'>{host}</span>
+                      <CardDescription className='min-w-0'>
+                        <span className='block truncate'>{desc}</span>
+                        <span className='block truncate font-mono text-xs'>{host}</span>
                       </CardDescription>
                     </CardHeader>
                     <span className='sr-only'>(yeni sekmede açılır)</span>
