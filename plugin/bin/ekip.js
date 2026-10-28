@@ -516,7 +516,10 @@ async function hub([sub, url, token]) {
       repos: (p.repos ?? []).map((r) => r.url ?? r).filter(Boolean).slice(0, 50),
       summary: p.summary ?? "",
       card: p.card && fs.existsSync(p.card) ? fs.readFileSync(p.card, "utf8") : "",
-      tdai: p.tdai ? { teamId: p.tdai.teamId, agentId: p.tdai.agentId, wikiId: p.tdai.wikiId, codeGraphId: p.tdai.codeGraphId } : undefined,
+      tdai: p.tdai ? {
+        teamId: p.tdai.teamId, agentId: p.tdai.agentId, wikiId: p.tdai.wikiId, codeGraphId: p.tdai.codeGraphId,
+        codeGraphs: (p.tdai.codeGraphs ?? []).slice(0, 50).map(({ repo, id, branch, private: priv, status }) => ({ repo, id, branch, private: !!priv, status })),
+      } : undefined,
     }));
     const r = await hubFetch("/api/projects", { method: "PUT", body: JSON.stringify({ projects, replace: true }) });
     console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
