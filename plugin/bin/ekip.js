@@ -47,10 +47,12 @@ async function keyWizard({ all = false } = {}) {
   console.log("For each provider, its key page opens in your browser: sign in with your own account, create a key, paste it here.");
   console.log("Enter = skip this provider, q = stop. Use one account per provider; extra accounts to dodge limits break their terms.\n");
   let added = 0;
+  // Ctrl+C mid-wizard still applies the keys entered so far.
+  process.once("SIGINT", async () => { console.log("\nstopping; applying the keys entered so far"); if (added) await restartFree(); process.exit(0); });
   for (const p of todo) {
     console.log(`── ${p.label}: ${p.note}\n   ${p.url}`);
     openUrl(p.url);
-    const v = await ask("   key: ");
+    const v = await ask("   key: ").catch(() => "q");
     if (v === "q") break;
     if (!v) continue;
     if (p.platform === "cloudflare" && !v.includes(":")) { console.log("   skipped: Cloudflare needs ACCOUNT_ID:API_TOKEN"); continue; }
@@ -591,7 +593,7 @@ function memoryDown() {
 
 // Past Claude Code sessions → TencentDB memory and skills, through TencentDB's own importer.
 // Each registered project's session folders go to that project's agent; other real projects go
-// to the default agent; scratch and temp folders are skipped. A shared state file makes re-runs
+// to the default agent (scratch and temp sessions included: they often hold useful work). A shared state file makes re-runs
 // incremental (only new sessions are sent).
 async function importHistory() {
   const key = adminKey() ?? die("no TencentDB admin key");
@@ -606,7 +608,6 @@ async function importHistory() {
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   const plan = [];
   for (const dir of fs.readdirSync(base)) {
-    if (/scratch|-tmp-|Application-Support|^-Users-berkeduzgun$/.test(dir)) continue;
     const owner = projects.filter((p) => dir.endsWith(`-Projects-${p.name}`) || dir.includes(`-Projects-${p.name}-`)).sort((a, b) => b.name.length - a.name.length)[0];
     plan.push({ dir, agentId: owner?.tdai?.agentId ?? SETTINGS.tdaiDefaultAgent ?? die("set tdaiDefaultAgent in data/config.json (the default agent id)"), teamId: owner?.tdai?.teamId ?? me.teamId, project: owner?.name ?? "(default)" });
   }
@@ -755,7 +756,11 @@ switch (cmd) {
   case "hook": code = (await (await import("../lib/hooks.js")).main(rest)) ?? 0; break;
   case "remote": await remote(rest); break;
   case "key": await key(rest); break;
-  case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
+  case "keys":
+    if (rest[0] === "apply") { await restartFree(); console.log(keyCounts().map(([p, c]) => `${p}×${c}`).join(", ")); }
+    else if (rest[0] && rest[0] !== "--all") await key(rest);
+    else await keyWizard({ all: rest[0] === "--all" });
+    break;
   case "status": await status(); break;
   case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys") }); break;
   case "memory": await memory(rest); break;
