@@ -941,6 +941,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
   ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
   ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
+  ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "iş"')}
@@ -969,6 +970,7 @@ switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
+  case "doctor": code = await (await import("../lib/doctor.js")).main(rest); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
     if (cmd === "task" && rest[0] === "new") {
