@@ -994,4 +994,6 @@ switch (cmd) {
     if (cmd && !cmd.startsWith("-")) die(`unknown command ${cmd} (ekip help)`);
     code = await lead(cmd ? [cmd, ...rest] : []);
 }
+// Let hub pushes started by this command finish (task updates, run reports) before exiting.
+try { const { pending } = await import("../lib/tasks.js"); await Promise.race([Promise.allSettled([...pending]), sleep(5000)]); } catch { /* none */ }
 process.exit(code);

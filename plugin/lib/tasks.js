@@ -44,13 +44,17 @@ export function eta(t) {
 const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? "<1 dk" : m < 60 ? `${m} dk` : `${Math.floor(m / 60)} sa ${m % 60} dk`; };
 const notify = (title, body) => process.platform === "darwin" && spawnSync("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore" });
 
+// Pushes in flight; ekip.js waits for them before it exits, or the update would be cut off.
+export const pending = new Set();
+
 function push(t) {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
-  fetch(`${SETTINGS.hubUrl}/api/tasks`, {
+  const pr = fetch(`${SETTINGS.hubUrl}/api/tasks`, {
     method: "PUT", signal: AbortSignal.timeout(4000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify({ ...t, pct: percent(t), eta: eta(t), host: os.hostname() }),
-  }).catch(() => {});
+  }).catch(() => {}).finally(() => pending.delete(pr));
+  pending.add(pr);
 }
 
 export function create({ title, project, steps = [] }) {
