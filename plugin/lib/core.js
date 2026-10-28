@@ -123,10 +123,24 @@ export async function key(args) {
     const counts = Object.fromEntries(keyCounts());
     if (!counts[platform]) die(`freellmapi did not accept the ${platform} key; see ${LOG}`);
     console.log(`${platform}: ${counts[platform]} key(s) active`);
+  } else if (sub === "rm" || sub === "remove") {
+    // The key file only adds keys on boot, so a removal also deletes the row in freellmapi's DB.
+    const label = value;
+    if (!platform) die("usage: ekip key rm <platform> [label]   (labels: ekip key list)");
+    const cfg = readConfig();
+    const gone = cfg.keys.filter((k) => k.platform === platform && (!label || k.label === label));
+    if (!gone.length) die(`no ${platform} key${label ? ` labelled ${label}` : ""}`);
+    cfg.keys = cfg.keys.filter((k) => !gone.includes(k));
+    writeConfig(cfg);
+    const where = `platform='${platform.replace(/[^a-z0-9_-]/gi, "")}'${label ? ` and label='${label.replace(/[^a-z0-9_-]/gi, "")}'` : ""}`;
+    if (REMOTE) ssh(`docker exec freellmapi node -e "const D=require('/app/node_modules/better-sqlite3');new D('/app/server/data/freeapi.db').prepare(\\"delete from api_keys where ${where}\\").run()"`);
+    else spawnSync("sqlite3", [DB, `delete from api_keys where ${where}`]);
+    await restartFree();
+    console.log(`removed ${gone.length} ${platform} key(s)`);
   } else if (sub === "list" || !sub) {
     await up({ quiet: true });
     const rows = keyCounts();
-    console.log(rows.length ? rows.map(([p, c]) => `${p}\t${c}`).join("\n") : "no provider keys yet — ekip key add <platform> <key>");
+    console.log(rows.length ? readConfig().keys.map((k) => `${k.platform}\t${k.label}\t${k.key ? `${k.key.slice(0, 6)}…` : "(keyless)"}`).join("\n") : "no provider keys yet — ekip key add <platform> <key>");
   } else die(`unknown: ekip key ${sub}`);
 }
 

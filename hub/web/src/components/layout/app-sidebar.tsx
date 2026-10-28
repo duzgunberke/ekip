@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useStatus } from '@/hooks/queries'
+import { useStatus, useTasks } from '@/hooks/queries'
 import { useLayout } from '@/context/layout-provider'
 import {
   Sidebar,
@@ -22,11 +22,17 @@ export function AppSidebar() {
   const { setOpenMobile } = useSidebar()
   const { data: status } = useStatus()
   const active = status ? (status.queue.running ?? 0) + (status.queue.queued ?? 0) : 0
+  const { data: tasks } = useTasks()
+  const runningTasks = tasks?.filter((t) => t.status === 'running').length ?? 0
 
   const groups = navGroups.map((g) => ({
     ...g,
     items: g.items.map((it) =>
-      it.url === '/isler' && active > 0 ? { ...it, badge: String(active) } : it
+      it.url === '/isler' && active > 0
+        ? { ...it, badge: String(active) }
+        : it.url === '/' && runningTasks > 0
+          ? { ...it, badge: String(runningTasks) }
+          : it
     ),
   }))
 

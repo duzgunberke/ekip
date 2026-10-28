@@ -3,6 +3,7 @@ import {
   History,
   LayoutDashboard,
   ListChecks,
+  ListTodo,
   Network,
   PanelsTopLeft,
   ServerCog,
@@ -13,7 +14,8 @@ export const navGroups: NavGroup[] = [
   {
     title: 'Genel',
     items: [
-      { title: 'Genel bakış', url: '/', icon: LayoutDashboard },
+      { title: 'Görevler', url: '/', icon: ListTodo },
+      { title: 'Genel bakış', url: '/genel', icon: LayoutDashboard },
       { title: 'Projeler', url: '/projeler', icon: FolderGit2 },
       { title: 'Kod haritası', url: '/kod-haritasi', icon: Network },
       { title: 'İşler', url: '/isler', icon: ListChecks },

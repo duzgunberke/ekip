@@ -28,6 +28,7 @@ import { Main } from '@/components/layout/main'
 import { PoolBadge, StatusBadge, StatusDot, ToneBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { ActiveTasksMini } from '@/features/tasks/mini'
 import { JobsChart } from './jobs-chart'
 
 export function Overview() {
@@ -54,6 +55,8 @@ export function Overview() {
             </Button>
           }
         />
+
+        <ActiveTasksMini />
 
         {status.isError && (
           <QueryError className='mb-4' error={status.error} onRetry={() => status.refetch()} />

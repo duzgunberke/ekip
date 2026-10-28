@@ -14,7 +14,7 @@ export function NotFoundError() {
           <Button variant='outline' onClick={() => history.go(-1)}>
             Geri dön
           </Button>
-          <Button onClick={() => navigate({ to: '/' })}>Genel bakışa git</Button>
+          <Button onClick={() => navigate({ to: '/' })}>Ana sayfaya git</Button>
         </div>
       </div>
     </div>
