@@ -14,7 +14,7 @@ import * as sqliteVec from "/app/node_modules/sqlite-vec/index.mjs";
 
 const DB = process.env.TDAI_DB ?? "/data/tdai-memory/vectors.db";
 const URL_ = process.env.EMBED_URL, KEY = process.env.EMBED_KEY, MODEL = process.env.EMBED_MODEL;
-const BATCH = Number(process.env.BATCH ?? 32), PAUSE = Number(process.env.PAUSE_MS ?? 1500), MAXC = Number(process.env.MAX_CHARS ?? 4000);
+const BATCH = Number(process.env.BATCH ?? 96), PAUSE = Number(process.env.PAUSE_MS ?? 300), MAXC = Number(process.env.MAX_CHARS ?? 4000);
 const LOG = "/data/tdai-memory/backfill.log", STATE = "/data/tdai-memory/backfill.state.json";
 if (!URL_ || !KEY || !MODEL) { console.error("EMBED_URL, EMBED_KEY, EMBED_MODEL are required"); process.exit(2); }
 
