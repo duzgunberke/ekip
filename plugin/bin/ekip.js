@@ -278,6 +278,50 @@ function clean([short]) {
   console.log(`removed worktrees and branches of ${short}`);
 }
 
+// ---- hub (VPS) ------------------------------------------------------------------------------
+
+async function hubFetch(pathname, init = {}) {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) die("no hub linked: ekip hub link <url> <token>");
+  const r = await fetch(`${SETTINGS.hubUrl}${pathname}`, {
+    ...init, signal: AbortSignal.timeout(15000),
+    headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}`, ...init.headers },
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) die(`hub ${pathname}: HTTP ${r.status} ${body.error ?? ""}`);
+  return body;
+}
+
+// ekip job "task" --project NAME [--no-push]: queue work on the hub; it runs even when the Mac is off.
+async function job(args) {
+  if (args[0] === "ls" || !args.length) {
+    const { jobs = [] } = await hubFetch("/api/jobs");
+    for (const j of jobs.slice(0, 20)) console.log(`${j.id}  ${j.status.padEnd(8)} ${j.project ?? "-"}  ${String(j.task).split("\n")[0].slice(0, 70)}${j.branch ? `  [${j.branch}]` : ""}`);
+    return;
+  }
+  if (args[0] === "show") { const j = await hubFetch(`/api/jobs/${args[1]}`); console.log(JSON.stringify(j, null, 2)); return; }
+  let project = null, push = true, task = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--project") project = args[++i];
+    else if (args[i] === "--no-push") push = false;
+    else task.push(args[i]);
+  }
+  project ??= registry().filter((x) => process.cwd().startsWith(x.path)).sort((a, b) => b.path.length - a.path.length)[0]?.name;
+  if (!project || !task.length) die('usage: ekip job "task" --project NAME [--no-push] | ekip job ls | ekip job show ID');
+  const j = await hubFetch("/api/jobs", { method: "POST", body: JSON.stringify({ project, task: task.join(" "), push }) });
+  console.log(`queued ${j.id ?? JSON.stringify(j)} on ${SETTINGS.hubUrl} (ekip job show ${j.id})`);
+}
+
+async function hub([sub, url, token]) {
+  if (sub === "link") {
+    if (!url || !token) die("usage: ekip hub link <https://ai.sazora.io> <token>");
+    saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token });
+    await hubFetch("/api/heartbeat", { method: "POST", body: JSON.stringify({ client: "mac", host: os.hostname() }) });
+    console.log(`linked to ${url}`);
+  } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));
+  else if (sub === "open") openUrl(SETTINGS.hubUrl ?? die("no hub linked"));
+  else die("usage: ekip hub link <url> <token> | status | open");
+}
+
 // Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together.
 function report(run) {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
@@ -290,35 +334,38 @@ function report(run) {
 
 // ---- the lead session -------------------------------------------------------------------------
 
-const LEAD_PROMPT = `# ekip: workers on other quotas
-You lead a team. Besides your own subagents (which spend YOUR Claude limit), you can hand work to
-external worker agents that run on separate quotas, through the shell command \`ekip run\`:
+const LEAD_PROMPT = `# ekip: you lead a team on other quotas
+The user has Claude Max and wants YOUR effort spent on judgment: understanding, design, splitting,
+integration and review. Hand everything well-scoped to workers that run on other accounts and
+quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pools are usable):
 
-- \`ekip run --via agy "<brief>"\`: Antigravity CLI (Gemini and other strong models), Google quota.
-- \`ekip run --via free "<brief>"\`: Claude Code harness driven by pooled free-tier models (freellmapi). Weaker: give it small, precise, mechanical tasks.
-- \`ekip run "<brief>"\` (auto): tries agy, falls back to free when agy is out of quota.
-- Options: \`--cwd DIR\` (default: current dir), \`--model ID\`. Long briefs: \`ekip run - <<'EOF' ... EOF\`.
+| --via | what | use for |
+|---|---|---|
+| auto (default) | first usable of: agy, codex, copilot, qwen, opencode, grok, then free | most delegated work |
+| agy | Antigravity (strong models, Google quota) | substantial coding, research |
+| codex / copilot / qwen / opencode | other vendors' CLIs on their own quotas | same; a different model family |
+| grok, free | harnesses on pooled free-tier models (freellmapi) | small, precise, mechanical tasks |
+| claude | a headless Claude on the user's subscription with all their skills/plugins | hard or skill-heavy work you would otherwise do yourself |
 
-A worker runs headless with full file and shell access in its cwd, cannot ask you questions, and prints
-its final report to stdout (full transcript under ~/.ekip/runs/).
-
-How to use them:
-- Prefer workers over your own subagents for well-scoped work: mechanical edits across files, writing
-  tests, docs, research/reading a codebase, isolated bug fixes, boilerplate. This saves your limit.
-- Keep for yourself: understanding the request, design decisions, splitting the work, integration,
-  and reviewing every worker's result (read the diff with git diff, run the tests) before you report.
-- Run independent workers in parallel with the Bash tool's run_in_background; you are notified when
-  each one exits. Never let two concurrent workers edit the same files; use separate git worktrees
-  (\`git worktree add\`) when parallel workers must touch the same repo heavily.
-- Write each brief as for a capable colleague with no context: goal, relevant files/paths, constraints,
-  how to verify, and what to report back.
-- If a worker's result is wrong, fix it yourself or re-dispatch with a sharper brief; don't trust it blindly.
-- \`ekip status\` shows which pools are usable.
-
-Long-lived team members (optional, via hoptell): \`ekip team up\` starts \`ekip-agy\` and \`ekip-free\` as
-hoptell peers in tmux. They keep their context between tasks: send them work with the hoptell
-send_message tool (to their name, or \`@worker\`) and wait for the reply. Use them for multi-step work
-that benefits from a conversation; use \`ekip run\` for one-shot tasks.
+- Options: \`--project NAME\` (a registered project; sets the folder and its memory) or \`--cwd DIR\`,
+  \`--model ID\`, \`--plugin NAME\` / \`--skill NAME\` (load a Claude plugin or skill into a free/claude
+  worker, e.g. \`--plugin lemo-opuscar\` for films, \`--skill blender-modeling\`). Long briefs: \`ekip run - <<'EOF' ... EOF\`.
+- Several models on the same task: \`--via agy,codex,free\` runs each in its own git worktree and branch
+  and prints each diffstat and report. Compare, \`git merge\` the best, then \`ekip clean <id>\`.
+  Use it when quality matters or an approach is uncertain.
+- A worker is headless with full file and shell access, cannot ask questions, prints a final report
+  (transcripts in the ekip data folder). Brief it like a capable colleague with no context: goal,
+  files, constraints, how to verify, what to report.
+- Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
+  concurrent workers on the same files without worktrees.
+- Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+- Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
+  their cards (stack, commands, frequent tasks). The ekip MCP tools search each project's memory,
+  wiki and code graph; codegraph MCP explores code. Save durable facts with memory_remember.
+- The hub on the user's VPS (panel https://ai.sazora.io) runs queued jobs even when this Mac is off:
+  \`ekip job "<task>" --project NAME\` queues one (it works on a branch and pushes it).
+- Long-lived peers: \`ekip team up --open\` starts ekip-agy/ekip-free as hoptell peers in their own
+  terminal windows; message them with hoptell send_message.
 `;
 
 const MEMBER_PROMPT = `# ekip team member
@@ -560,6 +607,8 @@ switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
   case "agents": await agentsMain(rest); break;
+  case "job": case "jobs": await job(rest); break;
+  case "hub": await hub(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;
