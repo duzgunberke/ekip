@@ -65,7 +65,7 @@ async function keyWizard({ all = false } = {}) {
 
 // ---- environments of the two non-subscription pools --------------------------------------------
 
-async function freeEnv() {
+async function freeEnv(project = null) {
   await up({ quiet: true });
   if (!keyCounts().length) die("no free provider keys yet — add one with: ekip key add <platform> <key>");
   const env = { ...process.env };
@@ -87,26 +87,58 @@ async function freeEnv() {
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     // "auto" is no model Claude Code knows; give it a window every routed free model can hold.
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.EKIP_FREE_WINDOW ?? "100000",
-  });
+  }, await memoryRoute(project));
+}
+
+// A registered project's free sessions go through the TencentDB memory proxy: it injects the
+// project's memory, skills and wiki tools, records the conversation, and forwards to freellmapi.
+// The x-team-id / x-agent-id headers pick the project's agent so the proxy never shows its
+// session form. Without the proxy (or an unregistered folder) they go to freellmapi directly.
+async function memoryRoute(project) {
+  const p = project && registry().find((x) => x.name === project);
+  const key = adminKey();
+  if (!p?.tdai?.agentId || !key || !(await tdaiUp())) return {};
+  return {
+    ANTHROPIC_BASE_URL: `http://127.0.0.1:${TDAI_PORTS.proxy}/claude-code/default`,
+    ANTHROPIC_AUTH_TOKEN: key,
+    ANTHROPIC_CUSTOM_HEADERS: `x-team-id: ${p.tdai.teamId}\nx-agent-id: ${p.tdai.agentId}`,
+  };
 }
 
 // ---- workers ----------------------------------------------------------------------------------
 
+const VIAS = ["auto", "agy", "free", "claude"];
+
 function parseRun(args) {
-  const o = { via: "auto", cwd: process.cwd(), model: null, task: null };
+  const o = { via: "auto", cwd: process.cwd(), model: null, task: null, plugins: [], skills: [], project: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--via") o.via = args[++i];
     else if (a === "--cwd") o.cwd = path.resolve(args[++i]);
     else if (a === "--model") o.model = args[++i];
+    else if (a === "--plugin") o.plugins.push(args[++i]);
+    else if (a === "--skill") o.skills.push(args[++i]);
+    else if (a === "--project") o.project = args[++i];
     else if (a === "-") o.task = fs.readFileSync(0, "utf8");
     else if (o.task == null) o.task = a;
     else o.task += ` ${a}`;
   }
-  if (!o.task?.trim()) die('usage: ekip run [--via auto|agy|free] [--cwd DIR] [--model M] "task"   (or - to read the task from stdin)');
-  if (!["auto", "agy", "free"].includes(o.via)) die(`--via must be auto, agy or free`);
+  if (!o.task?.trim()) die('usage: ekip run [--via auto|agy|free|claude|a,b,c] [--project NAME | --cwd DIR] [--model M] [--plugin NAME] [--skill NAME] "task"   (or - to read the task from stdin)');
+  o.vias = o.via.split(",").map((v) => v.trim()).filter(Boolean);
+  for (const v of o.vias) if (!VIAS.includes(v)) die(`--via takes ${VIAS.join(", ")} or a comma list of them`);
+  if (o.project) {
+    const p = registry().find((x) => x.name === o.project);
+    if (!p) die(`unknown project ${o.project} (ekip project ls)`);
+    o.cwd = p.path;
+  } else o.project = registry().filter((x) => o.cwd === x.path || o.cwd.startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0]?.name ?? null;
   if (!fs.existsSync(o.cwd)) die(`no such directory: ${o.cwd}`);
   return o;
+}
+
+// The project registry (written by `ekip project add`); empty until projects are registered.
+function registry() {
+  const f = path.join(HOME, "projects.json");
+  try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return []; }
 }
 
 const WORKER_BRIEF = [
@@ -132,6 +164,31 @@ function runChild(cmd, argv, opts, logFile) {
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
 const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && LIMIT_RE.test(r.out));
 
+// --plugin NAME: an installed Claude Code plugin; --skill NAME: a skill under ~/.claude/skills,
+// wrapped as a one-skill plugin so --bare sessions can load it with --plugin-dir.
+function pluginDirs(o) {
+  const dirs = [];
+  let installed = {};
+  try { installed = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude/plugins/installed_plugins.json"), "utf8")).plugins ?? {}; } catch { /* none */ }
+  for (const name of o.plugins) {
+    const hit = Object.entries(installed).find(([k]) => k === name || k.split("@")[0] === name);
+    if (!hit) die(`no installed plugin named ${name}`);
+    dirs.push([hit[1]].flat()[0].installPath);
+  }
+  for (const name of o.skills) {
+    const src = path.join(os.homedir(), ".claude/skills", name);
+    if (!fs.existsSync(path.join(src, "SKILL.md"))) die(`no skill ${name} in ~/.claude/skills`);
+    const pack = path.join(HOME, "skillpacks", name);
+    fs.mkdirSync(path.join(pack, ".claude-plugin"), { recursive: true });
+    fs.mkdirSync(path.join(pack, "skills"), { recursive: true });
+    fs.writeFileSync(path.join(pack, ".claude-plugin/plugin.json"), JSON.stringify({ name: `skill-${name}`, version: "0.0.0", description: `ekip wrapper for the ${name} skill` }));
+    const link = path.join(pack, "skills", name);
+    if (!fs.existsSync(link)) fs.symlinkSync(src, link);
+    dirs.push(pack);
+  }
+  return dirs.flatMap((d) => ["--plugin-dir", d]);
+}
+
 async function runVia(via, o, logFile) {
   const prompt = `${WORKER_BRIEF}\n${o.task}`;
   if (via === "agy") {
@@ -140,37 +197,93 @@ async function runVia(via, o, logFile) {
     if (o.model ?? process.env.EKIP_AGY_MODEL) argv.push("--model", o.model ?? process.env.EKIP_AGY_MODEL);
     return runChild("agy", argv, { cwd: o.cwd }, logFile);
   }
-  const env = await freeEnv();
+  if (via === "claude") {
+    // Your own subscription with your full setup (skills, plugins, MCP): for the hard parts.
+    const argv = ["-p", prompt, "--permission-mode", "bypassPermissions", ...pluginDirs(o)];
+    if (o.model) argv.push("--model", o.model);
+    return runChild("claude", argv, { cwd: o.cwd }, logFile);
+  }
+  const env = await freeEnv(o.project);
   env.ANTHROPIC_API_KEY = env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_AUTH_TOKEN;
   if (o.model) Object.assign(env, { ANTHROPIC_MODEL: o.model, ANTHROPIC_DEFAULT_SONNET_MODEL: o.model, ANTHROPIC_DEFAULT_OPUS_MODEL: o.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: o.model });
   // --bare: no user hooks, plugins or memory, so the free models get a small, plain context.
-  const argv = ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions"];
+  const argv = ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions", ...pluginDirs(o)];
   return runChild("claude", argv, { cwd: o.cwd, env }, logFile);
+}
+
+const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+
+async function runOne(o, via, id) {
+  const logFile = path.join(RUNS, `${id}.log`);
+  fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
+  const order = via === "auto" ? ["agy", "free"] : [via];
+  let last = null;
+  for (const v of order) {
+    process.stderr.write(`ekip: worker via ${v} in ${o.cwd} (log: ${logFile})\n`);
+    try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
+    if (!failed(last)) return { ok: true, via: v, out: last.out.trim(), logFile };
+    process.stderr.write(`ekip: ${v} failed (exit ${last.code}): ${last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300)}\n`);
+  }
+  return { ok: false, via, out: last?.out.trim() ?? "", logFile };
 }
 
 async function run(args) {
   const o = parseRun(args);
-  const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.via}`;
-  const logFile = path.join(RUNS, `${id}.log`);
-  fs.writeFileSync(logFile, `cwd: ${o.cwd}\ntask:\n${o.task}\n\n`);
-  const order = o.via === "auto" ? ["agy", "free"] : [o.via];
-  let last = null;
-  for (const via of order) {
-    process.stderr.write(`ekip: worker via ${via} in ${o.cwd} (log: ${logFile})\n`);
-    try {
-      last = await runVia(via, o, logFile);
-    } catch (e) {
-      last = { code: 1, out: String(e?.message ?? e) };
-    }
-    if (!failed(last)) {
-      process.stdout.write(`[ekip worker: ${via}]\n${last.out.trim()}\n`);
-      return 0;
-    }
-    process.stderr.write(`ekip: ${via} failed (exit ${last.code}): ${last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300)}\n`);
+  const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
+  if (o.vias.length === 1) {
+    const r = await runOne(o, o.vias[0], id);
+    process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${r.out}\n`);
+    report({ id, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+    return r.ok ? 0 : 1;
   }
-  process.stdout.write(`[ekip worker: all pools failed]\n${last?.out.trim() ?? ""}\n`);
-  return 1;
+  // Several pools on the same task: each gets its own git worktree and branch, so they cannot
+  // collide; you (or the lead) compare the branches and merge the best one.
+  const top = git(o.cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
+  if (!top) die("running several pools on one task needs a git repository (each gets its own worktree)");
+  const short = id.slice(0, 19).replace(/[^0-9]/g, "");
+  const results = await Promise.all(o.vias.map(async (via) => {
+    const branch = `ekip/${short}-${via}`;
+    const dir = path.join(HOME, "worktrees", short, via);
+    fs.mkdirSync(path.dirname(dir), { recursive: true });
+    const wt = git(top, ["worktree", "add", "-b", branch, dir, "HEAD"]);
+    if (wt.status !== 0) return { via, branch, ok: false, out: wt.stderr.trim() };
+    const sub = path.relative(top, o.cwd);
+    const r = await runOne({ ...o, cwd: path.join(dir, sub) }, via, `${id}-${via}`);
+    git(dir, ["add", "-A"]);
+    git(dir, ["-c", "user.name=ekip", "-c", "user.email=ekip@localhost", "commit", "-qm", `ekip ${via}: ${o.task.split("\n")[0].slice(0, 60)}`]);
+    const stat = git(top, ["diff", "--stat", `HEAD...${branch}`]).stdout.trim();
+    return { ...r, via, branch, dir, stat };
+  }));
+  for (const r of results) {
+    process.stdout.write(`\n=== ${r.via} (${r.ok ? "done" : "FAILED"}) branch ${r.branch}${r.dir ? `, worktree ${r.dir}` : ""}\n${r.stat || "(no changes)"}\n--- report\n${r.out.slice(-3000)}\n`);
+    report({ id: `${id}-${r.via}`, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+  }
+  process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
+  return results.some((r) => r.ok) ? 0 : 1;
+}
+
+function clean([short]) {
+  if (!short) die("usage: ekip clean <run id>");
+  const base = path.join(HOME, "worktrees", short);
+  for (const via of fs.existsSync(base) ? fs.readdirSync(base) : []) {
+    const dir = path.join(base, via);
+    const common = git(dir, ["rev-parse", "--git-common-dir"]).stdout.trim();
+    const top = common ? path.dirname(path.resolve(dir, common)) : null;
+    if (top) { git(top, ["worktree", "remove", "--force", dir]); git(top, ["branch", "-D", `ekip/${short}-${via}`]); }
+  }
+  fs.rmSync(base, { recursive: true, force: true });
+  console.log(`removed worktrees and branches of ${short}`);
+}
+
+// Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together.
+function report(run) {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
+  fetch(`${SETTINGS.hubUrl}/api/runs`, {
+    method: "POST", signal: AbortSignal.timeout(5000),
+    headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
+    body: JSON.stringify({ ...run, host: os.hostname(), finishedAt: new Date().toISOString() }),
+  }).catch(() => {});
 }
 
 // ---- the lead session -------------------------------------------------------------------------
@@ -443,6 +556,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
+  case "clean": clean(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;
