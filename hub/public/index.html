@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>ekip hub</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form id="login-form" class="login-card" autocomplete="on">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>ekip hub</div>
+    <label for="password">Parola</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit" class="primary">Giriş yap</button>
+    <p id="login-error" class="error" role="alert"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>ekip hub</div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="durum" aria-selected="true">Durum</button>
+      <button role="tab" data-tab="projeler">Projeler</button>
+      <button role="tab" data-tab="isler">İşler</button>
+      <button role="tab" data-tab="calismalar">Çalıştırmalar</button>
+    </nav>
+    <button id="logout" class="ghost small" title="Çıkış">Çıkış</button>
+  </header>
+
+  <main>
+    <section id="tab-durum" class="tab">
+      <div id="status-grid" class="grid"></div>
+    </section>
+
+    <section id="tab-projeler" class="tab" hidden>
+      <div id="projects" class="grid"></div>
+    </section>
+
+    <section id="tab-isler" class="tab" hidden>
+      <form id="job-form" class="panel">
+        <h2>Yeni iş</h2>
+        <div class="row">
+          <label for="job-project">Proje</label>
+          <select id="job-project" required></select>
+        </div>
+        <label for="job-task">Görev</label>
+        <textarea id="job-task" rows="4" required placeholder="Örn. README'ye kurulum bölümü ekle"></textarea>
+        <div class="row between">
+          <label class="check"><input id="job-push" type="checkbox" checked> Dalı GitHub'a gönder (push)</label>
+          <button type="submit" class="primary">Kuyruğa ekle</button>
+        </div>
+        <p id="job-error" class="error" role="alert"></p>
+      </form>
+      <div class="split">
+        <div id="jobs" class="list"></div>
+        <div id="job-detail" class="panel detail" hidden></div>
+      </div>
+    </section>
+
+    <section id="tab-calismalar" class="tab" hidden>
+      <div id="runs" class="list"></div>
+    </section>
+  </main>
+  <footer id="foot" class="foot"></footer>
+</div>
+
+<dialog id="card-dialog">
+  <div class="dialog-head">
+    <h2 id="card-title"></h2>
+    <button id="card-close" class="ghost small" aria-label="Kapat">Kapat</button>
+  </div>
+  <div id="card-body" class="md"></div>
+</dialog>
+</body>
+</html>

@@ -14,6 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
+import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -107,7 +108,7 @@ async function memoryRoute(project) {
 
 // ---- workers ----------------------------------------------------------------------------------
 
-const VIAS = ["auto", "agy", "free", "claude"];
+const VIAS = ["auto", "free", "claude", ...Object.keys(AGENTS)];
 
 function parseRun(args) {
   const o = { via: "auto", cwd: process.cwd(), model: null, task: null, plugins: [], skills: [], project: null };
@@ -191,11 +192,12 @@ function pluginDirs(o) {
 
 async function runVia(via, o, logFile) {
   const prompt = `${WORKER_BRIEF}\n${o.task}`;
-  if (via === "agy") {
-    if (!has("agy")) return { code: 127, out: "agy is not installed" };
-    const argv = ["-p", prompt, "--dangerously-skip-permissions", "--print-timeout", process.env.EKIP_AGY_TIMEOUT ?? "0s"];
-    if (o.model ?? process.env.EKIP_AGY_MODEL) argv.push("--model", o.model ?? process.env.EKIP_AGY_MODEL);
-    return runChild("agy", argv, { cwd: o.cwd }, logFile);
+  if (AGENTS[via]) {
+    const a = AGENTS[via];
+    if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
+    if (a.free) await up({ quiet: true });
+    const model = o.model ?? (via === "agy" ? process.env.EKIP_AGY_MODEL : null);
+    return runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd }, logFile);
   }
   if (via === "claude") {
     // Your own subscription with your full setup (skills, plugins, MCP): for the hard parts.
@@ -217,7 +219,7 @@ const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "u
 async function runOne(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
-  const order = via === "auto" ? ["agy", "free"] : [via];
+  const order = via === "auto" ? autoOrder() : [via];
   let last = null;
   for (const v of order) {
     process.stderr.write(`ekip: worker via ${v} in ${o.cwd} (log: ${logFile})\n`);
@@ -557,6 +559,7 @@ let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
+  case "agents": await agentsMain(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;
