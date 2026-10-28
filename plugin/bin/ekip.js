@@ -297,7 +297,7 @@ function tunnel([sub = "status"]) {
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>
-  <key>StandardErrorPath</key><string>${path.join(HOME, "logs/tunnel.log")}</string>
+  <key>StandardErrorPath</key><string>${path.join(os.homedir(), "Library/Logs/ekip-tunnel.log")}</string>
 </dict></plist>
 `;
     fs.mkdirSync(path.dirname(plistPath()), { recursive: true });
@@ -588,7 +588,38 @@ function memoryDown() {
   sh("./stop-all.sh", [], { cwd: tdaiDeploy() });
 }
 
+// Past Claude Code sessions → TencentDB memory and skills, through TencentDB's own importer.
+// Each registered project's session folders go to that project's agent; other real projects go
+// to the default agent; scratch and temp folders are skipped. A shared state file makes re-runs
+// incremental (only new sessions are sent).
+async function importHistory() {
+  const key = adminKey() ?? die("no TencentDB admin key");
+  const tdai = depDir("tdai");
+  const importer = path.join(tdai, "agents/asset-import.ts");
+  if (!fs.existsSync(importer)) die(`TencentDB is not cloned at ${tdai}`);
+  const { identity } = await import("../lib/memory.js");
+  const me = await identity();
+  const base = path.join(os.homedir(), ".claude/projects");
+  const projects = registry();
+  const stateFile = path.join(HOME, "memory-state/asset-import.json");
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  const plan = [];
+  for (const dir of fs.readdirSync(base)) {
+    if (/scratch|-tmp-|Application-Support|^-Users-berkeduzgun$/.test(dir)) continue;
+    const owner = projects.filter((p) => dir.endsWith(`-Projects-${p.name}`) || dir.includes(`-Projects-${p.name}-`)).sort((a, b) => b.name.length - a.name.length)[0];
+    plan.push({ dir, agentId: owner?.tdai?.agentId ?? SETTINGS.tdaiDefaultAgent ?? die("set tdaiDefaultAgent in data/config.json (the default agent id)"), teamId: owner?.tdai?.teamId ?? me.teamId, project: owner?.name ?? "(default)" });
+  }
+  for (const x of plan) {
+    console.log(`\n── ${x.dir} → ${x.project}`);
+    spawnSync("node", [importer, "--source", "claude-code", "--sessions", path.join(base, x.dir), "--agent-id", x.agentId, "--team-id", x.teamId, "--state-file", stateFile, "-y"], {
+      cwd: tdai, stdio: "inherit",
+      env: { ...process.env, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key },
+    });
+  }
+}
+
 async function memory([sub = "status", ...rest]) {
+  if (sub === "import-history") return importHistory();
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
