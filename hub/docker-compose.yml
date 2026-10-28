@@ -39,6 +39,9 @@ services:
       PORT: 3001
       ENCRYPTION_KEY: ${FREELLMAPI_ENCRYPTION_KEY:?set FREELLMAPI_ENCRYPTION_KEY in .env}
       FREEAPI_CONFIG_PATH: /config/freellmapi.config.json
+      # Per-IP guard on /v1: every internal client (memory-core, wiki, backfill) shares one Docker IP,
+      # so the default 120/min throttled them against each other. Provider limits are tracked separately.
+      PROXY_RATE_LIMIT_RPM: ${FREELLMAPI_RPM:-1000}
     volumes:
       - freellmapi-data:/app/server/data
       - ./freellmapi.config.json:/config/freellmapi.config.json:ro
