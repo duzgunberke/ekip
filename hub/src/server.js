@@ -228,7 +228,57 @@ const publicJob = (j) => {
   return rest;
 };
 
-const runsCap = 2000, jobsCap = 2000;
+const runsCap = 2000, jobsCap = 2000, tasksCap = 500;
+
+// ---- tasks (live progress of user requests, pushed by the Mac) ------------------------------------
+
+const TASK_STATUS = ["running", "done", "failed", "cancelled"];
+const STEP_STATUS = ["pending", "running", "done", "failed", "skipped"];
+const pctOf = (v, field) => {
+  if (v == null) return null;
+  if (typeof v !== "number" || !Number.isFinite(v)) bad(`${field} must be a number`);
+  return Math.max(0, Math.min(100, v));
+};
+const arr = (v, max, field) => {
+  if (v == null) return [];
+  if (!Array.isArray(v) || v.length > max) bad(`${field} must be an array (max ${max})`);
+  return v.map((x, i) => { if (!x || typeof x !== "object") bad(`${field}[${i}] must be an object`); return x; });
+};
+
+function cleanTask(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) bad("task must be an object");
+  const id = str(b.id, 128, "id", { required: true });
+  if (!/^[\w.:-]+$/.test(id)) bad("invalid task id");
+  const status = str(b.status, 20, "status", { required: true });
+  if (!TASK_STATUS.includes(status)) bad(`status must be one of ${TASK_STATUS.join(", ")}`);
+  const ts = (v, f) => str(v, 40, f) ?? null;
+  return {
+    id,
+    title: str(b.title, 200, "title", { required: true }),
+    project: str(b.project, 128, "project") ?? null,
+    status,
+    createdAt: ts(b.createdAt, "createdAt"),
+    updatedAt: ts(b.updatedAt, "updatedAt"),
+    endedAt: ts(b.endedAt, "endedAt"),
+    steps: arr(b.steps, 50, "steps").map((s, i) => {
+      const st = str(s.status, 20, `steps[${i}].status`, { required: true });
+      if (!STEP_STATUS.includes(st)) bad(`steps[${i}].status must be one of ${STEP_STATUS.join(", ")}`);
+      return { title: str(s.title, 200, `steps[${i}].title`, { required: true }), status: st, pct: pctOf(s.pct, `steps[${i}].pct`), startedAt: ts(s.startedAt, `steps[${i}].startedAt`), endedAt: ts(s.endedAt, `steps[${i}].endedAt`) };
+    }),
+    workers: arr(b.workers, 100, "workers").map((w, i) => ({
+      runId: str(w.runId, 128, `workers[${i}].runId`) ?? null,
+      via: str(w.via, 40, `workers[${i}].via`) ?? null,
+      label: str(w.label, 200, `workers[${i}].label`) ?? null,
+      status: str(w.status, 40, `workers[${i}].status`) ?? null,
+      startedAt: ts(w.startedAt, `workers[${i}].startedAt`),
+      endedAt: ts(w.endedAt, `workers[${i}].endedAt`),
+    })),
+    notes: arr(b.notes, 200, "notes").map((n, i) => ({ at: ts(n.at, `notes[${i}].at`), text: str(n.text, 2000, `notes[${i}].text`) ?? "" })),
+    pct: pctOf(b.pct, "pct") ?? 0,
+    eta: ts(b.eta, "eta"),
+    host: str(b.host, 200, "host") ?? null,
+  };
+}
 
 // ---- status --------------------------------------------------------------------------------------
 
@@ -390,6 +440,24 @@ async function api(req, res, url) {
     const limit = Math.min(num(url.searchParams.get("limit"), 100), 1000);
     const list = [...store.runs.data].sort((a, b) => String(b.startedAt ?? b.receivedAt).localeCompare(String(a.startedAt ?? a.receivedAt))).slice(0, limit);
     return send(res, 200, list);
+  }
+
+  if (p === "/api/tasks" && m === "PUT") {
+    const task = { ...cleanTask(await readJson(req, 1_000_000)), receivedAt: new Date().toISOString() };
+    const i = store.tasks.data.findIndex((t) => t.id === task.id);
+    if (i >= 0) store.tasks.data[i] = task; else store.tasks.data.push(task);
+    trim(store.tasks.data, tasksCap, (t) => t.status === "running");
+    store.tasks.save();
+    return send(res, i >= 0 ? 200 : 201, { ok: true });
+  }
+  if (p === "/api/tasks" && m === "GET") {
+    const limit = Math.min(num(url.searchParams.get("limit"), 200), tasksCap);
+    const key = (t) => String(t.createdAt ?? t.receivedAt);
+    return send(res, 200, [...store.tasks.data].sort((a, b) => key(b).localeCompare(key(a))).slice(0, limit));
+  }
+  if ((match = p.match(/^\/api\/tasks\/([\w.:-]{1,128})$/)) && m === "GET") {
+    const task = store.tasks.data.find((t) => t.id === match[1]);
+    return task ? send(res, 200, task) : send(res, 404, { error: "no such task" });
   }
 
   if (p === "/api/heartbeat" && m === "POST") {

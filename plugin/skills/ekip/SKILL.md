@@ -17,7 +17,7 @@ splitting the work, integration and review. Everything well-scoped goes to worke
 | `agy` | Antigravity (strong models, Google quota) | substantial coding, research |
 | `codex`, `copilot`, `qwen`, `opencode` | other vendors' CLIs on their own accounts | same work, with a different model family |
 | `grok`, `free` | harnesses on pooled free-tier models (freellmapi) | small, precise, mechanical tasks |
-| `claude` | headless Claude on the subscription, with all of the user's skills and plugins | hard or skill-heavy work you would otherwise do yourself |
+| `claude` | headless Claude on the subscription | last resort: only after another pool failed at the task, or when the user asks |
 
 `ekip agents` shows which pools are installed and tested.
 
@@ -31,7 +31,8 @@ EOF
 **Options**
 
 - `--project NAME` works in a registered project. It sets the folder, and free workers get that project's memory through the memory proxy.
-- `--plugin NAME` or `--skill NAME` loads a Claude plugin or skill into a `free` or `claude` worker. Examples: `--plugin lemo-opuscar` for films, `--skill blender-modeling` for Blender.
+- `--plugin NAME` or `--skill NAME` works with every pool. Claude workers load it; agy, copilot and the other agents are told to read and follow its SKILL.md. Examples: `--via agy --plugin lemo-opuscar` for films, `--skill blender-modeling` for Blender.
+- Choosing a pool: the user's Claude limit is the scarce resource. Use agy or copilot for real work, and qwen, opencode, grok or free for light work. Skill-heavy work also goes to agy or copilot first.
 - `--via agy,codex,free` puts several models on the same task. Each one works in its own git worktree and branch, and you get each diffstat and report. Compare them, `git merge` the best branch, then run `ekip clean <id>`. Use this when quality matters or the approach is uncertain.
 
 **How to delegate**

@@ -75,3 +75,17 @@ export function normalizeRunStatus(s: string | null | undefined): string {
 /** Summaries are markdown one-liners; show them as plain text on cards. */
 export const stripMd = (s: string) =>
   s.replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+/** Compact duration in ms: "45 sn", "12 dk", "1 sa 5 dk". */
+export function span(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s} sn`
+  if (s < 3600) return `${Math.floor(s / 60)} dk ${s % 60 ? `${s % 60} sn` : ''}`.trim()
+  return `${Math.floor(s / 3600)} sa ${Math.floor((s % 3600) / 60)} dk`
+}
+
+export function clock(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : format(d, 'HH:mm', { locale: tr })
+}

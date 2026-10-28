@@ -271,8 +271,24 @@ function pluginDirs(o) {
   return dirs.flatMap((d) => ["--plugin-dir", d]);
 }
 
+// Where a --plugin / --skill lives on disk, so agents that cannot load Claude plugins can still read
+// and follow the skill (a skill is markdown instructions plus scripts).
+function skillDocs(o) {
+  const docs = [];
+  let installed = {};
+  try { installed = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude/plugins/installed_plugins.json"), "utf8")).plugins ?? {}; } catch { /* none */ }
+  for (const name of o.plugins) {
+    const hit = Object.entries(installed).find(([k]) => k === name || k.split("@")[0] === name);
+    const root = hit && [hit[1]].flat()[0].installPath;
+    if (root) for (const f of spawnSync("find", [root, "-name", "SKILL.md", "-maxdepth", "4"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)) docs.push(f);
+  }
+  for (const name of o.skills) { const f = path.join(os.homedir(), ".claude/skills", name, "SKILL.md"); if (fs.existsSync(f)) docs.push(fs.realpathSync(f)); }
+  return docs;
+}
+
 async function runVia(via, o, logFile) {
-  const prompt = `${WORKER_BRIEF}\n${o.task}`;
+  const docs = AGENTS[via] ? skillDocs(o) : [];
+  const prompt = `${WORKER_BRIEF}\n${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
   if (AGENTS[via]) {
     const a = AGENTS[via];
     if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
@@ -548,11 +564,16 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 | agy | Antigravity (strong models, Google quota) | substantial coding, research |
 | codex / copilot / qwen / opencode | other vendors' CLIs on their own quotas | same; a different model family |
 | grok, free | harnesses on pooled free-tier models (freellmapi) | small, precise, mechanical tasks |
-| claude | a headless Claude on the user's subscription with all their skills/plugins | hard or skill-heavy work you would otherwise do yourself |
+| claude | a headless Claude on the user's subscription | LAST RESORT: only when other pools failed at the task, or the user asks for it |
 
 - Options: \`--project NAME\` (a registered project; sets the folder and its memory) or \`--cwd DIR\`,
-  \`--model ID\`, \`--plugin NAME\` / \`--skill NAME\` (load a Claude plugin or skill into a free/claude
-  worker, e.g. \`--plugin lemo-opuscar\` for films, \`--skill blender-modeling\`). Long briefs: \`ekip run - <<'EOF' ... EOF\`.
+  \`--model ID\`, \`--plugin NAME\` / \`--skill NAME\`: works with EVERY pool (Claude workers load it, the
+  others are told to read and follow its SKILL.md), e.g. \`--via agy --plugin lemo-opuscar\` for films,
+  \`--skill blender-modeling\`. Long briefs: \`ekip run - <<'EOF' ... EOF\`.
+- Choosing a pool: the user's Claude limit is the scarce resource. Default to agy / copilot for real
+  work (they are strong), qwen / opencode / grok / free for light work. Skill-heavy work too: agy or
+  copilot with --plugin/--skill first. Use \`claude\` only after another pool failed at that task, or
+  when the user asks. Say in the task note which pool you chose and why.
 - Several models on the same task: \`--via agy,codex,free\` runs each in its own git worktree and branch
   and prints each diffstat and report. Compare, \`git merge\` the best, then \`ekip clean <id>\`.
   Use it when quality matters or an approach is uncertain.

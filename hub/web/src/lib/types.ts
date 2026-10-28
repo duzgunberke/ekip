@@ -141,3 +141,23 @@ export type RepoGraph = {
 }
 
 export type SymbolInfo = { name: string; kind: string; line: number; sig: string | null }
+
+export type TaskStatus = 'running' | 'done' | 'failed' | 'cancelled'
+export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+
+export type Task = {
+  id: string
+  title: string
+  project: string | null
+  status: TaskStatus
+  createdAt: string | null
+  updatedAt: string | null
+  endedAt: string | null
+  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null }[]
+  workers: { runId: string | null; via: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null }[]
+  notes: { at: string | null; text: string }[]
+  pct: number
+  eta: string | null
+  host: string | null
+  receivedAt: string
+}

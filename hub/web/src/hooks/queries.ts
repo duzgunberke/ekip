@@ -8,6 +8,7 @@ import type {
   Run,
   Status,
   SymbolInfo,
+  Task,
   Via,
 } from '@/lib/types'
 
@@ -18,6 +19,7 @@ export const qk = {
   jobs: ['jobs'] as const,
   job: (id: string) => ['jobs', id] as const,
   runs: ['runs'] as const,
+  tasks: ['tasks'] as const,
 }
 
 export const useStatus = () =>
@@ -116,4 +118,12 @@ export const useSymbols = (project: string, repo: string | undefined, file: stri
       ),
     enabled: !!repo && !!file,
     staleTime: 10 * 60_000,
+  })
+
+export const useTasks = () =>
+  useQuery({
+    queryKey: qk.tasks,
+    queryFn: ({ signal }) => api<Task[]>('/api/tasks?limit=200', { signal }),
+    refetchInterval: (q) => (q.state.data?.some((t) => t.status === 'running') ? 2_500 : 10_000),
+    refetchIntervalInBackground: false,
   })
