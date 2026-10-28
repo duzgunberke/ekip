@@ -16,7 +16,7 @@ import {
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
-import { banner, c, dot, rows, say, title, warn } from "../lib/ui.js";
+import { banner, c, dot, mark, rows, say, title, warn } from "../lib/ui.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -461,9 +461,8 @@ async function lead(args) {
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
-    console.log(banner());
-    console.log(`  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
-    if (SETTINGS.hubUrl) console.log(`  ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
+    console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
+    if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
     console.log("");
   }
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
@@ -735,7 +734,7 @@ async function status() {
   console.log(title("Havuzlar"));
   console.log(rows([
     [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} sağlayıcı ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}` : c.red("kapalı (ekip up)")],
-    ...Object.entries(AGENTS).map(([n, a]) => {
+    ...Object.entries(AGENTS).filter(([, a]) => !a.hidden?.()).map(([n, a]) => {
       const st = SETTINGS.agents?.[n];
       const state = !has(a.bin) ? "off" : st?.ok ? "ok" : st ? "bad" : "warn";
       const label = !has(a.bin) ? c.gray("kurulu değil") : st?.ok ? c.green("hazır") : st ? c.red("giriş/kota sorunu") : c.yellow("denenmedi");

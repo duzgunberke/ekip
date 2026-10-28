@@ -28,8 +28,25 @@ export const warn = (s) => process.stderr.write(`${c.yellow("ekip", process.stde
 
 export const strip = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
 
-export const banner = (stream = process.stdout) => [
-  c.magenta("  ┌─┐┬┌─┬┌─┐", stream),
-  `${c.magenta("  ├┤ ├┴┐│├─┘", stream)}  ${c.dim("one terminal, one Claude, a whole team", stream)}`,
-  c.magenta("  └─┘┴ ┴┴┴  ", stream),
-].join("\n");
+const LOGO = [
+  "███████╗██╗  ██╗██╗██████╗ ",
+  "██╔════╝██║ ██╔╝██║██╔══██╗",
+  "█████╗  █████╔╝ ██║██████╔╝",
+  "██╔══╝  ██╔═██╗ ██║██╔═══╝ ",
+  "███████╗██║  ██╗██║██║     ",
+  "╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ",
+];
+// Violet → cyan, one color per row; truecolor when the terminal says so, else the 256-color cube.
+const GRADIENT = [[167, 139, 250], [139, 151, 248], [111, 163, 246], [83, 175, 244], [56, 189, 238], [34, 211, 238]];
+const rgb = ([r, g, b], s) => (process.env.COLORTERM?.match(/truecolor|24bit/)
+  ? `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`
+  : `\x1b[38;5;${16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51)}m${s}\x1b[39m`);
+
+/** The big logo with a tagline beside its lower half (status, help, init). */
+export function banner(stream = process.stdout) {
+  const tag = ["", "", "", c.bold("tek terminal, tek Claude, koca bir ekip", stream), c.gray("işler başka kotalara · her proje kendi hafızasıyla", stream), ""];
+  return `\n${LOGO.map((l, i) => `  ${on(stream) ? rgb(GRADIENT[i], l) : l}   ${tag[i]}`.trimEnd()).join("\n")}`;
+}
+
+/** One line for the top of a lead session. */
+export const mark = (stream = process.stdout) => (on(stream) ? `${rgb(GRADIENT[0], "◆")} ${c.bold(rgb(GRADIENT[2], "ekip"), stream)}` : "◆ ekip");

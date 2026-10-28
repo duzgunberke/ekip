@@ -3,10 +3,14 @@
 // `ekip agents` lists them; install and login are one command each; `test` probes a real prompt
 // and marks the agent usable for --via auto.
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
 import { c, dot } from "./ui.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
+const qwenOAuth = () => fs.existsSync(path.join(os.homedir(), ".qwen/oauth_creds.json"));
 
 /**
  * name: { bin, pkg (npm, global), quota, login (interactive command), argv(prompt, o) -> args,
@@ -23,7 +27,9 @@ export const AGENTS = {
     bin: "codex", pkg: "@openai/codex", quota: "ChatGPT plan (OpenAI)", login: ["codex", "login"],
     argv: (p, o) => ["exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-C", o.cwd, ...model(o), p],
   },
+  // Only with an API key: the personal Google tier is Antigravity (agy) now.
   gemini: {
+    hidden: () => !process.env.GEMINI_API_KEY,
     bin: "gemini", pkg: "@google/gemini-cli", quota: "Gemini API key (GEMINI_API_KEY; the personal free tier moved to agy)", login: null,
     argv: (p, o) => ["-p", p, "--yolo", "--skip-trust", ...model(o)],
   },
@@ -32,8 +38,12 @@ export const AGENTS = {
     argv: (p, o) => ["-p", p, "--allow-all-tools", "--allow-all-paths", ...model(o)],
   },
   qwen: {
-    bin: "qwen", pkg: "@qwen-code/qwen-code", quota: "Qwen Code (Qwen account)", login: ["qwen"],
-    argv: (p, o) => ["-p", p, "--yolo", ...model(o)],
+    // Qwen's own free tier once you sign in (`qwen`, then /auth); until then Qwen Code runs on the
+    // free pool, which makes it one more harness there.
+    bin: "qwen", pkg: "@qwen-code/qwen-code", login: ["qwen"],
+    get quota() { return qwenOAuth() ? "Qwen account (Qwen OAuth)" : "free pool via freellmapi (sign in with `qwen` → /auth for Qwen's own tier)"; },
+    get free() { return !qwenOAuth(); },
+    argv: (p, o) => ["-p", p, "--yolo", ...(qwenOAuth() ? ["--auth-type", "qwen-oauth", ...model(o)] : ["--auth-type", "openai", "--openai-api-key", unifiedKey(), "--openai-base-url", `${URL_ROOT}/v1`, "-m", o.model ?? "auto"])],
   },
   opencode: {
     bin: "opencode", pkg: "opencode-ai", quota: "OpenCode (its free models or your providers)", login: ["opencode", "auth", "login"],
@@ -52,14 +62,14 @@ const setState = (name, patch) => saveSettings({ agents: { ...state(), [name]: {
 /** Agents for --via auto, in order: those that passed `ekip agents test`, then the free pool. */
 export function autoOrder() {
   const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
-  return [...order.filter((n) => AGENTS[n] && has(AGENTS[n].bin) && state()[n]?.ok), "free"];
+  return [...order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok), "free"];
 }
 
 export async function main([sub = "ls", ...names]) {
-  const pick = names.length ? names : Object.keys(AGENTS);
+  const pick = names.length ? names : Object.keys(AGENTS).filter((n) => !AGENTS[n].hidden?.());
   for (const n of pick) if (!AGENTS[n]) die(`unknown agent ${n} (${Object.keys(AGENTS).join(", ")})`);
   if (sub === "ls") {
-    for (const [n, a] of Object.entries(AGENTS)) {
+    for (const [n, a] of Object.entries(AGENTS).filter(([, a]) => !a.hidden?.())) {
       const s = state()[n];
       const st = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
       const label = !has(a.bin) ? c.gray("kurulu değil     ") : s?.ok ? c.green("hazır            ") : s ? c.red("giriş/kota sorunu") : c.yellow("denenmedi        ");
