@@ -336,6 +336,7 @@ async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
   if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
+  await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
   const order = via === "auto" ? autoOrder() : [via];
@@ -546,12 +547,21 @@ async function report(run) {
     const { recordRun } = await import("../lib/memory.js");
     await Promise.race([recordRun(run.project, run), sleep(15000)]);
   } catch { /* memory is best effort */ }
+  await postRun({ ...run, finishedAt: new Date().toISOString() });
+}
+
+// The run id starts with its start time (2026-10-28T21-18-11-017Z-agy).
+const runStart = (id) => id.slice(0, 24).replace(/^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "$1T$2:$3:$4.$5Z");
+
+// Same hub record as report(), posted when a worker starts so the panel shows it while it runs;
+// report() later overwrites it by id.
+async function postRun(run) {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   const { pending } = await import("../lib/tasks.js");
   const pr = fetch(`${SETTINGS.hubUrl}/api/runs`, {
     method: "POST", signal: AbortSignal.timeout(5000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
-    body: JSON.stringify({ ...run, host: os.hostname(), finishedAt: new Date().toISOString() }),
+    body: JSON.stringify({ startedAt: runStart(run.id), ...run, host: os.hostname() }),
   }).catch(() => {}).finally(() => pending.delete(pr));
   pending.add(pr);
 }
