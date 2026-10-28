@@ -14,7 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
-import { REMOTE, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
+import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
@@ -512,16 +512,29 @@ async function init({ skipKeys = false } = {}) {
   clone("tdai");
   await memoryUp();
 
-  step(6, "Claude Code plugin (the ekip skill in every session)");
+  step(6, "Claude Code plugin, MCP servers, code graph");
+  fs.mkdirSync(path.dirname(POINTER), { recursive: true });
+  fs.writeFileSync(POINTER, `${ROOT}\n`);
   spawnSync("claude", ["plugin", "marketplace", "add", REPO], { stdio: "inherit" });
   spawnSync("claude", ["plugin", "install", "ekip@ekip"], { stdio: "inherit" });
-  await memoryMcp();
+  if (!has("codegraph")) sh("npm", ["i", "-g", "@colbymchenry/codegraph"]);
+  for (const [name, argv] of [["ekip", ["node", path.join(ROOT, "plugin/bin/ekip.js"), "mcp"]], ["codegraph", ["codegraph", "serve", "--mcp"]]]) {
+    if (spawnSync("claude", ["mcp", "get", name], { stdio: "ignore" }).status !== 0) sh("claude", ["mcp", "add", "-s", "user", name, "--", ...argv]);
+  }
+
+  step(7, "worker agent CLIs (each one is another quota)");
+  await agentsMain(["install"]);
 
   if (!skipKeys && process.stdin.isTTY) {
-    step(7, "free-tier keys");
+    step(8, "free-tier keys");
     await keyWizard();
+    step(9, "agent logins (codex, qwen, opencode, copilot; Enter through any you don't use)");
+    await agentsMain(["login"]);
+    step(10, "your projects");
+    console.log("Registering projects with a commit in the last 30 days (cards, wiki, code graphs, memory):");
+    await (await import("../lib/projects.js")).main(["scan", "--days", "30", "--yes"]);
   }
-  console.log("\nDone. Start with: ekip    (status: ekip status, more keys: ekip keys)");
+  console.log("\nDone. Open a new terminal and run: ekip");
 }
 
 // ---- TencentDB Agent Memory ---------------------------------------------------------------------
