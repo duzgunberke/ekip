@@ -759,7 +759,13 @@ async function memoryUp() {
     MEMORY_CORE_VOLUME: coreData, PANEL_VOLUME: panelData,
   });
   patchTdaiScripts(dir);
-  setEnvValues(env, { CODE_SOURCE_ENABLED: "gongfeng" });
+  setEnvValues(env, {
+    CODE_SOURCE_ENABLED: "gongfeng",
+    // Real vector search: a pinned embedding model (dimensions must never change for one index).
+    MEMORY_EMBEDDING_PROVIDER: "openai", MEMORY_EMBEDDING_BASE_URL: `http://host.docker.internal:${PORT}/v1`,
+    MEMORY_EMBEDDING_API_KEY: key, MEMORY_EMBEDDING_MODEL: "gemini-embedding-001", MEMORY_EMBEDDING_DIMENSIONS: "768",
+    MEMORY_LLM_MODEL: "auto:memory",
+  });
   if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every(containerRunning)) { console.log("memory stack already running"); return; }
   // start-all.sh probes the LLM from the host, where host.docker.internal does not resolve; the
   // three service scripts it wraps need no probe.
@@ -771,6 +777,13 @@ async function memoryUp() {
 // TencentDB's hub script passes a fixed list of env vars; private GitHub code graphs need the
 // "gongfeng" code source (https clone with a token), so add that variable to the list.
 export function patchTdaiScripts(dir) {
+  // memory-core ships with embeddings off ("provider: none" = keyword search only); make the block
+  // read MEMORY_EMBEDDING_* so it can use an OpenAI-compatible embeddings endpoint (freellmapi).
+  const core = path.join(dir, "start-memory-core.sh");
+  const ct = fs.readFileSync(core, "utf8");
+  if (!ct.includes("MEMORY_EMBEDDING_PROVIDER")) {
+    fs.writeFileSync(core, ct.replace("  embedding:\n    provider: none\n", '  embedding:\n    provider: ${MEMORY_EMBEDDING_PROVIDER:-none}\n    baseUrl: "${MEMORY_EMBEDDING_BASE_URL:-}"\n    apiKey: "${MEMORY_EMBEDDING_API_KEY:-}"\n    model: "${MEMORY_EMBEDDING_MODEL:-}"\n    dimensions: ${MEMORY_EMBEDDING_DIMENSIONS:-768}\n'));
+  }
   const f = path.join(dir, "start-memory-hub.sh");
   const text = fs.readFileSync(f, "utf8");
   if (text.includes("CODE_SOURCE_ENABLED")) return;
