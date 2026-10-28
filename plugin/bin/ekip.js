@@ -737,7 +737,7 @@ async function status() {
     ...Object.entries(AGENTS).filter(([, a]) => !a.hidden?.()).map(([n, a]) => {
       const st = SETTINGS.agents?.[n];
       const state = !has(a.bin) ? "off" : st?.ok ? "ok" : st ? "bad" : "warn";
-      const label = !has(a.bin) ? c.gray("kurulu değil") : st?.ok ? c.green("hazır") : st ? c.red("giriş/kota sorunu") : c.yellow("denenmedi");
+      const label = !has(a.bin) ? c.gray("kurulu değil") : st?.ok ? c.green("hazır") : st ? c.red(a.login ? `giriş gerekiyor → ekip agents login ${n}` : "çalışmıyor → ekip agents test") : c.yellow("denenmedi");
       return [`${dot(state)} ${n}`, `${label} ${c.gray(a.quota)}`];
     }),
     [`${dot("ok")} claude`, `${c.green("hazır")} ${c.gray("aboneliğin (lead)")}`],

@@ -34,5 +34,7 @@ export function compareUrl(repo: string | null | undefined, base: string | undef
   if (!repo || !base || !branch) return null
   const r = parseRepo(repo)
   if (!r.github) return null
-  return `https://github.com/${r.github.owner}/${r.github.name}/compare/${encodeURIComponent(base)}...${encodeURIComponent(branch)}`
+  return `https://github.com/${r.github.owner}/${r.github.name}/compare/${enc(base)}...${enc(branch)}`
 }
+
+const enc = (ref: string) => ref.split('/').map(encodeURIComponent).join('/')
