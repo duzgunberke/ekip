@@ -537,12 +537,23 @@ async function memoryUp() {
     PROXY_UPSTREAM_URL: `http://host.docker.internal:${PORT}`, PROXY_UPSTREAM_API_KEY: key, PROXY_UPSTREAM_MODEL: "auto",
     MEMORY_CORE_VOLUME: coreData, PANEL_VOLUME: panelData,
   });
+  patchTdaiScripts(dir);
+  setEnvValues(env, { CODE_SOURCE_ENABLED: "gongfeng" });
   if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every(containerRunning)) { console.log("memory stack already running"); return; }
   // start-all.sh probes the LLM from the host, where host.docker.internal does not resolve; the
   // three service scripts it wraps need no probe.
   for (const script of ["start-memory-core.sh", "start-memory-hub.sh", "start-proxy.sh"]) {
     sh(`./${script}`, [], { cwd: dir, env: { ...process.env, PROXY_FULL_STACK: "1" } });
   }
+}
+
+// TencentDB's hub script passes a fixed list of env vars; private GitHub code graphs need the
+// "gongfeng" code source (https clone with a token), so add that variable to the list.
+export function patchTdaiScripts(dir) {
+  const f = path.join(dir, "start-memory-hub.sh");
+  const text = fs.readFileSync(f, "utf8");
+  if (text.includes("CODE_SOURCE_ENABLED")) return;
+  fs.writeFileSync(f, text.replace("  -e KNOWLEDGE_PORT=8424 \\\n", "  -e KNOWLEDGE_PORT=8424 \\\n  -e CODE_SOURCE_ENABLED=\"${CODE_SOURCE_ENABLED:-}\" \\\n"));
 }
 
 function memoryDown() {
@@ -670,6 +681,9 @@ switch (cmd) {
   case "hub": await hub(rest); break;
   case "vps": await vpsMain(rest); break;
   case "tunnel": tunnel(rest); break;
+  case "project": case "projects": code = (await (await import("../lib/projects.js")).main(rest)) ?? 0; break;
+  case "mcp": code = (await (await import("../lib/mcp.js")).main(rest)) ?? 0; break;
+  case "hook": code = (await (await import("../lib/hooks.js")).main(rest)) ?? 0; break;
   case "remote": await remote(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
@@ -681,6 +695,9 @@ switch (cmd) {
   case "down": await down(); console.error("ekip: freellmapi stopped"); break;
   case "logs": spawnSync("tail", ["-n", "60", LOG], { stdio: "inherit" }); break;
   case "help": case "-h": case "--help": process.stdout.write(HELP); break;
-  default: code = await lead(cmd ? [cmd, ...rest] : []);
+  default:
+    // Only flags (or nothing) start the lead session; an unknown word is a typo, not a prompt.
+    if (cmd && !cmd.startsWith("-")) die(`unknown command ${cmd} (ekip help)`);
+    code = await lead(cmd ? [cmd, ...rest] : []);
 }
 process.exit(code);
