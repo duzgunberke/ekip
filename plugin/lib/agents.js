@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
+import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
 import { c, dot } from "./ui.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
@@ -59,10 +59,39 @@ export const AGENTS = {
 const state = () => SETTINGS.agents ?? {};
 const setState = (name, patch) => saveSettings({ agents: { ...state(), [name]: { ...state()[name], ...patch } } });
 
-/** Agents for --via auto, in order: those that passed `ekip agents test`, then the free pool. */
+// Per-pool outcomes of real runs (data/pool-stats.json), so --via auto learns which pools deliver.
+const STATS = () => path.join(HOME, "pool-stats.json");
+const readStats = () => { try { return JSON.parse(fs.readFileSync(STATS(), "utf8")); } catch { return {}; } };
+
+/** Called after every worker run: success, duration, last failure time (last 50 per pool). */
+export function recordStat(via, ok, ms) {
+  const all = readStats();
+  const s = all[via] ??= { runs: [] };
+  s.runs = [...s.runs, { ok, ms, at: Date.now() }].slice(-50);
+  if (!ok) s.lastFailAt = Date.now();
+  fs.writeFileSync(STATS(), JSON.stringify(all));
+}
+
+/** Success rate of the last runs (neutral 0.7 with no history) and whether it failed just now. */
+export function poolScore(via) {
+  const s = readStats()[via];
+  const runs = s?.runs ?? [];
+  const rate = runs.length ? runs.filter((r) => r.ok).length / runs.length : 0.7;
+  const cooling = !!s?.lastFailAt && Date.now() - s.lastFailAt < 15 * 60 * 1000;
+  return { rate, cooling, runs: runs.length, avgMin: runs.length ? Math.round(runs.reduce((a, r) => a + r.ms, 0) / runs.length / 60000) : null };
+}
+
+/**
+ * Agents for --via auto: those that passed `ekip agents test`, in the configured order, re-ranked
+ * by their real success rate; a pool that failed in the last 15 minutes goes to the back. The
+ * free pool is always last.
+ */
 export function autoOrder() {
   const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
-  return [...order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok), "free"];
+  const ok = order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok);
+  const ranked = ok.map((n, i) => ({ n, i, ...poolScore(n) }))
+    .sort((a, b) => (a.cooling - b.cooling) || (Math.round((b.rate - a.rate) * 5) - Math.round((a.rate - b.rate) * 5)) / 2 || a.i - b.i);
+  return [...ranked.map((x) => x.n), "free"];
 }
 
 export async function main([sub = "ls", ...names]) {
@@ -73,7 +102,9 @@ export async function main([sub = "ls", ...names]) {
       const s = state()[n];
       const st = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
       const label = !has(a.bin) ? c.gray("kurulu değil     ") : s?.ok ? c.green("hazır            ") : s ? c.red(a.login ? `giriş gerekiyor → ekip agents login ${n}` : "çalışmıyor") : c.yellow("denenmedi        ");
-      console.log(`  ${dot(st)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}`);
+      const sc = poolScore(n);
+      const perf = sc.runs ? c.gray(` · ${sc.runs} iş, %${Math.round(sc.rate * 100)} başarı${sc.avgMin != null ? `, ort. ${sc.avgMin} dk` : ""}${sc.cooling ? ", şu an geri planda" : ""}`) : "";
+      console.log(`  ${dot(st)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}${perf}`);
     }
     console.log(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
   } else if (sub === "install") {

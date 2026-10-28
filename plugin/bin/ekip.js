@@ -15,7 +15,7 @@ import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, openPane, restartFree, ssh } from "../lib/core.js";
-import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
+import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn } from "../lib/ui.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
@@ -316,7 +316,9 @@ async function runVia(via, o, logFile) {
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 
 async function runOne(o, via, id) {
+  const t0 = Date.now();
   const r = await runOneInner(o, via, id);
+  recordStat(r.via ?? via, r.ok, Date.now() - t0);
   if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed");
   return r;
 }
@@ -549,6 +551,12 @@ async function report(run) {
 
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
 
+## Your own subagents
+Your Claude limit is the scarce resource. Hand work to ekip workers first. When you do need a
+subagent of your own, pick the cheapest that fits: the \`scout\` agent (Haiku, read-only) to find code
+or facts, the \`implementer\` agent (Sonnet) for a coding step that needs this session's tools or
+skills. Other subagents run on Sonnet by default. Keep your own context for decisions and review.
+
 ## Progress the user can see (mandatory)
 For EVERY user request that takes more than a minute, before doing anything else:
   id=$(ekip task new "<short Turkish title>" --project <name if any> --steps "<step 1>; <step 2>; ...")
@@ -616,7 +624,11 @@ async function lead(args) {
   const safe = args.includes("--safe");
   args = args.filter((a) => a !== "--safe");
   const explicit = args.some((a) => a === "--permission-mode" || a === "--dangerously-skip-permissions");
-  const env = free ? await freeEnv() : process.env;
+  const env = free ? await freeEnv() : { ...process.env };
+  // The lead thinks on your main model (Opus); subagents it spawns run on Sonnet unless set
+  // otherwise ("subagentModel" in data/config.json; "inherit" keeps the lead's model).
+  const sub = SETTINGS.subagentModel ?? "sonnet";
+  if (!free && sub !== "inherit" && !env.CLAUDE_CODE_SUBAGENT_MODEL) env.CLAUDE_CODE_SUBAGENT_MODEL = sub;
   const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
