@@ -186,6 +186,36 @@ export const adminKey = () => {
   return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
 };
 
+// In iTerm2, a worker opens as a split pane next to the lead's own session (ITERM_SESSION_ID is
+// inherited from the lead): the first one splits the lead vertically, later ones stack under the
+// previous worker pane. Elsewhere it falls back to a new window.
+export function openPane(command) {
+  const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
+  if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "iTerm.app" || !lead) return openTerminal(command);
+  const stateFile = path.join(HOME, "panes", `${lead}.txt`);
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  const prev = fs.existsSync(stateFile) ? fs.readFileSync(stateFile, "utf8").trim() : "";
+  const shellCmd = `/bin/zsh -lc ${JSON.stringify(command)}`;
+  const script = (anchor, how) => `tell application "iTerm2"
+  set target to missing value
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if id of s is "${anchor}" then set target to s
+      end repeat
+    end repeat
+  end repeat
+  if target is missing value then return ""
+  tell target
+    set n to (split ${how} with default profile command ${JSON.stringify(shellCmd)})
+  end tell
+  return id of n
+end tell`;
+  const run = (anchor, how) => spawnSync("osascript", ["-e", script(anchor, how)], { encoding: "utf8" }).stdout.trim();
+  const id = (prev && run(prev, "horizontally")) || run(lead, "vertically");
+  if (id) fs.writeFileSync(stateFile, id); else openTerminal(command);
+}
+
 export function openTerminal(command) {
   if (process.platform !== "darwin") { console.log(`run in a new terminal: ${command}`); return; }
   const app = process.env.TERM_PROGRAM === "iTerm.app" ? "iTerm" : "Terminal";

@@ -14,7 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
-import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
+import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, openPane, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn } from "../lib/ui.js";
 import { main as vpsMain } from "../lib/vps.js";
@@ -190,6 +190,54 @@ function runChild(cmd, argv, opts, logFile) {
   });
 }
 
+// Workers that can stream JSON events (agy, claude) are run that way: the log gets one readable
+// line per tool call plus the text as it is written (so `ekip watch` shows the work live), and the
+// final report is the last answer, not the whole event stream.
+const brief = (o) => {
+  if (!o || typeof o !== "object") return String(o ?? "");
+  const v = o.CommandLine ?? o.command ?? o.file_path ?? o.AbsolutePath ?? o.TargetFile ?? o.path ?? o.pattern ?? o.Query ?? o.query ?? o.url ?? o.description ?? Object.values(o).find((x) => typeof x === "string") ?? "";
+  return String(v).replace(/\s+/g, " ").slice(0, 160);
+};
+
+function runStream(cmd, argv, opts, logFile, kind) {
+  return new Promise((resolve) => {
+    const log = fs.createWriteStream(logFile, { flags: "a" });
+    log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n\n`);
+    const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
+    let buf = "", raw = "", final = "", lastStep = -1, steps = new Map();
+    const onEvent = (e) => {
+      if (kind === "agy" && e.event === "step_update") {
+        const u = e.step_update;
+        if (u.step_type === "tool" && u.state === "ACTIVE" && u.tool_name) log.write(`\n▸ ${u.tool_name}: ${brief(u.tool_info?.parameters)}\n`);
+        if (u.step_type === "agent_response" && u.text_delta) {
+          if (u.step_index !== lastStep) { log.write("\n"); lastStep = u.step_index; }
+          steps.set(u.step_index, (steps.get(u.step_index) ?? "") + u.text_delta);
+          log.write(u.text_delta);
+        }
+      } else if (kind === "claude") {
+        if (e.type === "assistant") for (const b of e.message?.content ?? []) {
+          if (b.type === "tool_use") log.write(`\n▸ ${b.name}: ${brief(b.input)}\n`);
+          else if (b.type === "text" && b.text.trim()) log.write(`\n${b.text}\n`);
+        } else if (e.type === "result") final = e.result ?? "";
+      }
+    };
+    child.stdout.on("data", (d) => {
+      raw += d; buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        try { onEvent(JSON.parse(line)); } catch { if (line.trim()) log.write(`${line}\n`); }
+      }
+    });
+    child.stderr.on("data", (d) => { raw += d; log.write(d); });
+    child.on("close", (code) => {
+      if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
+      log.end(`\n\n[exit ${code}]\n`);
+      resolve({ code, out: final.trim() ? final : raw });
+    });
+  });
+}
+
 // A run that "succeeded" but only reports a quota or auth failure counts as failed, so auto moves on.
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
 const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && LIMIT_RE.test(r.out));
@@ -226,21 +274,22 @@ async function runVia(via, o, logFile) {
     if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
     if (a.free) await up({ quiet: true });
     const model = o.model ?? (via === "agy" ? process.env.EKIP_AGY_MODEL : null);
+    if (via === "agy") return runStream(a.bin, [...a.argv(prompt, { ...o, model }), "--output-format", "stream-json"], { cwd: o.cwd }, logFile, "agy");
     return runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd }, logFile);
   }
   if (via === "claude") {
     // Your own subscription with your full setup (skills, plugins, MCP): for the hard parts.
-    const argv = ["-p", prompt, "--permission-mode", "bypassPermissions", ...pluginDirs(o)];
+    const argv = ["-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose", ...pluginDirs(o)];
     if (o.model) argv.push("--model", o.model);
-    return runChild("claude", argv, { cwd: o.cwd }, logFile);
+    return runStream("claude", argv, { cwd: o.cwd }, logFile, "claude");
   }
   const env = await freeEnv(o.project);
   env.ANTHROPIC_API_KEY = env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_AUTH_TOKEN;
   if (o.model) Object.assign(env, { ANTHROPIC_MODEL: o.model, ANTHROPIC_DEFAULT_SONNET_MODEL: o.model, ANTHROPIC_DEFAULT_OPUS_MODEL: o.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: o.model });
   // --bare: no user hooks, plugins or memory, so the free models get a small, plain context.
-  const argv = ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions", ...pluginDirs(o)];
-  return runChild("claude", argv, { cwd: o.cwd, env }, logFile);
+  const argv = ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose", ...pluginDirs(o)];
+  return runStream("claude", argv, { cwd: o.cwd, env }, logFile, "claude");
 }
 
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -248,6 +297,8 @@ const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "u
 async function runOne(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
+  // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
+  if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
   const order = via === "auto" ? autoOrder() : [via];
   let last = null;
   for (const v of order) {
@@ -265,7 +316,7 @@ async function run(args) {
   if (o.vias.length === 1) {
     const r = await runOne(o, o.vias[0], id);
     process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${r.out}\n`);
-    report({ id, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+    await report({ id, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
     return r.ok ? 0 : 1;
   }
   // Several pools on the same task: each gets its own git worktree and branch, so they cannot
@@ -288,7 +339,7 @@ async function run(args) {
   }));
   for (const r of results) {
     process.stdout.write(`\n=== ${r.via} (${r.ok ? "done" : "FAILED"}) branch ${r.branch}${r.dir ? `, worktree ${r.dir}` : ""}\n${r.stat || "(no changes)"}\n--- report\n${r.out.slice(-3000)}\n`);
-    report({ id: `${id}-${r.via}`, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+    await report({ id: `${id}-${r.via}`, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
   }
   process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
   return results.some((r) => r.ok) ? 0 : 1;
@@ -305,6 +356,40 @@ function clean([short]) {
   }
   fs.rmSync(base, { recursive: true, force: true });
   console.log(`removed worktrees and branches of ${short}`);
+}
+
+// ekip watch <log>: follow a worker's log in color until it exits, then keep the window for reading.
+async function watch([file]) {
+  if (!file || !fs.existsSync(file)) die("usage: ekip watch <run log>");
+  const name = path.basename(file, ".log");
+  process.stdout.write(`\x1b]0;ekip · ${name.slice(25) || name}\x07`);
+  const head = fs.readFileSync(file, "utf8").split("\n\n")[0].split("\n");
+  console.log(`${mark()}  ${c.bold(head.find((l) => l.startsWith("project:"))?.slice(9) ?? "")} ${c.gray(head[0]?.slice(5) ?? "")}`);
+  const color = (line) => (line.startsWith("▸ ") ? c.cyan(line) : line.startsWith("$ ") ? c.gray(line.slice(0, 160)) : /^\[exit 0\]/.test(line) ? c.green(line) : /^\[exit/.test(line) ? c.red(line) : line);
+  let pos = 0, pending = "", done = false;
+  while (!done) {
+    const size = fs.statSync(file).size;
+    if (size > pos) {
+      const fd = fs.openSync(file, "r");
+      const b = Buffer.alloc(size - pos);
+      fs.readSync(fd, b, 0, b.length, pos);
+      fs.closeSync(fd);
+      pos = size;
+      pending += b.toString("utf8");
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const l of lines) { process.stdout.write(`${color(l)}\n`); if (/^\[exit -?\d+\]/.test(l)) done = true; }
+      if (pending && !pending.startsWith("▸") && !pending.startsWith("[")) { process.stdout.write(pending); pending = ""; }
+    }
+    if (!done) await sleep(400);
+  }
+  // A finished worker's pane closes by itself after a while (Enter closes it now).
+  console.log(`\n${c.gray("bitti · bu bölme 90 sn sonra kapanır (Enter: hemen kapat)")}`);
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode?.(true);
+    await Promise.race([new Promise((r) => process.stdin.once("data", r)), sleep(90_000)]);
+  } else await sleep(90_000);
+  process.exit(0);
 }
 
 // ---- tunnel to the VPS hub (launchd keeps it up across sleep, network changes and reboots) ----
@@ -412,8 +497,13 @@ async function hub([sub, url, token]) {
   else die("usage: ekip hub link <url> <token> | push | status | open");
 }
 
-// Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together.
-function report(run) {
+// Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together,
+// and written to the project's memory so later sessions know what was done.
+async function report(run) {
+  try {
+    const { recordRun } = await import("../lib/memory.js");
+    await Promise.race([recordRun(run.project, run), sleep(15000)]);
+  } catch { /* memory is best effort */ }
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   fetch(`${SETTINGS.hubUrl}/api/runs`, {
     method: "POST", signal: AbortSignal.timeout(5000),
@@ -810,6 +900,7 @@ let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
   case "clean": clean(rest); break;
+  case "watch": await watch(rest); break;
   case "agents": await agentsMain(rest); break;
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;

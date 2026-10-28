@@ -54,7 +54,7 @@ export async function main([sub, ...rest] = []) {
     } else if (sub === "stop") {
       const input = await readStdin();
       const cwd = input.cwd || process.cwd();
-      if (input.transcript_path && findProject(cwd)) {
+      if (input.transcript_path) {
         fs.mkdirSync(path.join(HOME, "logs"), { recursive: true });
         const out = fs.openSync(path.join(HOME, "logs/capture.log"), "a");
         // Runs this module directly (not via ekip.js) so capture never depends on CLI dispatch.
@@ -65,9 +65,9 @@ export async function main([sub, ...rest] = []) {
       }
     } else if (sub === "capture") {
       const [transcript, sessionId, cwd] = rest;
-      const p = findProject(cwd || process.cwd());
-      if (p && transcript && fs.existsSync(transcript)) {
-        const mem = await import("./memory.js");
+      const mem = await import("./memory.js");
+      const p = findProject(cwd || process.cwd()) ?? mem.generalProject();
+      if (p.tdai?.agentId && transcript && fs.existsSync(transcript)) {
         const r = await mem.capture(p, transcript, sessionId);
         console.log(`${new Date().toISOString()} ${p.name} ${sessionId}: ${JSON.stringify(r)}`);
       }

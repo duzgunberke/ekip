@@ -2,6 +2,7 @@
 // HTTP only, always to 127.0.0.1:<TDAI_PORTS> (on a VPS hub those ports are SSH tunnels).
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { HOME, SETTINGS, TDAI_PORTS, adminKey, die } from "./core.js";
 import { getProject, listProjects, updateProject, findProject } from "./projects.js";
@@ -297,6 +298,22 @@ async function addConversation(p, sessionId, messages) {
     sent += batch.length;
   }
   return sent;
+}
+
+/** Sessions outside any registered project go to the admin's default agent as "genel". */
+export function generalProject() {
+  return { name: "genel", path: os.homedir(), tdai: { agentId: SETTINGS.tdaiDefaultAgent ?? null } };
+}
+
+/** A worker run (task + final report) as a short exchange in the project's memory. */
+export async function recordRun(project, { id, via, task, report, status }) {
+  const p = project ? resolve(project) : generalProject();
+  if (!p.tdai?.agentId) return { skipped: "no agent" };
+  const sent = await addConversation(p, `ekip-run-${String(id).replace(/[^A-Za-z0-9_-]/g, "_")}`, [
+    { role: "user", content: `[ekip worker task, via ${via}] ${String(task).slice(0, MSG_MAX - 60)}` },
+    { role: "assistant", content: `[${status}] ${String(report || "(no report)").slice(-(MSG_MAX - 20))}` },
+  ]);
+  return { sent };
 }
 
 // A note goes in as a short exchange so L1 extraction picks it up; recall finds it at once in L0.
