@@ -14,6 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
+import { REMOTE, TUNNEL_LABEL, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain } from "../lib/agents.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
@@ -59,8 +60,7 @@ async function keyWizard({ all = false } = {}) {
     added++;
   }
   if (!added) return;
-  await down();
-  await up();
+  await restartFree();
   const counts = Object.fromEntries(keyCounts());
   for (const p of PROVIDERS) if (cfg.keys.some((k) => k.platform === p.platform)) console.log(`${p.label}: ${counts[p.platform] ? "active" : "NOT accepted, see ekip logs"}`);
 }
@@ -277,6 +277,54 @@ function clean([short]) {
   }
   fs.rmSync(base, { recursive: true, force: true });
   console.log(`removed worktrees and branches of ${short}`);
+}
+
+// ---- tunnel to the VPS hub (launchd keeps it up across sleep, network changes and reboots) ----
+
+const TUNNEL_PORTS = [PORT, TDAI_PORTS.core, TDAI_PORTS.panel, TDAI_PORTS.knowledge, TDAI_PORTS.proxy];
+const plistPath = () => path.join(os.homedir(), "Library/LaunchAgents", `${TUNNEL_LABEL}.plist`);
+
+function tunnel([sub = "status"]) {
+  if (!REMOTE) die("no remote hub configured (ekip remote <ssh-host>)");
+  if (sub === "install") {
+    const args = ["/usr/bin/ssh", "-N", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=20", "-o", "ServerAliveCountMax=3",
+      "-o", "ExitOnForwardFailure=yes", ...TUNNEL_PORTS.flatMap((p) => ["-L", `127.0.0.1:${p}:127.0.0.1:${p}`]), REMOTE.ssh];
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>${TUNNEL_LABEL}</string>
+  <key>ProgramArguments</key><array>${args.map((a) => `<string>${a}</string>`).join("")}</array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardErrorPath</key><string>${path.join(HOME, "logs/tunnel.log")}</string>
+</dict></plist>
+`;
+    fs.mkdirSync(path.dirname(plistPath()), { recursive: true });
+    fs.writeFileSync(plistPath(), plist);
+    spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
+    spawnSync("launchctl", ["bootstrap", `gui/${process.getuid()}`, plistPath()], { stdio: "inherit" });
+    console.log(`tunnel to ${REMOTE.ssh} installed: ports ${TUNNEL_PORTS.join(", ")}`);
+  } else if (sub === "uninstall") {
+    spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
+    fs.rmSync(plistPath(), { force: true });
+    console.log("tunnel removed");
+  } else {
+    const r = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
+    console.log(r.status === 0 ? (r.stdout.match(/state = .*/)?.[0] ?? "loaded") : "not installed (ekip tunnel install)");
+  }
+}
+
+// ekip remote <ssh-host> [dir]: switch to the VPS hub. Stops the local services whose ports the
+// tunnel takes over; their data was migrated to the hub.
+async function remote([host, dir = "/data/ekip"]) {
+  if (!host) die("usage: ekip remote <ssh-host> [dir]   |   ekip remote --local");
+  if (host === "--local") { saveSettings({ remote: undefined }); tunnel(["uninstall"]); console.log("back to local services (ekip up; ekip memory up)"); return; }
+  saveSettings({ remote: { ssh: host, dir }, freellmapiKey: unifiedKey(), tdaiKey: adminKey() });
+  console.log("stopping local freellmapi and memory containers (their ports go to the tunnel)");
+  await down();
+  spawnSync("docker", ["rm", "-f", "tdai-proxy", "tdai-memory-hub", "tdai-memory-core"], { stdio: "ignore" });
+  console.log("now run: ekip tunnel install");
 }
 
 // ---- hub (VPS) ------------------------------------------------------------------------------
@@ -501,7 +549,17 @@ function memoryDown() {
   sh("./stop-all.sh", [], { cwd: tdaiDeploy() });
 }
 
-async function memory([sub = "status"]) {
+async function memory([sub = "status", ...rest]) {
+  if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory.js")).main([sub, ...rest]);
+  if (REMOTE && sub !== "open") {
+    const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
+    const cmd = sub === "up" ? `cd ${dir} && ./start-memory-core.sh && ./start-memory-hub.sh && PROXY_FULL_STACK=1 ./start-proxy.sh`
+      : sub === "down" ? `cd ${dir} && ./stop-all.sh`
+      : "docker ps --format '{{.Names}}: {{.Status}}' | grep -E '^(tdai-|ekip-hub|freellmapi)'";
+    const r = ssh(cmd, { stdio: sub === "status" ? "pipe" : "inherit" });
+    if (sub === "status") console.log(`on ${REMOTE.ssh}:\n${r.stdout.trim() || "nothing running"}`);
+    return;
+  }
   if (sub === "up") await memoryUp();
   else if (sub === "down") memoryDown();
   else if (sub === "open") openUrl(`http://127.0.0.1:${TDAI_PORTS.panel}`);
@@ -611,6 +669,8 @@ switch (cmd) {
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;
   case "vps": await vpsMain(rest); break;
+  case "tunnel": tunnel(rest); break;
+  case "remote": await remote(rest); break;
   case "key": await key(rest); break;
   case "keys": if (rest[0] && rest[0] !== "--all") await key(rest); else await keyWizard({ all: rest[0] === "--all" }); break;
   case "status": await status(); break;

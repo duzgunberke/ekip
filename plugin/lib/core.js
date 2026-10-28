@@ -36,8 +36,19 @@ export async function healthy() {
   try { return (await fetch(`${URL_ROOT}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
 }
 
+// Remote mode: the services (freellmapi, TencentDB memory) run on the VPS hub, and a launchd SSH
+// tunnel maps them to the same 127.0.0.1 ports here, so every other part of ekip is unchanged.
+export const REMOTE = SETTINGS.remote ?? null;
+export const TUNNEL_LABEL = "io.ekip.tunnel";
+export const ssh = (cmd, opts = {}) => spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, cmd], { encoding: "utf8", ...opts });
+
 export async function up({ quiet = false } = {}) {
   if (await healthy()) return;
+  if (REMOTE) {
+    spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
+    for (let i = 0; i < 40; i++) { if (await healthy()) return; await sleep(500); }
+    die(`the VPS hub is not reachable through the tunnel (ekip tunnel status; ssh ${REMOTE.ssh})`);
+  }
   if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) die(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
   const env = { ...process.env, FREEAPI_ENV_PATH: path.join(FREE_DIR, ".env"), HOST: "127.0.0.1", PORT: String(PORT) };
   if (fs.existsSync(CONFIG)) env.FREEAPI_CONFIG_PATH = CONFIG;
@@ -70,9 +81,21 @@ export function sql(query) {
   return r.stdout.trim();
 }
 
-export const unifiedKey = () => sql("select value from settings where key='unified_api_key'");
-export const keyCounts = () => sql("select platform, count(*) from api_keys where enabled=1 group by platform")
-  .split("\n").filter(Boolean).map((l) => l.split("\t"));
+export const unifiedKey = () => SETTINGS.freellmapiKey ?? sql("select value from settings where key='unified_api_key'");
+// Remote mode counts the declared keys (the VPS applies the same file on boot).
+export const keyCounts = () => (REMOTE
+  ? Object.entries(readConfig().keys.reduce((m, k) => ({ ...m, [k.platform]: (m[k.platform] ?? 0) + 1 }), {})).map(([p, c]) => [p, String(c)])
+  : sql("select platform, count(*) from api_keys where enabled=1 group by platform").split("\n").filter(Boolean).map((l) => l.split("\t")));
+
+// Applies data/freellmapi.config.json: restarts the local server, or ships it to the VPS hub.
+export async function restartFree() {
+  if (!REMOTE) { await down(); await up(); return; }
+  const scp = spawnSync("scp", ["-q", CONFIG, `${REMOTE.ssh}:${REMOTE.dir}/hub/freellmapi.config.json`], { stdio: "inherit" });
+  if (scp.status !== 0) die("could not copy the key file to the VPS");
+  ssh(`chmod 644 ${REMOTE.dir}/hub/freellmapi.config.json && docker restart freellmapi >/dev/null`);
+  for (let i = 0; i < 60; i++) { await sleep(1000); if (await healthy()) return; }
+  die("freellmapi on the VPS did not come back; ekip vps sh 'docker logs --tail 50 freellmapi'");
+}
 
 // ---- provider keys (declarative config, applied by freellmapi on every boot) ------------------
 
@@ -91,8 +114,7 @@ export async function key(args) {
     if (value) cfg.keys.push({ platform, key: value, label: `ekip-${n + 1}` });
     else if (!n) cfg.keys.push({ platform, label: "ekip-1" });
     writeConfig(cfg);
-    await down();
-    await up();
+    await restartFree();
     const counts = Object.fromEntries(keyCounts());
     if (!counts[platform]) die(`freellmapi did not accept the ${platform} key; see ${LOG}`);
     console.log(`${platform}: ${counts[platform]} key(s) active`);
@@ -146,6 +168,7 @@ export const tdaiUp = async () => {
 export const containerRunning = (n) => spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", n], { encoding: "utf8" }).stdout.trim() === "true";
 
 export const adminKey = () => {
+  if (SETTINGS.tdaiKey) return SETTINGS.tdaiKey;
   const f = path.join(tdaiDeploy(), ".admin-key");
   return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
 };
