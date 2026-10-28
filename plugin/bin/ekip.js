@@ -609,11 +609,20 @@ async function importHistory() {
     const owner = projects.filter((p) => dir.endsWith(`-Projects-${p.name}`) || dir.includes(`-Projects-${p.name}-`)).sort((a, b) => b.name.length - a.name.length)[0];
     plan.push({ dir, agentId: owner?.tdai?.agentId ?? SETTINGS.tdaiDefaultAgent ?? die("set tdaiDefaultAgent in data/config.json (the default agent id)"), teamId: owner?.tdai?.teamId ?? me.teamId, project: owner?.name ?? "(default)" });
   }
+  // The importer stats every entry of ~/.claude/skills and stops at the first broken symlink, so
+  // it gets a shadow home that links only the skills that resolve.
+  const shadow = path.join(HOME, "memory-state/home");
+  const skillsSrc = path.join(os.homedir(), ".claude/skills"), skillsDst = path.join(shadow, ".claude/skills");
+  fs.rmSync(skillsDst, { recursive: true, force: true });
+  fs.mkdirSync(skillsDst, { recursive: true });
+  for (const n of fs.existsSync(skillsSrc) ? fs.readdirSync(skillsSrc) : []) {
+    try { const real = fs.realpathSync(path.join(skillsSrc, n)); if (fs.existsSync(path.join(real, "SKILL.md"))) fs.symlinkSync(real, path.join(skillsDst, n)); } catch { /* broken link */ }
+  }
   for (const x of plan) {
     console.log(`\n── ${x.dir} → ${x.project}`);
     spawnSync("node", [importer, "--source", "claude-code", "--sessions", path.join(base, x.dir), "--agent-id", x.agentId, "--team-id", x.teamId, "--state-file", stateFile, "-y"], {
       cwd: tdai, stdio: "inherit",
-      env: { ...process.env, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key },
+      env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key },
     });
   }
 }
