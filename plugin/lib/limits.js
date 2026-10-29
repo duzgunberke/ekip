@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { AGENTS, autoOrder, lastQuotaHit, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
-import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey } from "./core.js";
+import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "./core.js";
 import { c, dot, title, fit } from "./ui.js";
 import { t, lang } from "./i18n.js";
 
@@ -35,8 +35,8 @@ async function freeJson(p) {
 // freellmapi's routing state comes from its own DB (hub/tools/freellmapi-limits.cjs), read where it runs.
 function routingState() {
   const script = fs.readFileSync(path.join(ROOT, "hub/tools/freellmapi-limits.cjs"), "utf8");
-  const r = REMOTE ? spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, "docker exec -i freellmapi node -"], { input: script, encoding: "utf8", timeout: 40000 })
-    : spawnSync("docker", ["exec", "-i", "freellmapi", "node", "-"], { input: script, encoding: "utf8", timeout: 40000 });
+  const r = REMOTE ? spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, `docker exec -i $(${FREE_CONTAINER_SH}) node -`], { input: script, encoding: "utf8", timeout: 40000 })
+    : spawnSync("sh", ["-c", `docker exec -i $(${FREE_CONTAINER_SH}) node -`], { input: script, encoding: "utf8", timeout: 40000 });
   try { return JSON.parse(r.stdout); } catch { return { platforms: {}, profiles: {} }; }
 }
 

@@ -45,6 +45,9 @@ export async function healthy() {
 // Remote mode: the services (freellmapi, TencentDB memory) run on the VPS hub, and a launchd SSH
 // tunnel maps them to the same 127.0.0.1 ports here, so every other part of ekip is unchanged.
 export const REMOTE = SETTINGS.remote ?? null;
+// The free pool's container: "freellmapi" from ekip's own compose, "freellmapi-<id>" when a PaaS such
+// as Coolify runs it. Resolved at call time (shell snippet), "freellmapiContainer" in config overrides.
+export const FREE_CONTAINER_SH = SETTINGS.freellmapiContainer ? `echo ${SETTINGS.freellmapiContainer}` : "docker ps --format '{{.Names}}' | grep -m1 -E '^freellmapi(-|$)'";
 export const TUNNEL_LABEL = "io.ekip.tunnel";
 export const ssh = (cmd, opts = {}) => spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, cmd], { encoding: "utf8", ...opts });
 
@@ -98,7 +101,7 @@ export async function restartFree() {
   if (!REMOTE) { await down(); await up(); return; }
   const scp = spawnSync("scp", ["-q", CONFIG, `${REMOTE.ssh}:${REMOTE.dir}/hub/freellmapi.config.json`], { stdio: "inherit" });
   if (scp.status !== 0) die("could not copy the key file to the VPS");
-  ssh(`chmod 644 ${REMOTE.dir}/hub/freellmapi.config.json && docker restart freellmapi >/dev/null`);
+  ssh(`chmod 644 ${REMOTE.dir}/hub/freellmapi.config.json && docker restart $(${FREE_CONTAINER_SH}) >/dev/null`);
   for (let i = 0; i < 60; i++) { await sleep(1000); if (await healthy()) return; }
   die("freellmapi on the VPS did not come back; ekip vps sh 'docker logs --tail 50 freellmapi'");
 }
@@ -134,7 +137,7 @@ export async function key(args) {
     cfg.keys = cfg.keys.filter((k) => !gone.includes(k));
     writeConfig(cfg);
     const where = `platform='${platform.replace(/[^a-z0-9_-]/gi, "")}'${label ? ` and label='${label.replace(/[^a-z0-9_-]/gi, "")}'` : ""}`;
-    if (REMOTE) ssh(`docker exec freellmapi node -e "const D=require('/app/node_modules/better-sqlite3');new D('/app/server/data/freeapi.db').prepare(\\"delete from api_keys where ${where}\\").run()"`);
+    if (REMOTE) ssh(`docker exec $(${FREE_CONTAINER_SH}) node -e "const D=require('/app/node_modules/better-sqlite3');new D('/app/server/data/freeapi.db').prepare(\\"delete from api_keys where ${where}\\").run()"`);
     else spawnSync("sqlite3", [DB, `delete from api_keys where ${where}`]);
     await restartFree();
     console.log(`removed ${gone.length} ${platform} key(s)`);
