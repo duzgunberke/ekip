@@ -889,7 +889,14 @@ function memoryDown() {
 // Each registered project's session folders go to that project's agent; other real projects go
 // to the default agent (scratch and temp sessions included: they often hold useful work). A shared state file makes re-runs
 // incremental (only new sessions are sent).
-async function importHistory() {
+// Default: the last 30 days, sessions up to 200 MB (a first import of a full history took hours;
+// the big ones are almost all tool output). --all imports everything; --days N / --max-mb N tune it.
+async function importHistory(args = []) {
+  const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
+  const all = args.includes("--all");
+  const days = all ? "0" : opt("--days") ?? "30";
+  const maxMb = all ? "0" : opt("--max-mb") ?? "200";
+  console.log(all ? "geçmişin tamamı içe aktarılıyor" : `son ${days} günün oturumları, en fazla ${maxMb} MB (hepsi için: --all)`);
   const key = adminKey() ?? die("no TencentDB admin key");
   const tdai = depDir("tdai");
   const importer = path.join(tdai, "agents/asset-import.ts");
@@ -927,7 +934,7 @@ async function importHistory() {
       cwd: tdai, stdio: "inherit",
       env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key,
         // conversation only, no tool output (see agents/asset-import.ts LEAN); TDAI_IMPORT_LEAN=0 for everything
-        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1" },
+        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1", TDAI_IMPORT_SINCE_DAYS: days, TDAI_IMPORT_MAX_MB: maxMb },
     });
   }
 }
@@ -945,7 +952,7 @@ function reindex() {
 }
 
 async function memory([sub = "status", ...rest]) {
-  if (sub === "import-history") return importHistory();
+  if (sub === "import-history") return importHistory(rest);
   if (sub === "reindex") return reindex();
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {

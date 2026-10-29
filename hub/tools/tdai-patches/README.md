@@ -16,3 +16,9 @@ user wrote in (Turkish for this user), never Chinese/Japanese because the prompt
 stops copying the language of old pool memories. Patched files live in `/data/ekip/tdai-patches/app/...` on the VPS;
 `start-memory-core.sh` bind-mounts every file under that folder over the same path in the container.
 Existing Chinese memories were rewritten with `hub/tools/tdai-translate-l1.mjs` (freellmapi profile `auto:translate`).
+
+## Importer (`agents/asset-import.ts`)
+Patched in the clone ekip runs (`tools/TencentDB-Agent-Memory`): streamed reading of sessions over 256 MB
+without inline images; `TDAI_IMPORT_LEAN` (conversation only); 20-message batches with in-place retry;
+a checkpoint after every session; `TDAI_IMPORT_SINCE_DAYS` / `TDAI_IMPORT_MAX_MB` filters. `ekip memory
+import-history` defaults to the last 30 days and sessions up to 200 MB (`--all` for everything).
