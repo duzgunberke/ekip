@@ -64,11 +64,15 @@ export function ensureNotifierApp() {
   } catch { return false; }
 }
 
-export function notify(title, message) {
+/**
+ * A macOS notification. The app name ("ekip") is shown by macOS itself, so title says what it is
+ * about (a task's name), subtitle its state ("✓ Bitti · project"), message the short result.
+ */
+export function notify(title, message, { subtitle = "", group = "ekip" } = {}) {
   if (process.platform !== "darwin") return;
   const icon = path.join(ROOT, "plugin/assets/ekip-icon.png");
   const sender = ensureNotifierApp() ? ["-sender", NOTIFIER_ID] : ["-appIcon", icon];
-  if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", "ekip", "-subtitle", title, "-message", message, ...sender, "-group", "ekip"], { stdio: "ignore", timeout: 3000 });
+  if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", title, ...(subtitle ? ["-subtitle", subtitle] : []), "-message", message || subtitle || title, ...sender, "-group", group], { stdio: "ignore", timeout: 3000 });
   else spawnSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore", timeout: 1000 });
 }
 fs.mkdirSync(path.dirname(LOG), { recursive: true });

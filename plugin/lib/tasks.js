@@ -13,6 +13,7 @@ const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
 const write = (all) => { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(`${FILE}.tmp`, JSON.stringify(all, null, 2)); fs.renameSync(`${FILE}.tmp`, FILE); };
 const now = () => new Date().toISOString();
+const cap = (x) => x.charAt(0).toLocaleUpperCase(lang === "en" ? "en" : "tr") + x.slice(1);
 const newId = () => `g${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 4)}`;
 
 function update(id, fn) {
@@ -106,7 +107,7 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     if (detail != null) s.detail = detail;
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
-    if (status === "failed") notify(`ekip · ${t.title}`, `${lang === "en" ? "Step stalled" : "Adım takıldı"}: ${s.title}`);
+    if (status === "failed") notify(t.title, s.title, { subtitle: `⚠ ${lang === "en" ? "Step stalled" : "Adım takıldı"}${t.project ? ` · ${t.project}` : ""}`, group: t.id });
     autoClose(t);
   });
 }
@@ -133,7 +134,7 @@ export function finish(id, status = "done", note) {
     for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "running" ? "failed" : s.status, endedAt: now() });
     if (note) x.notes.push({ at: now(), text: note });
   });
-  notify(`ekip · ${status === "done" ? tr("bitti") : tr("durdu")}`, `${t.title}${note ? ` · ${note}` : ""}`);
+  notify(t.title, note ?? "", { subtitle: `${status === "done" ? `✓ ${cap(tr("bitti"))}` : `■ ${cap(tr("durdu"))}`}${t.project ? ` · ${t.project}` : ""}`, group: t.id });
   return t;
 }
 

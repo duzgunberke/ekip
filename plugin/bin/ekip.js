@@ -452,6 +452,31 @@ export async function reconcileRuns() {
 // Project knowledge reaches every worker whether or not the lead remembered to look it up: the
 // project's own skills and memories that match the brief are appended to it. ekip's housekeeping
 // runs (cards, review profiles, the skill learner) are left alone.
+// <project>/.claude/skills (and one level of sub-repos): name, description, file, ranked by how many
+// words of the brief appear in the skill's name and description
+function projectSkills(root, query) {
+  if (!root) return [];
+  const words = new Set(String(query).toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
+  const dirs = [path.join(root, ".claude/skills")];
+  try { for (const d of fs.readdirSync(root, { withFileTypes: true })) if (d.isDirectory() && !d.name.startsWith(".")) dirs.push(path.join(root, d.name, ".claude/skills")); } catch { /* unreadable root */ }
+  const seen = new Set(), out = [];
+  for (const dir of dirs) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const n of names) {
+      const file = path.join(dir, n, "SKILL.md");
+      if (seen.has(n) || !fs.existsSync(file)) continue;
+      seen.add(n);
+      const text = fs.readFileSync(file, "utf8").slice(0, 2000);
+      const description = text.match(/^description:\s*(.+)$/m)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
+      const hay = `${n} ${description}`.toLowerCase();
+      const score = [...words].filter((w) => hay.includes(w)).length;
+      if (score) out.push({ name: n, description, file, score });
+    }
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
 async function projectKnowledge(o) {
   if (/^(proje kartı: |review-|skill-learn)/.test(o.label ?? "")) return "";
   const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r([]), ms))]);
@@ -459,13 +484,20 @@ async function projectKnowledge(o) {
     const mem = await import("../lib/memory.js");
     const { redact } = await import("../lib/redact.js");
     const q = o.task.slice(0, 600);
-    const [skills, facts] = await Promise.all([
+    const proj = (await import("../lib/projects.js")).getProject(o.project);
+    const [skills, facts, wiki] = await Promise.all([
       timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000),
       timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000),
+      proj?.tdai?.wikiId ? timeout(mem.knowledgeTool(proj.tdai.wikiId, "search", { query: q.slice(0, 300), limit: 3 }).catch(() => null), 6000) : null,
     ]);
     const lines = [];
+    // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
+    const local = projectSkills(proj?.path, q).slice(0, 4);
+    if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
     if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
+    const pages = (Array.isArray(wiki) ? wiki : wiki?.results ?? wiki?.items ?? wiki?.data ?? []).slice(0, 3);
+    if (pages.length) lines.push("Project wiki pages that match (read with the wiki_read MCP tool):", ...pages.map((w) => `- ${String(w.title ?? w.ref ?? w.path ?? w.id ?? "").slice(0, 120)}${w.snippet ? `: ${String(w.snippet).replace(/\s+/g, " ").slice(0, 160)}` : ""}`));
     return lines.length ? redact(`\n\n## Project knowledge (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
   } catch { return ""; /* memory down: the worker still gets the brief */ }
 }

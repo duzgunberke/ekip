@@ -52,13 +52,10 @@ export function checkUpdate({ maxAgeH = 12, notify = false } = {}) {
   return { local, latest, behind };
 }
 
-// One notification, with the ekip icon when terminal-notifier is installed.
-function notifyRelease(local, latest) {
-  const title = "ekip", subtitle = lang === "en" ? `New version ${latest}` : `Yeni sürüm ${latest}`;
-  const message = lang === "en" ? `You have ${local}. Run: ekip update` : `Sizdeki ${local}. Güncellemek için: ekip update`;
-  const icon = path.join(ROOT, "plugin/assets/ekip-icon.png");
-  const tn = spawnSync("terminal-notifier", ["-title", title, "-subtitle", subtitle, "-message", message, "-group", "ekip-update", ...(fs.existsSync(icon) ? ["-appIcon", icon] : [])], { stdio: "ignore" });
-  if (tn.error) spawnSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title "ekip" subtitle ${JSON.stringify(subtitle)}`], { stdio: "ignore" });
+// One notification through the shared helper (ekip icon, macOS app name "ekip").
+async function notifyRelease(local, latest) {
+  const { notify } = await import("./core.js");
+  notify(lang === "en" ? `ekip ${latest} is out` : `ekip ${latest} çıktı`, lang === "en" ? `You have ${local}. Run: ekip update` : `Sizdeki ${local}. Güncellemek için: ekip update`, { subtitle: lang === "en" ? "New version" : "Yeni sürüm", group: "ekip-update" });
 }
 
 /** One line for the lead start, or "" when up to date. */
