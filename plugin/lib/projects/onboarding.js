@@ -16,8 +16,10 @@ const run = (cmd, args, timeout = 1000) => spawnSync(cmd, args, { encoding: "utf
 // Machine checks the workers depend on; each is local and bounded (gh: one second).
 export function envChecks() {
   const git = (k) => (run("git", ["config", "--global", "--get", k], 500).stdout ?? "").trim();
-  const gh = run("gh", ["auth", "status"]);
-  return { gitIdentity: !!(git("user.name") && git("user.email")), ghInstalled: !gh.error || gh.error.code !== "ENOENT", ghAuth: gh.status === 0 };
+  // `gh auth token` reads the stored login locally (40 ms); `gh auth status` asks GitHub and can pass
+  // the time limit on a slow network, which reported a logged-in user as logged out
+  const gh = run("gh", ["auth", "token"], 2000);
+  return { gitIdentity: !!(git("user.name") && git("user.email")), ghInstalled: !gh.error || gh.error.code !== "ENOENT", ghAuth: gh.status === 0 || gh.error?.code === "ETIMEDOUT" };
 }
 
 export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
@@ -29,8 +31,10 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   } catch { /* no cache */ }
   const gaps = [];
   const p = findProject(real);
-  if (!p) gaps.push(gap("project", "Bu klasör ekip'e kayıtlı değil", "projenin hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", "ekip project add ."));
-  else {
+  // only a code folder is worth registering: not the home folder or a folder outside any git repo
+  const inRepo = (() => { for (let d = real; d !== path.dirname(d); d = path.dirname(d)) { if (d === os.homedir()) return false; if (fs.existsSync(path.join(d, ".git"))) return true; } return false; })();
+  if (!p && inRepo) gaps.push(gap("project", "Bu klasör ekip'e kayıtlı değil", "projenin hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", "ekip project add ."));
+  else if (p) {
     if (!p.card || !fs.existsSync(p.card)) gaps.push(gap("card", "Proje kartı eksik", "işçiler projenin yapısını ve komutlarını göremiyor", `ekip project card ${p.name}`));
     if ((p.repo || p.repos?.length) && !fs.existsSync(path.join(p.path, ".codegraph"))) gaps.push(gap("local-graph", "Yerel kod grafiği eksik", "işçiler kodun yerel sembol ve çağrı dizininde arama yapamıyor", `ekip project sync ${p.name}`));
     const repos = p.repos?.length ?? (p.repo ? 1 : 0);
