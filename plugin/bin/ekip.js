@@ -1226,7 +1226,7 @@ ${c.bold("Development environment")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
 
 ${c.bold("Projects and memory")}
-  ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
@@ -1261,7 +1261,7 @@ ${c.bold("Geliştirme ortamı")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
-  ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
