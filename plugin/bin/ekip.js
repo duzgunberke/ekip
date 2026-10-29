@@ -393,7 +393,8 @@ async function runVia(via, o, logFile) {
     if (a.free) await up({ quiet: true, soft: true });
     const model = o.model ?? (via === "agy" ? process.env.EKIP_AGY_MODEL : null);
     if (via === "agy") return runStream(a.bin, [...a.argv(prompt, { ...o, model }), "--output-format", "stream-json"], { cwd: o.cwd }, logFile, "agy");
-    return runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd }, logFile);
+    const r = await runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd, env: { ...process.env, ...(a.env ?? {}) } }, logFile);
+    return a.parse ? { ...r, out: a.parse(r.out) || r.out } : r;
   }
   if (!has("claude")) return { code: 127, out: "claude is not installed" };
   if (via === "claude") {

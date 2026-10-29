@@ -56,6 +56,8 @@ into as many independent parts as the pools can take and dispatches them in para
 uncertain ones, while its own Claude only plans and reviews. Each pool has a capacity (codex, copilot
 and agy 2, qwen, opencode and grok 1, free 3; `poolConcurrency` in `data/config.json` changes it), and
 `--via auto` skips pools that are full or out of quota, so parallel runs spread out by themselves.
+Optional: [jcode](https://github.com/1jehuang/jcode) as one more harness on the free pool (about 60 MB
+per worker instead of 600; set `jcodeBin` and a jcode provider profile pointing at freellmapi).
 `ekip mesai status` shows each pool's running/capacity and success rate; `ekip mesai all "task"` runs
 one task on every pool with a free slot, each on its own branch. The headless Claude pool joins only
 with `--include-claude`.
