@@ -1450,6 +1450,7 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
   ${c.cyan("ekip stats")} ${c.gray("[project] [--days N] [--json]")} how memory, wiki, skills and code graph are used
+  ${c.cyan("ekip statusline")} ${c.gray("[on|off]")} ekip's line under the Claude Code prompt (off removes it)
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
@@ -1603,7 +1604,7 @@ switch (cmd) {
     await (await import("../lib/memory/usage.js")).push().catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/workers/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/workers/savings.js")).report(rest); break;
-  case "statusline": code = await (await import("../lib/ops/statusline.js")).main(); break;
+  case "statusline": code = await (await import("../lib/ops/statusline.js")).main(rest); break;
   case "stats": code = await (await import("../lib/memory/usage.js")).main(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {

@@ -3,12 +3,16 @@
 // the last CI result and a pending update. Local files only (no network), so it stays instant.
 import fs from "node:fs";
 import path from "node:path";
-import { HOME } from "../core/core.js";
+import { HOME, ROOT, SETTINGS, saveSettings } from "../core/core.js";
 import { c } from "../core/ui.js";
 
+// cut on a word boundary with an ellipsis, never mid-word or leaving "( + )"
+const short = (s, n) => { s = String(s).trim(); if (s.length <= n) return s; const cut = s.slice(0, n).replace(/[\s(+·,:-]+\S*$/, ""); return `${cut || s.slice(0, n)}…`; };
 const readJson = (f, fallback) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return fallback; } };
 
-export async function main() {
+export async function main([sub] = []) {
+  // ekip statusline off|on: remove it from Claude Code or put it back
+  if (sub === "off" || sub === "on") return toggle(sub === "on");
   let input = {};
   try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch { /* no stdin */ }
   const cwd = input.workspace?.current_dir ?? input.cwd ?? process.cwd();
@@ -25,7 +29,7 @@ export async function main() {
     const t = tasks.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
     const step = t.steps.find((s) => s.status === "running");
     const done = t.steps.filter((s) => s.status === "done").length;
-    parts.push(`${tasks.length} görev · ${t.title.slice(0, 32)}${step ? c.gray(` (${done}/${t.steps.length} · ${step.title.slice(0, 24)})`) : ""}`);
+    parts.push(`${tasks.length} görev · ${short(t.title, 36)}${step ? c.gray(` (${done}/${t.steps.length} ${short(step.title, 28)}${step.pct != null ? ` %${step.pct}` : ""})`) : ""}`);
   }
 
   // busy pools (running/capacity), from the same data ekip mesai uses
@@ -48,9 +52,27 @@ export async function main() {
   return 0;
 }
 
-/** ekip init: point Claude Code's status line at ekip, unless the user already has one. */
+const settingsFile = () => path.join(process.env.HOME ?? "", ".claude/settings.json");
+
+function toggle(on) {
+  const file = settingsFile();
+  const settings = readJson(file, {});
+  const ours = String(settings.statusLine?.command ?? "").includes("statusline");
+  if (on) {
+    if (settings.statusLine && !ours) { console.log("Claude Code already has another status line; left as it is"); return 1; }
+    settings.statusLine = { type: "command", command: `node ${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} statusline` };
+  } else if (ours) delete settings.statusLine;
+  fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+  // remembered, so ekip init and updates do not put it back
+  saveSettings({ statusline: on });
+  console.log(on ? "ekip status line on (new Claude Code sessions)" : "ekip status line off (ekip statusline on brings it back)");
+  return 0;
+}
+
+/** ekip init: point Claude Code's status line at ekip, unless the user already has one or turned it off. */
 export function install(root) {
-  const file = path.join(process.env.HOME ?? "", ".claude/settings.json");
+  if (SETTINGS.statusline === false) return false;
+  const file = settingsFile();
   const settings = readJson(file, {});
   if (settings.statusLine) return false;
   settings.statusLine = { type: "command", command: `node ${JSON.stringify(path.join(root, "plugin/bin/ekip.js"))} statusline` };
