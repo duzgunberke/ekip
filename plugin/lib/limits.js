@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { AGENTS, autoOrder, lastQuotaHit, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
-import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "./core.js";
+import { HOME, REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "./core.js";
 import { c, dot, title, fit } from "./ui.js";
 import { t, lang } from "./i18n.js";
 
@@ -37,7 +37,16 @@ function routingState() {
   const script = fs.readFileSync(path.join(ROOT, "hub/tools/freellmapi-limits.cjs"), "utf8");
   const r = REMOTE ? spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, `docker exec -i $(${FREE_CONTAINER_SH}) node -`], { input: script, encoding: "utf8", timeout: 40000 })
     : spawnSync("sh", ["-c", `docker exec -i $(${FREE_CONTAINER_SH}) node -`], { input: script, encoding: "utf8", timeout: 40000 });
-  try { return JSON.parse(r.stdout); } catch { return { platforms: {}, profiles: {} }; }
+  // A read that fails (timeout under load, container restarting) is not "no models": the last good
+  // reading is used and marked stale, so healthy providers are never shown as empty.
+  const last = path.join(HOME, "freellmapi-routing-last.json");
+  try {
+    const rs = JSON.parse(r.stdout);
+    if (Object.keys(rs.platforms ?? {}).length) { try { fs.writeFileSync(last, JSON.stringify({ at: Date.now(), rs })); } catch { /* best effort */ } }
+    return rs;
+  } catch {
+    try { const prev = JSON.parse(fs.readFileSync(last, "utf8")); return { ...prev.rs, stale: true, staleSince: prev.at }; } catch { return { platforms: {}, profiles: {}, unknown: true }; }
+  }
 }
 
 export async function freePool(rs) {
@@ -46,7 +55,8 @@ export async function freePool(rs) {
   return (prov.providers ?? []).map((p) => {
     const m = rs.platforms[p.platform] ?? { models: 0, cooling: 0, ok24: 0, fail24: 0, lastError: null };
     // a valid key with nothing to serve (no catalog models, or HuggingFace out of credits)
-    const status = p.status === "healthy" && !m.models ? "no_models" : p.status;
+    // "no models" only from a successful reading that says so; unknown routing keeps the provider's own status
+    const status = p.status === "healthy" && !m.models && !rs.unknown ? "no_models" : p.status;
     return { platform: p.platform, name: p.name, status, keys: p.keys, resumeAt: p.resume_at ?? null,
       models: m.models, cooling: m.cooling, ok24: m.ok24, fail24: m.fail24, lastError: m.lastError,
       monthRequests: used[p.platform]?.requests ?? 0, monthTokens: used[p.platform]?.tokens ?? 0 };
