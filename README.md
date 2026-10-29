@@ -147,7 +147,8 @@ data stores, give them an environment that is safe to break:
   out of reach.
 - **Or let ekip host them.** `ekip dev` keeps one development Postgres and Redis on your own server,
   gives every project an isolated database, and opens a local tunnel with a ready `.env.ekip-dev`.
-  It refuses anything that is not a development target.
+  It refuses anything that is not a development target. Jobs queued on the VPS hub get the same
+  environment, addressed for the server.
 
 ## Agents that talk to each other
 

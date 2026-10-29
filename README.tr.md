@@ -136,7 +136,8 @@ depolarıyla çalışmasını istiyorsanız, onlara bozulması sorun olmayan bir
   production erişim dışında kalır.
 - **Ya da ekip barındırsın.** `ekip dev`, kendi sunucunuzda tek bir geliştirme Postgres'i ve Redis'i
   tutar, her projeye ayrı bir veritabanı verir ve hazır bir `.env.ekip-dev` ile yerel tünel açar.
-  Geliştirme hedefi olmayan hiçbir şeye izin vermez.
+  Geliştirme hedefi olmayan hiçbir şeye izin vermez. VPS hub'ında kuyruğa alınan işler de aynı
+  ortamı, sunucuya göre adreslenmiş olarak alır.
 
 ## Birbiriyle konuşan agent'lar
 
