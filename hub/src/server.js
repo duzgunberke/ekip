@@ -392,17 +392,34 @@ async function api(req, res, url) {
     if (DEMO && match[2] === "repos") return send(res, 200, { project: project.name, fetchedAt: new Date().toISOString(), repos: (project.repos ?? [project.repo]).filter(Boolean).map((url) => ({ url, key: url.replace(/^https:\/\/github.com\//, "github.com/"), host: "github.com", owner: "northwind-labs", name: url.split("/").pop(), github: true, codeGraph: { id: project.tdai?.codeGraphs?.[0]?.id ?? "cg_demo_storefront", branch: "main", status: "ready" }, fullName: `northwind-labs/${url.split("/").pop()}`, htmlUrl: url, description: project.summary, private: true, archived: false, fork: false, pushedAt: new Date().toISOString(), defaultBranch: "main", language: project.name === "payments-api" ? "Go" : project.name === "ios-app" ? "Swift" : "TypeScript", languages: [{ name: project.name === "payments-api" ? "Go" : "TypeScript", color: "#3178c6", share: 82 }, { name: "Shell", color: "#89e051", share: 18 }], openPrs: 3, branchCount: 14, branches: [] })) });
     if (DEMO && match[2] === "graph") {
       const repo = url.searchParams.get("repo") ?? "";
-      return send(res, 200, { source: "codegraph+github", codeGraph: { id: "cg_demo_storefront", branch: "main", ok: true, error: null }, repo, branch: "main", indexed: 42, truncated: false, notes: [], files: [
-        { p: "src", l: null, s: null }, { p: "src/checkout", l: null, s: null }, { p: "src/checkout/CheckoutFlow.tsx", l: "TypeScript", s: 318, b: 12640 },
-        { p: "src/checkout/useCart.ts", l: "TypeScript", s: 142, b: 5912 }, { p: "src/payments", l: null, s: null }, { p: "src/payments/stripe.ts", l: "TypeScript", s: 206, b: 8421 },
-        { p: "src/components", l: null, s: null }, { p: "src/components/CartDrawer.tsx", l: "TypeScript", s: 94, b: 3820 }, { p: "src/lib", l: null, s: null }, { p: "src/lib/telemetry.ts", l: "TypeScript", s: 71, b: 2900 },
-        { p: "tests", l: null, s: null }, { p: "tests/checkout-race.spec.ts", l: "TypeScript", s: 118, b: 4490 }, { p: "README.md", l: "Markdown", s: null, b: 6800 }] });
+      const demoFiles = project.name === "storefront-web" ? [
+        { p: "src", l: null, s: null }, { p: "src/checkout", l: null, s: null },
+        { p: "src/checkout/CheckoutFlow.tsx", l: "TypeScript", s: 318, b: 12640 }, { p: "src/checkout/useCart.ts", l: "TypeScript", s: 142, b: 5912 }, { p: "src/checkout/PaymentStep.tsx", l: "TypeScript", s: 96, b: 4210 },
+        { p: "src/cart", l: null, s: null }, { p: "src/cart/CartDrawer.tsx", l: "TypeScript", s: 94, b: 3820 }, { p: "src/cart/cart-store.ts", l: "TypeScript", s: 132, b: 5300 },
+        { p: "src/auth", l: null, s: null }, { p: "src/auth/session.ts", l: "TypeScript", s: 88, b: 3410 },
+        { p: "src/ui", l: null, s: null }, { p: "src/ui/Button.tsx", l: "TypeScript", s: 46, b: 1900 },
+        { p: "src/payments", l: null, s: null }, { p: "src/payments/stripe.ts", l: "TypeScript", s: 206, b: 8421 },
+        { p: "tests", l: null, s: null }, { p: "tests/checkout-race.spec.ts", l: "TypeScript", s: 118, b: 4490 }, { p: "README.md", l: "Markdown", s: null, b: 6800 }
+      ] : [
+        { p: "src", l: null, s: null }, { p: "src/api", l: null, s: null }, { p: "src/api/handlers.ts", l: "Go", s: 42, b: 2400 },
+        { p: "src/core", l: null, s: null }, { p: "src/core/service.go", l: "Go", s: 28, b: 1800 }, { p: "tests", l: null, s: null }, { p: "README.md", l: "Markdown", s: null, b: 2200 }
+      ];
+      return send(res, 200, { source: "codegraph+github", codeGraph: { id: project.tdai?.codeGraphs?.[0]?.id ?? "cg_demo_storefront", branch: "main", ok: true, error: null }, repo, branch: "main", indexed: demoFiles.length * 3, truncated: false, notes: [], files: demoFiles });
     }
     try {
       if (match[2] === "repos") return send(res, 200, await codemap.repos(project, { fresh }));
       const repo = str(url.searchParams.get("repo"), 300, "repo", { required: true });
       if (match[2] === "graph") return send(res, 200, await codemap.graph(project, repo, { fresh }));
       const file = str(url.searchParams.get("file"), 500, "file", { required: true });
+      if (DEMO) {
+        const leaf = file.split("/").pop().replace(/\.[^.]+$/, "");
+        const base = leaf.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[-_]/g, " ").split(" ").map((x) => x[0]?.toUpperCase() + x.slice(1)).join("");
+        return send(res, 200, { repo, file, symbols: [
+          { name: `${base}Controller`, kind: "class", line: 18, endLine: 126 },
+          { name: `use${base}`, kind: "function", line: 34, endLine: 88 },
+          { name: `handle${base}Submit`, kind: "function", line: 94, endLine: 117 }
+        ] });
+      }
       return send(res, 200, await codemap.symbols(project, repo, file));
     } catch (e) {
       if (e instanceof HttpError) throw e;
