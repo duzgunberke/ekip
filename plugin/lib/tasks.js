@@ -127,6 +127,21 @@ function render(t) {
   return [head, line, ...steps, ...workers, ...(last ? [`    ${c.gray(`↳ ${last.text}`)}`] : [])].join("\n");
 }
 
+// Two lines per task for a short pane: title + bar, then "n/m bitti" and what runs now. Finished
+// steps are only counted; the full view lists them when there is room.
+function renderCompact(t) {
+  const p = percent(t);
+  const e = eta(t);
+  const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
+  const running = t.steps.filter((s) => s.status === "running").map((s) => `${c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}`);
+  const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
+  const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : "";
+  const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} kaldı`) : "";
+  const head = `${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 12)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`;
+  const now = [...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? `sırada: ${t.steps.find((s) => s.status === "pending").title}` : "");
+  return `${head}\n    ${c.gray(`${done}/${t.steps.length} bitti`)}${now ? `  ${now}` : ""}`;
+}
+
 export async function main([sub = "ls", ...args]) {
   const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
   const rest = () => args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
@@ -158,7 +173,10 @@ export async function main([sub = "ls", ...args]) {
     do {
       const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 5 * 60 * 1000)
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
-      const out = `${mark()}  ${c.gray("görevler")}\n\n${list.length ? list.map(render).join("\n\n") : c.gray("  aktif görev yok")}\n`;
+      let out = `${mark()}  ${c.gray("görevler")}\n\n${list.length ? list.map(render).join("\n\n") : c.gray("  aktif görev yok")}\n`;
+      // too tall for the pane: every task in two lines, so none is cut off below the edge
+      if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
+        out = `${mark()}  ${c.gray(`görevler · ${list.length}`)}\n${list.map(renderCompact).join("\n")}\n`;
       if (watching) {
         const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
         const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));
