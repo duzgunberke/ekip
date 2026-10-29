@@ -20,6 +20,9 @@ function update(id, fn) {
   const t = all.find((x) => x.id === id) ?? die(`no task ${id} (ekip tasks)`);
   fn(t);
   t.updatedAt = now();
+  // the first measured percent and its time: the estimate uses the real rate since then, so a task
+  // created half-way (or a slow job tracked late) does not get a made-up finish time
+  if (t.p0 == null) Object.assign(t, { p0: percent(t), p0At: t.updatedAt });
   write(all);
   push(t);
   return t;
@@ -39,8 +42,9 @@ export function eta(t) {
   const p = percent(t);
   // no guess until there is a real basis: a stalled step or early progress gives absurd numbers
   if (t.status !== "running" || p < 15 || t.steps.some((s) => s.status === "running" && stalledFor(s))) return null;
-  const elapsed = Date.now() - Date.parse(t.createdAt);
-  return new Date(Date.now() + elapsed * (100 - p) / p).toISOString();
+  const p0 = t.p0 ?? 0, since = Date.now() - Date.parse(t.p0At ?? t.createdAt);
+  if (p <= p0 || since < 5 * 60_000) return null;
+  return new Date(Date.now() + since * (100 - p) / (p - p0)).toISOString();
 }
 
 const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? tr("<1 dk") : m < 60 ? tr("{n} dk", { n: m }) : tr("{h} sa {m} dk", { h: Math.floor(m / 60), m: m % 60 }); };
