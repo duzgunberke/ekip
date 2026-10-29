@@ -43,6 +43,7 @@ export async function sessionStartContext(cwd) {
     } catch (e) { logErr(e); }
   }
   parts.push(lang === "en" ? "ekip MCP tools are available for this project: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (TDAI graph of the GitHub repo); the local `codegraph` CLI/index (.codegraph/) is there too." : "ekip MCP araçları bu proje için kullanılabilir: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (GitHub deposunun TDAI grafiği); yerel `codegraph` CLI/dizini (.codegraph/) de kullanılabilir.");
+  try { const u = (await import("./update.js")).updateContext(); if (u) parts.push(u); } catch (e) { logErr(e); }
   return parts.join("\n\n");
 }
 

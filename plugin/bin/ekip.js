@@ -912,6 +912,7 @@ async function lead(args) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
     console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
+    try { const line = (await import("../lib/update.js")).updateLine(); if (line) console.log(line); } catch { /* offline: no update line */ }
     console.log("");
     // Tasks, workers and their logs are visible under the lead from the start, not only after its
     // first task ("taskPane": false in data/config.json turns this off).
@@ -1387,6 +1388,8 @@ switch (cmd) {
   case "review": code = await (await import("../lib/review.js")).main(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
+  case "update": code = (await import("../lib/update.js")).update(); break;
+  case "version": { const u = (await import("../lib/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (yeni sürüm ${u.latest}: ekip update)` : u.latest ? "  (güncel)" : ""}`); break; }
   // ekip show LOG...: a long job started outside `ekip run` (an import, a render, a script) gets the
   // same live pane next to the lead, so nothing runs out of sight.
   case "show": {
@@ -1420,6 +1423,7 @@ switch (cmd) {
     await (await import("../lib/limits.js")).push().catch(() => {});
     await (await import("../lib/tasks.js")).syncHub().catch(() => {});
     await heartbeat();
+    try { (await import("../lib/update.js")).checkUpdate({ maxAgeH: 6, notify: true }); } catch { /* offline */ }
     await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/savings.js")).report(rest); break;
