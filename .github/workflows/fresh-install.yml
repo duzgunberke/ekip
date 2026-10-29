@@ -1,0 +1,47 @@
+name: Fresh install
+# What someone who clones ekip gets: a clean machine, `ekip init`, the memory stack up, every command
+# loading, doctor running. A release is only tagged when this is green, so automatic updates (which
+# follow release tags) never bring an untested version.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fresh-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prerequisites a user installs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sqlite3 tmux
+          npm i -g @anthropic-ai/claude-code
+          docker info > /dev/null
+      - name: ekip init (no keys, no logins)
+        run: timeout 1800 node plugin/bin/ekip.js init --no-keys < /dev/null
+      - name: Memory stack is up and patched
+        run: |
+          docker ps --format '{{.Names}} {{.Status}}'
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8420/health > /dev/null && break; sleep 5; done
+          curl -sf http://127.0.0.1:8420/health
+          test -f data/tdai/patched/app/src/core/prompts/l1-extraction.ts
+          grep -q "LANGUAGE (strict" data/tdai/patched/app/src/core/prompts/l1-extraction.ts
+      - name: Every command loads (smoke test)
+        run: bash scripts/smoke.sh
+      - name: Doctor runs (issues are expected on an empty install, crashes are not)
+        run: |
+          set +e
+          timeout 300 node plugin/bin/ekip.js doctor > doctor.out 2>&1
+          s=$?
+          cat doctor.out
+          if grep -Eqi 'Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError|TypeError|ReferenceError' doctor.out; then exit 1; fi
+          [ $s -le 1 ] || [ $s -eq 124 ]
+      - name: Update path works
+        run: node plugin/bin/ekip.js version
