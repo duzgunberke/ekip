@@ -57,7 +57,7 @@ export type Run = {
   receivedAt: string
 }
 
-export type ProviderStatus = 'healthy' | 'rate_limited' | 'invalid' | 'unknown' | (string & {})
+export type ProviderStatus = 'healthy' | 'rate_limited' | 'no_models' | 'invalid' | 'unknown' | (string & {})
 
 export type Provider = {
   platform: string
@@ -66,6 +66,49 @@ export type Provider = {
   keys: number
   resumeAt: string | null
 }
+
+export type LimitsWorker = {
+  name: string
+  quota: string
+  status: 'ready' | 'limited' | 'login' | 'untested' | 'off'
+  limit: { message: string; at: string; resetAt: string } | null
+  runs: number
+  successRate: number | null
+  cooling: boolean
+}
+
+export type LimitsProvider = Provider & {
+  status: ProviderStatus | 'no_models'
+  models: number
+  cooling: number
+  ok24: number
+  fail24: number
+  lastError: string | null
+  monthRequests: number
+  monthTokens: number
+}
+
+export type LimitsProfile = {
+  next: string[]
+  models: number
+  cooling: number
+}
+
+export type LimitsSnapshot = {
+  at: string
+  host: string
+  receivedAt: string
+  workers?: LimitsWorker[]
+  free?: LimitsProvider[] | { error: string }
+  route?: {
+    order: string[]
+    worker: string | null
+    skipped: string[]
+    profiles: Record<string, LimitsProfile>
+  }
+}
+
+export type PoolProvider = Provider & Partial<LimitsProvider>
 
 export type Client = {
   client: string

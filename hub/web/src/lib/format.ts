@@ -45,6 +45,7 @@ export const STATUS_LABEL: Record<string, string> = {
 export const POOL_LABEL: Record<string, string> = {
   healthy: 'sağlıklı',
   rate_limited: 'limitte',
+  no_models: 'model yok',
   invalid: 'geçersiz',
   unknown: 'bilinmiyor',
 }

@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { format, startOfDay, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { STATUS_LABEL } from '@/lib/format'
-import type { Job } from '@/lib/types'
+import { normalizeRunStatus, STATUS_LABEL } from '@/lib/format'
+import type { Job, Run } from '@/lib/types'
 
 const SERIES = ['done', 'failed', 'cancelled', 'running', 'queued'] as const
 const DAYS = 14
@@ -15,7 +15,7 @@ const DOT: Record<string, string> = {
   queued: 'bg-status-queued',
 }
 
-export function JobsChart({ jobs }: { jobs: Job[] }) {
+export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
   const data = useMemo(() => {
     const today = startOfDay(new Date())
     const days = Array.from({ length: DAYS }, (_, i) => {
@@ -35,8 +35,13 @@ export function JobsChart({ jobs }: { jobs: Job[] }) {
       const i = idx.get(format(new Date(j.createdAt), 'yyyy-MM-dd'))
       if (i !== undefined && j.status in days[i]) days[i][j.status] += 1
     }
+    for (const r of runs) {
+      const i = idx.get(format(new Date(r.startedAt ?? r.receivedAt), 'yyyy-MM-dd'))
+      const status = SERIES.find((key) => key === normalizeRunStatus(r.status))
+      if (i !== undefined && status) days[i][status] += 1
+    }
     return days
-  }, [jobs])
+  }, [jobs, runs])
 
   const total = data.reduce((n, d) => n + SERIES.reduce((m, k) => m + d[k], 0), 0)
 

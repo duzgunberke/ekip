@@ -144,7 +144,7 @@ function send(res, code, body, headers = {}) {
 class HttpError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 const bad = (msg) => { throw new HttpError(400, msg); };
 
-function readJson(req, limit = 1_000_000) {
+function readJson(req, limit = 1_000_000, { allowEmpty = true } = {}) {
   return new Promise((resolve, reject) => {
     if (!/^application\/json\b/i.test(req.headers["content-type"] ?? "")) { reject(new HttpError(415, "content-type must be application/json")); return; }
     let size = 0;
@@ -155,7 +155,7 @@ function readJson(req, limit = 1_000_000) {
       chunks.push(c);
     });
     req.on("end", () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); } catch { reject(new HttpError(400, "invalid JSON")); }
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || (allowEmpty ? "{}" : ""))); } catch { reject(new HttpError(400, "invalid JSON")); }
     });
     req.on("error", reject);
   });
@@ -335,6 +335,15 @@ async function api(req, res, url) {
 
   if (p === "/api/session" && m === "GET") return send(res, 200, { ok: true });
   if (p === "/api/status" && m === "GET") return send(res, 200, await status());
+
+  if (p === "/api/limits" && m === "PUT") {
+    const body = await readJson(req, 500_000, { allowEmpty: false });
+    if (!body || typeof body !== "object" || Array.isArray(body)) bad("expected a JSON object");
+    store.limits.data = { ...body, receivedAt: new Date().toISOString() };
+    store.limits.save();
+    return send(res, 200, { ok: true });
+  }
+  if (p === "/api/limits" && m === "GET") return send(res, 200, store.limits.data);
 
   if (p === "/api/projects" && m === "GET") return send(res, 200, store.projects.data);
   if (p === "/api/projects" && m === "PUT") {

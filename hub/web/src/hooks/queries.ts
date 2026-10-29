@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type {
   Job,
+  LimitsSnapshot,
   Project,
   ProjectRepos,
   RepoGraph,
@@ -15,6 +16,7 @@ import type {
 export const qk = {
   session: ['session'] as const,
   status: ['status'] as const,
+  limits: ['limits'] as const,
   projects: ['projects'] as const,
   jobs: ['jobs'] as const,
   job: (id: string) => ['jobs', id] as const,
@@ -27,6 +29,13 @@ export const useStatus = () =>
     queryKey: qk.status,
     queryFn: ({ signal }) => api<Status>('/api/status', { signal }),
     refetchInterval: 10_000,
+  })
+
+export const useLimits = () =>
+  useQuery({
+    queryKey: qk.limits,
+    queryFn: ({ signal }) => api<LimitsSnapshot | null>('/api/limits', { signal }),
+    refetchInterval: 30_000,
   })
 
 export const useProjects = () =>

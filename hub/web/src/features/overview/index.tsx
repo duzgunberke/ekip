@@ -10,8 +10,9 @@ import {
   ServerCog,
 } from 'lucide-react'
 import { duration, firstLine } from '@/lib/format'
+import { poolProviders } from '@/lib/pools'
 import { cn } from '@/lib/utils'
-import { useJobs, useProjects, useStatus } from '@/hooks/queries'
+import { useJobs, useLimits, useProjects, useRuns, useStatus } from '@/hooks/queries'
 import { useNewJob } from '@/context/new-job-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,10 +36,13 @@ export function Overview() {
   const status = useStatus()
   const projects = useProjects()
   const jobs = useJobs()
+  const runs = useRuns()
+  const limits = useLimits()
   const { openNewJob } = useNewJob()
 
   const s = status.data
-  const healthy = s?.freellmapi.providers.filter((p) => p.status === 'healthy').length ?? 0
+  const providers = poolProviders(limits.data, s?.freellmapi.providers)
+  const healthy = providers.filter((p) => p.status === 'healthy').length
   const lastClient = s?.clients[0]
   const memoryLinked = projects.data?.filter((p) => p.tdai?.teamId).length ?? 0
 
@@ -61,13 +65,16 @@ export function Overview() {
         {status.isError && (
           <QueryError className='mb-4' error={status.error} onRetry={() => status.refetch()} />
         )}
+        {limits.isError && (
+          <QueryError className='mb-4' error={limits.error} onRetry={() => limits.refetch()} />
+        )}
 
         <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
           <Kpi
             title='Kayıtlı proje'
             icon={FolderGit2}
             loading={projects.isLoading}
-            value={projects.data?.length ?? '—'}
+            value={projects.data?.length ?? 'Yok'}
             hint={`${memoryLinked} tanesi hafızaya bağlı`}
             to='/projeler'
           />
@@ -82,7 +89,7 @@ export function Overview() {
                   <span className='text-muted-foreground'> / {s.queue.queued ?? 0}</span>
                 </>
               ) : (
-                '—'
+                '-'
               )
             }
             hint={s ? `${s.workers.length} işçi slotu · ${s.queue.done ?? 0} bitti` : undefined}
@@ -91,15 +98,15 @@ export function Overview() {
           <Kpi
             title='Sağlıklı sağlayıcı'
             icon={ServerCog}
-            loading={status.isLoading}
+            loading={status.isLoading && limits.isLoading}
             value={
-              s ? (
+              s || limits.data ? (
                 <>
                   {healthy}
-                  <span className='text-muted-foreground'> / {s.freellmapi.providerCount}</span>
+                  <span className='text-muted-foreground'> / {providers.length}</span>
                 </>
               ) : (
-                '—'
+                '-'
               )
             }
             hint={
@@ -129,15 +136,22 @@ export function Overview() {
           <Card className='lg:col-span-4'>
             <CardHeader>
               <CardTitle>Günlük işler</CardTitle>
-              <CardDescription>Son 14 gün, duruma göre</CardDescription>
+              <CardDescription>VPS + Mac işleri · son 14 gün, duruma göre</CardDescription>
             </CardHeader>
             <CardContent className='flex flex-1 flex-col ps-2'>
-              {jobs.isLoading ? (
+              {jobs.isLoading || runs.isLoading ? (
                 <Skeleton className='ms-4 h-64' />
-              ) : jobs.isError ? (
-                <QueryError className='ms-4 w-auto' error={jobs.error} onRetry={() => jobs.refetch()} />
+              ) : jobs.isError || runs.isError ? (
+                <QueryError
+                  className='ms-4 w-auto'
+                  error={jobs.error ?? runs.error}
+                  onRetry={() => {
+                    jobs.refetch()
+                    runs.refetch()
+                  }}
+                />
               ) : (
-                <JobsChart jobs={jobs.data ?? []} />
+                <JobsChart jobs={jobs.data ?? []} runs={runs.data ?? []} />
               )}
             </CardContent>
           </Card>
@@ -155,18 +169,18 @@ export function Overview() {
               </CardAction>
             </CardHeader>
             <CardContent>
-              {status.isLoading ? (
+              {status.isLoading && limits.isLoading ? (
                 <ListSkeleton rows={5} />
-              ) : !s ? null : s.freellmapi.providers.length === 0 ? (
+              ) : !s && !limits.data ? null : providers.length === 0 ? (
                 <EmptyState
                   icon={ServerCog}
                   title='Sağlayıcı yok'
-                  description={s.freellmapi.authError ?? s.freellmapi.reason ?? 'freellmapi sağlayıcı bildirmedi.'}
+                  description={s?.freellmapi.authError ?? s?.freellmapi.reason ?? 'freellmapi sağlayıcı bildirmedi.'}
                   className='py-8'
                 />
               ) : (
                 <ul className='divide-y'>
-                  {s.freellmapi.providers.slice(0, 6).map((p) => (
+                  {providers.slice(0, 6).map((p) => (
                     <li key={`${p.platform}-${p.name}`} className='flex items-center justify-between gap-3 py-2.5'>
                       <div className='min-w-0'>
                         <p className='truncate text-sm font-medium'>{p.name}</p>
@@ -177,9 +191,9 @@ export function Overview() {
                       <PoolBadge status={p.status} />
                     </li>
                   ))}
-                  {s.freellmapi.providers.length > 6 && (
+                  {providers.length > 6 && (
                     <li className='pt-2.5 text-xs text-muted-foreground'>
-                      +{s.freellmapi.providers.length - 6} sağlayıcı daha
+                      +{providers.length - 6} sağlayıcı daha
                     </li>
                   )}
                 </ul>

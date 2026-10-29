@@ -41,12 +41,14 @@ export function StatusBadge({ status, className }: { status: string; className?:
 const POOL_CLS: Record<string, string> = {
   healthy: 'border-success/30 bg-success/12 text-success',
   rate_limited: 'border-warning/30 bg-warning/12 text-warning',
+  no_models: 'border-destructive/30 bg-destructive/12 text-destructive',
   invalid: 'border-destructive/30 bg-destructive/12 text-destructive',
   unknown: 'text-muted-foreground',
 }
 const POOL_DOT: Record<string, string> = {
   healthy: 'bg-success',
   rate_limited: 'bg-warning',
+  no_models: 'bg-destructive',
   invalid: 'bg-destructive',
   unknown: 'bg-muted-foreground/60',
 }

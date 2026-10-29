@@ -34,6 +34,7 @@ the `X-Ekip-Csrf: 1` header for writes).
 | POST | `/api/heartbeat` | `{client, host, agents:[...]}` |
 | PUT | `/api/tasks` | live task from the Mac: `{id, title, project, status, createdAt, updatedAt, endedAt?, steps[], workers[], notes[], pct, eta, host}` (upsert by id; last 500 kept) |
 | GET | `/api/tasks`, `/api/tasks/:id` | newest first |
+| PUT / GET | `/api/limits` | PUT: latest Mac worker/provider/routing snapshot (JSON object, max 500 KB); GET returns the snapshot or `null` |
 | GET | `/api/projects/:name/repos` | GitHub metadata per repo (branches, languages, open PRs); server-side `GITHUB_TOKEN`, cached 10 min |
 | GET | `/api/projects/:name/graph?repo=` | file tree: TencentDB code graph (`tdai.codeGraphs`, via `KNOWLEDGE_URL`) merged with GitHub's git tree |
 | GET | `/api/projects/:name/symbols?repo=&file=` | top symbols of one file from the code graph |
