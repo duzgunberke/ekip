@@ -22,3 +22,10 @@ Never commit personal data: project names, hosts, tokens, UUIDs, logs, or files 
 ## Pull requests
 
 Keep one topic per pull request and use imperative commit messages. For vulnerability reports, use GitHub Security Advisories privately; do not open a public issue.
+
+## Moving or renaming modules
+
+ekip runs from its own checkout, and long-lived processes (a worker that started before your change,
+the task pane, the doctor) load modules lazily. When a module moves, leave a one-line forwarder at the
+old path (`export * from "./new/place.js";`) for at least one release, so those processes do not fail
+with "Cannot find module" halfway through.
