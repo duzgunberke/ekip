@@ -88,6 +88,10 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
 - **Arka plan işleri tek kopya çalışır**, iki içe aktarma aynı kota için yarışmaz.
 - **Her worker projenin bilgisiyle başlar.** `ekip run --project`, brief'le projenin becerilerini ve
   belleğini arar ve eşleşenleri ekler; lider bakmayı unutsa bile.
+- **O bilginin kullanılıp kullanılmadığını görürsün.** `ekip stats` proje başına hafıza, wiki, beceri
+  ve kod grafiği aramalarını lead hook'u, worker brief'leri ve MCP çağrılarına göre sayar; isabet
+  oranını, worker'ların gerçekten açtığı becerileri ve bilgiyle/bilgisiz işlerin başarısını gösterir
+  (kanıt değil, sinyal).
 - **Hiçbir şey gözden uzakta çalışmaz.** Worker'lar bir bölmede açılır; liderin kendi başlattığı
   uzun işler de (`ekip show <log>`).
 - **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; `ekip agents`

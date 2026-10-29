@@ -48,6 +48,8 @@ export function mentioned(prompt, projects) {
 }
 
 const withTimeout = (pr, ms) => Promise.race([pr, new Promise((r) => setTimeout(() => r(null), ms))]);
+// a lookup and how long it took, for the knowledge usage log
+const timed = async (pr) => { const t0 = Date.now(); const value = await pr; return { value, ms: Date.now() - t0 }; };
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export async function main() {
@@ -61,11 +63,12 @@ export async function main() {
   if (!hits.length) return;
   const mem = await import("./memory.js");
   const parts = await Promise.all(hits.map(async ({ p, by }) => {
-    const [memories, skills, wiki] = await Promise.all([
-      withTimeout(mem.recall(p, prompt, 6, { timeoutMs: BUDGET_MS - 800, factsOnly: true }).catch(() => []), BUDGET_MS - 300),
-      withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300),
-      p.tdai?.wikiId ? withTimeout(mem.knowledgeTool(p.tdai.wikiId, "search", { query: prompt.slice(0, 300), limit: 3 }).catch(() => null), BUDGET_MS - 300) : null,
+    const [memoriesT, skillsT, wikiT] = await Promise.all([
+      timed(withTimeout(mem.recall(p, prompt, 6, { timeoutMs: BUDGET_MS - 800, factsOnly: true }).catch(() => []), BUDGET_MS - 300)),
+      timed(withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300)),
+      p.tdai?.wikiId ? timed(withTimeout(mem.knowledgeTool(p.tdai.wikiId, "search", { query: prompt.slice(0, 300), limit: 3 }).catch(() => null), BUDGET_MS - 300)) : null,
     ]);
+    const [memories, skills, wiki] = [memoriesT.value, skillsT.value, wikiT?.value ?? null];
     const { projectSkills } = await import("../projects/project-skills.js");
     const local = projectSkills(p.path, prompt).slice(0, 4);
     const lines = [`## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
@@ -81,6 +84,15 @@ export async function main() {
     const graph = fs.existsSync(path.join(p.path, ".codegraph")) || (p.tdai?.codeGraphs ?? []).some((g) => g.id);
     if (graph) lines.push(`Code: use codegraph_explore (projectPath ${p.path}) or the code_graph MCP tool before reading files one by one.`);
     if (p.card) lines.push(`Card: ${p.card}`);
+    // what this message got from each kind of knowledge (what was injected, not what was searched)
+    try {
+      const { recordUse } = await import("./usage.js");
+      const base = { source: "prompt-hook", project: p.name, query: prompt };
+      recordUse({ ...base, kind: "memory", hits: facts.length, ms: memoriesT.ms });
+      recordUse({ ...base, kind: "skill", hits: skills?.length ?? 0, names: (skills ?? []).map((s) => s.name), ms: skillsT.ms });
+      if (wikiT) recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
+      recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
+    } catch { /* usage logging must never affect the hook */ }
     return lines.length > 1 ? lines.join("\n") : null;
   }));
   const body = parts.filter(Boolean).join("\n\n");

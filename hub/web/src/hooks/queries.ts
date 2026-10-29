@@ -8,6 +8,7 @@ import type {
   RepoGraph,
   Run,
   SavingsSnapshot,
+  UsageSummary,
   Status,
   SymbolInfo,
   Task,
@@ -19,6 +20,7 @@ export const qk = {
   status: ['status'] as const,
   limits: ['limits'] as const,
   savings: ['savings'] as const,
+  usage: ['usage'] as const,
   projects: ['projects'] as const,
   jobs: ['jobs'] as const,
   job: (id: string) => ['jobs', id] as const,
@@ -41,6 +43,7 @@ export const useLimits = () =>
   })
 
 export const useSavings = () => useQuery({ queryKey: qk.savings, queryFn: ({ signal }) => api<SavingsSnapshot | null>('/api/savings', { signal }), refetchInterval: 60_000 })
+export const useUsage = () => useQuery({ queryKey: qk.usage, queryFn: ({ signal }) => api<UsageSummary | null>('/api/usage', { signal }), refetchInterval: 60_000 })
 
 export const useProjects = () =>
   useQuery({

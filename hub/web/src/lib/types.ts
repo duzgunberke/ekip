@@ -1,6 +1,29 @@
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
 export type Via = 'auto' | 'free' | 'copilot'
 
+export type UsageKind = 'memory' | 'wiki' | 'skill' | 'local-skill' | 'codegraph' | 'card'
+export type UsageSource = 'prompt-hook' | 'worker-brief' | 'mcp-lead' | 'mcp-worker' | 'review'
+export type UsageSkill = { name: string; local: boolean; calls: number; reads: number; given: number; checked: number; used: number; usedRate: number | null }
+export type UsageRuns = { n: number; ok: number }
+export type ProjectUsage = {
+  name: string
+  lookups: number
+  hitRate: number | null
+  remembered: number
+  kinds: Partial<Record<UsageKind, { n: number; hits: number; hitRate: number | null; bySource: Partial<Record<UsageSource, number>> }>>
+  sources: Partial<Record<UsageSource, number>>
+  skills: UsageSkill[]
+  briefs: { total: number; withKnowledge: number; successWith: number | null; successWithout: number | null; runs: { with: UsageRuns; without: UsageRuns } }
+}
+export type UsageSummary = {
+  at: string
+  days: number
+  totals: { lookups: number; hitRate: number | null; bySource: Partial<Record<UsageSource, number>>; byKind: Partial<Record<UsageKind, number>> }
+  daily: { day: string; lookups: number; hits: number }[]
+  projects: ProjectUsage[]
+  note: string
+  receivedAt?: string
+}
 export type SavingsSnapshot = { days: number; rows: { day: string; claude: number; other: number; pools: Record<string, number>; unmeasured: number }[]; totals: { claude: number; other: number; outsidePercent: number; unmeasured: number }; claudeWithoutOtherWouldBe: number; note: string }
 
 export type Project = {
