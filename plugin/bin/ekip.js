@@ -37,6 +37,11 @@ const PROVIDERS = [
   { platform: "cohere", label: "Cohere", url: "https://dashboard.cohere.com/api-keys", note: "trial key" },
   { platform: "zhipu", label: "Z.ai (Zhipu)", url: "https://z.ai/manage-apikey/apikey-list", note: "GLM Flash" },
   { platform: "huggingface", label: "HuggingFace", url: "https://huggingface.co/settings/tokens", note: "token with Inference Providers permission" },
+  // DeepSeek models for free (DeepSeek's own API has no free tier)
+  { platform: "routeway", label: "Routeway", url: "https://routeway.ai", note: "free key; DeepSeek V4 Flash" },
+  { platform: "bazaarlink", label: "BazaarLink", url: "https://bazaarlink.ai", note: "free key; DeepSeek V4 Flash" },
+  { platform: "router9", label: "Router9", url: "https://www.router9.com", note: "shared monthly credits; DeepSeek V4 Pro + Flash" },
+  { platform: "modelscope", label: "ModelScope", url: "https://modelscope.cn/my/myaccesstoken", note: "free; DeepSeek V4 Pro; needs an Aliyun (cn) account binding" },
 ];
 
 async function keyWizard({ all = false } = {}) {
