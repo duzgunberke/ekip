@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-label="ekip for teams (coming in v2): several people, each with their own ekip, feed and read one shared memory with personal, project and team layers.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
+    <radialGradient id="core" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#2DD4BF" stop-opacity=".35"/><stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/></radialGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB45C"/><stop offset="1" stop-color="#F07B3F"/></linearGradient>
+  </defs>
+  <style>.t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}.m{font-family:ui-monospace,'SF Mono',Menlo,monospace}</style>
+  <rect width="1200" height="520" rx="24" fill="url(#bg)"/>
+
+  <!-- rings -->
+  <circle cx="600" cy="262" r="200" fill="url(#core)"/>
+  <circle cx="600" cy="262" r="168" fill="none" stroke="#2DD4BF" stroke-opacity=".35" stroke-width="2"/>
+  <circle cx="600" cy="262" r="118" fill="none" stroke="#2DD4BF" stroke-opacity=".55" stroke-width="2"/>
+  <circle cx="600" cy="262" r="66" fill="#10302B" stroke="#5EEAD4" stroke-width="2"/>
+  <g class="t" text-anchor="middle">
+    <text x="600" y="256" class="h" font-size="17">team</text>
+    <text x="600" y="278" fill="#CCFBF1" font-size="13">rules, how-tos</text>
+    <text x="600" y="168" fill="#99F6E4" font-size="14">project: decisions · fixes · wiki · graph · skills</text>
+    <text x="600" y="117" fill="#5EEAD4" font-size="13" fill-opacity=".8">personal: preferences, private notes (not shared)</text>
+  </g>
+
+  <!-- people -->
+  <g class="t">
+    <g transform="translate(60 70)"><rect width="230" height="96" rx="16" fill="#1A1E27" stroke="#2A303B"/><path d="M24 30 34 40 24 50" fill="none" stroke="url(#lead)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="48" y="45" class="h" font-size="18">Ayşe</text><text x="24" y="76" class="s m" font-size="13">payments-api</text></g>
+    <g transform="translate(60 360)"><rect width="230" height="96" rx="16" fill="#1A1E27" stroke="#2A303B"/><path d="M24 30 34 40 24 50" fill="none" stroke="url(#lead)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="48" y="45" class="h" font-size="18">Mehmet</text><text x="24" y="76" class="s m" font-size="13">storefront-web</text></g>
+    <g transform="translate(910 70)"><rect width="230" height="96" rx="16" fill="#1A1E27" stroke="#2A303B"/><path d="M24 30 34 40 24 50" fill="none" stroke="url(#lead)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="48" y="45" class="h" font-size="18">Elif</text><text x="24" y="76" class="s m" font-size="13">ios-app</text></g>
+    <g transform="translate(910 360)"><rect width="230" height="96" rx="16" fill="#1A1E27" stroke="#2A303B"/><path d="M24 30 34 40 24 50" fill="none" stroke="url(#lead)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="48" y="45" class="h" font-size="18">+ 6 more</text><text x="24" y="76" class="s m" font-size="13">10-person team</text></g>
+  </g>
+  <g fill="none" stroke="#5EEAD4" stroke-opacity=".7" stroke-width="2.5" stroke-dasharray="6 6">
+    <path d="M292 118 C380 118 420 190 470 210"/>
+    <path d="M292 408 C380 408 420 336 470 316"/>
+    <path d="M908 118 C820 118 780 190 730 210"/>
+    <path d="M908 408 C820 408 780 336 730 316"/>
+  </g>
+  <text x="600" y="492" text-anchor="middle" class="t s" font-size="15">Ayşe fixes a race condition on Tuesday. On Thursday, Mehmet's agent already knows the fix.</text>
+</svg>

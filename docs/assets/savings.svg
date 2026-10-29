@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" role="img" aria-label="Claude usage without and with ekip during the setup phase: without ekip all 110 million input-equivalent tokens land on Claude; with ekip 46 million do, and 64 million run on other quotas.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFB45C"/><stop offset="1" stop-color="#F07B3F"/></linearGradient>
+    <linearGradient id="team" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#5EEAD4"/></linearGradient>
+  </defs>
+  <style>.t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}</style>
+  <rect width="1200" height="380" rx="24" fill="url(#bg)"/>
+  <g class="t">
+    <text x="48" y="62" class="h" font-size="24">Where the work went</text>
+    <text x="48" y="90" class="s" font-size="15">Two days of building ekip itself: cold indexing of 15 projects, wiki building, debugging. Input-equivalent tokens.</text>
+
+    <text x="48" y="160" class="h" font-size="17">Without ekip</text>
+    <rect x="230" y="134" width="900" height="40" rx="10" fill="url(#lead)"/>
+    <text x="250" y="160" font-size="16" font-weight="700" fill="#2A1405">110M · all on your Claude limit</text>
+
+    <text x="48" y="238" class="h" font-size="17">With ekip</text>
+    <rect x="230" y="212" width="376" height="40" rx="10" fill="url(#lead)"/>
+    <text x="250" y="238" font-size="16" font-weight="700" fill="#2A1405">46M Claude</text>
+    <rect x="612" y="212" width="518" height="40" rx="10" fill="url(#team)"/>
+    <text x="632" y="238" font-size="16" font-weight="700" fill="#04201C">64M other quotas (58%)</text>
+
+    <g font-size="14" class="s">
+      <rect x="230" y="296" width="14" height="14" rx="3" fill="#F07B3F"/><text x="252" y="308">Claude: planning, review, and the build-and-debug work only the lead can do</text>
+      <rect x="230" y="324" width="14" height="14" rx="3" fill="#2DD4BF"/><text x="252" y="336">Free pool, Copilot, Antigravity: memory extraction, wiki pages, translation, films</text>
+    </g>
+  </g>
+</svg>
