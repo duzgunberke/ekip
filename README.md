@@ -55,6 +55,11 @@ for it, indexes the code into a graph, builds a **wiki** from its docs and extra
 project builds, releases, fixes its usual problems). The first task you give is already informed by
 everything you decided before.
 
+Repeated work can become a real project-local Claude Code skill: `ekip skill learn PROJECT` reviews
+run history and saves proposed `SKILL.md` files as candidates; inspect them with `ekip skill candidates`
+and explicitly install one with `ekip skill accept PROJECT NAME`. `ekip skill prune PROJECT` only
+reports stale TencentDB skills and never removes local skill files.
+
 ## Memory that follows your message
 
 Run `ekip review [--project NAME] [--base REF]` to run relevant project checks and get two read-only reviews of changed files. Use `--checks-only` for checks alone, and `ekip review profile NAME --refresh` to regenerate the project's review lenses.

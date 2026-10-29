@@ -46,6 +46,11 @@ lider › 3 görev · videolar → Antigravity + film becerisi · storefront dü
 
 Sıfırdan başlamazsınız. ekip bir projeyi kaydettiğinde o projeye ait **eski Claude Code oturumlarınızı** içe aktarır, kodu bir grafiğe indeksler, dokümanlarından bir **wiki** oluşturur ve **becerileri** çıkarır (projenin nasıl derlendiği, yayınlandığı ve sık karşılaşılan sorunların nasıl çözüldüğü). Verdiğiniz ilk görev bile daha önce aldığınız tüm kararları hesaba katar.
 
+Tekrarlanan işler proje için gerçek bir Claude Code skill'ine dönüşebilir: `ekip skill learn PROJE`
+çalıştırma geçmişini inceler ve `SKILL.md` adaylarını kaydeder. `ekip skill candidates` ile gözden
+geçirin, `ekip skill accept PROJE AD` ile açıkça projeye ekleyin. `ekip skill prune PROJE` yalnızca
+eskimiş TencentDB skill'lerini raporlar; yerel skill dosyalarını silmez.
+
 ## Mesajınızla birlikte gelen bellek
 
 `ekip review [--project NAME] [--base REF]` ilgili proje kontrollerini ve değişen dosyalar için iki salt okunur incelemeyi çalıştırır. Yalnızca kontroller için `--checks-only`, proje inceleme profilini yenilemek için `ekip review profile NAME --refresh` kullanın.
