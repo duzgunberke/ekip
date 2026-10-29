@@ -729,6 +729,9 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+- Learn from failures: when a worker failed or was rejected and a later attempt worked, save the lesson
+  with memory_remember in that project (what failed, the cause, what made it work, the pool that did
+  it), one fact per call. Lessons that keep coming back become skill candidates (\`ekip skill learn\`).
 - After workers change code in a registered project, run \`ekip review --project NAME\` before reporting.
 - Failed checks and HIGH findings confirmed by both reviewers are must-fix; re-dispatch fixes. For recurring bug classes in projects with check:* scripts, propose a new check script.
 - Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
