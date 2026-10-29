@@ -9,6 +9,7 @@ const en: Record<string, string> = Object.fromEntries([
   ["Görevler", "Tasks"],
   ["Genel bakış", "Overview"],
   ["Claude vs diğer kotalar", "Claude vs other quotas"],
+  ["Diğer kotalar", "Other quotas"],
   ["Son 14 gün · girdi eşdeğeri token", "Last 14 days · input-equivalent tokens"],
   ["Henüz tasarruf verisi yok.", "No savings data yet."],
   ["Son 14 gün Claude ve diğer kota kullanımı", "Claude and other quota usage over the last 14 days"],
