@@ -5,6 +5,7 @@
 // project of the session's folder is used. Fails silently and never takes longer than ~6 s.
 import fs from "node:fs";
 import path from "node:path";
+import { redact } from "./redact.js";
 
 const BUDGET_MS = 4000;
 const fold = (s) => s.toLocaleLowerCase("tr").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
@@ -65,16 +66,16 @@ async function main() {
       withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300),
     ]);
     const lines = [`## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
-    if (p.summary) lines.push(clip(p.summary.replace(/\s+/g, " "), 300));
+    if (p.summary) lines.push(clip(redact(p.summary.replace(/\s+/g, " ")), 300));
     const facts = (memories ?? []).filter((m) => m.layer === "L1").slice(0, 5);
-    if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(String(m.content).replace(/\s+/g, " "), 260)}`));
-    if (skills?.length) lines.push("Project skills (read with the skill_get MCP tool):", ...skills.map((s) => `- ${s.name}: ${clip(s.description ?? "", 160)}`));
+    if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(redact(String(m.content).replace(/\s+/g, " ")), 260)}`));
+    if (skills?.length) lines.push("Project skills (read with the skill_get MCP tool):", ...skills.map((s) => `- ${s.name}: ${clip(redact(s.description ?? ""), 160)}`));
     if (p.card) lines.push(`Card: ${p.card}`);
     return lines.length > 1 ? lines.join("\n") : null;
   }));
   const body = parts.filter(Boolean).join("\n\n");
   if (!body) return;
-  const context = `ekip project memory for this message (retrieved by relevance; verify before relying on it):\n\n${body}`;
+  const context = redact(`ekip project memory for this message (retrieved by relevance; verify before relying on it):\n\n${body}`);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context.slice(0, 6000) } }));
 }
 

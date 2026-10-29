@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { HOME, SETTINGS, TDAI_PORTS, adminKey, die } from "./core.js";
 import { getProject, listProjects, updateProject, findProject } from "./projects.js";
+import { redact } from "./redact.js";
 
 const SERVICE = SETTINGS.tdaiServiceId ?? "default";
 const CORE = `http://127.0.0.1:${TDAI_PORTS.core}`;
@@ -390,7 +391,7 @@ export async function recordRun(project, { id, via, task, report, status }) {
 // A note goes in as a short exchange so L1 extraction picks it up; recall finds it at once in L0.
 export async function remember(project, text) {
   const p = resolve(project);
-  const t = String(text).trim().slice(0, MSG_MAX);
+  const t = redact(String(text)).trim().slice(0, MSG_MAX);
   if (!t) throw new Error("nothing to remember");
   await addConversation(p, `ekip-notes-${p.name}`, [
     { role: "user", content: `Remember this about the ${p.name} project: ${t}` },
@@ -404,7 +405,8 @@ function turnText(entry) {
   if (!entry || entry.isSidechain || entry.isMeta || !["user", "assistant"].includes(entry.type)) return null;
   const c = entry.message?.content;
   let text = typeof c === "string" ? c : Array.isArray(c) ? c.filter((b) => b?.type === "text").map((b) => b.text).join("\n") : "";
-  text = text.replace(SYS_RE, "").trim();
+  // History import reads local session files directly; redact the extracted text before upload.
+  text = redact(text.replace(SYS_RE, "").trim());
   if (!text || /^<(command-|local-command|bash-|task-notification)/.test(text) || text.startsWith("Caveat:")) return null;
   if (text.length > MSG_MAX) text = `${text.slice(0, MSG_MAX - 20)}\n…(truncated)`;
   return { role: entry.type, content: text };

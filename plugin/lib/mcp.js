@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import { findProject, getProject, listProjects } from "./projects.js";
 import * as mem from "./memory.js";
+import { redact } from "./redact.js";
 
 const PROTOCOL = "2025-06-18";
 const log = (...a) => process.stderr.write(`ekip-mcp: ${a.join(" ")}\n`);
@@ -66,7 +67,7 @@ export async function callTool(name, a = {}) {
     }
     case "memory_search": {
       const hits = await mem.recall(project(a.project), a.query, a.limit ?? 8);
-      return hits.length ? hits : "no memories found";
+      return redact(JSON.stringify(hits.length ? hits : "no memories found"));
     }
     case "memory_remember":
       await mem.remember(project(a.project), a.text);
@@ -74,7 +75,7 @@ export async function callTool(name, a = {}) {
     case "wiki_search": {
       const p = project(a.project);
       if (!p.tdai?.wikiId) throw new Error(`${p.name} has no wiki`);
-      return mem.knowledgeTool(p.tdai.wikiId, "search", { query: a.query, ...(a.limit ? { limit: a.limit } : {}) });
+      return redact(JSON.stringify(await mem.knowledgeTool(p.tdai.wikiId, "search", { query: a.query, ...(a.limit ? { limit: a.limit } : {}) })));
     }
     case "wiki_read": {
       const p = project(a.project);
