@@ -86,6 +86,10 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
 - **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
   sahte bir sayı yerine hiç tahmin gösterilmez.
 - **Arka plan işleri tek kopya çalışır**, iki içe aktarma aynı kota için yarışmaz.
+- **Her worker projenin bilgisiyle başlar.** `ekip run --project`, brief'le projenin becerilerini ve
+  belleğini arar ve eşleşenleri ekler; lider bakmayı unutsa bile.
+- **Hiçbir şey gözden uzakta çalışmaz.** Worker'lar bir bölmede açılır; liderin kendi başlattığı
+  uzun işler de (`ekip show <log>`).
 - **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; `ekip agents`
   ne zaman geri geleceğini gösterir.
 - **Panel doğruyu söyler.** Hub'a ulaşmayan güncellemeler yeniden gönderilir, biten her çalıştırma
@@ -136,7 +140,11 @@ node plugin/bin/ekip.js init     # servisler, plugin, MCP sunucuları, worker CL
 ekip                             # lideri başlatın; ne isterseniz sorun
 ```
 
-ekip ilk açılışta sizi karşılar ve eksik kurulum adımlarını önerir.
+ekip ilk açılışta sizi karşılar ve her açılışta neyin eksik kaldığına bakar: daha yeni bir ekip
+sürümü, indekslenmemiş bir proje, eksik kod grafiği ya da wiki, belleğe aktarılmamış Claude
+geçmişi, vektörsüz kayıtlar, bağlanmamış worker havuzları ya da ücretsiz model anahtarları. Claude
+en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni sürümü `ekip update`
+getirir; sürüm çıktığında ekip logosuyla tek bir macOS bildirimi gelir.
 
 `ekip keys` her ücretsiz sağlayıcının anahtar sayfasını sırayla açar. Mac'iniz kapalıyken de belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutmak için bir VPS bağlayın: [docs/install.md](docs/install.md).
 

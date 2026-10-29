@@ -97,6 +97,10 @@ night. ekip handles that itself, so you never have to chase it.
 - **Estimates are measured, not guessed.** The finish time comes from the real rate of progress; with
   no basis yet, ekip shows none instead of a made-up number.
 - **Background jobs run one copy at a time**, so two imports never fight over the same quota.
+- **Every worker starts from the project's knowledge.** `ekip run --project` searches the project's
+  skills and memory with the brief and appends what matches, even when the lead forgot to look.
+- **Nothing runs out of sight.** Workers open in a pane, and any long job the lead starts itself
+  gets one too (`ekip show <log>`).
 - **A pool whose quota ran out leaves the rotation** until it resets, instead of failing every job sent
   to it; `ekip agents` shows when it comes back.
 - **The panel tells the truth.** Updates that did not reach the hub are sent again, every finished
@@ -149,7 +153,11 @@ node plugin/bin/ekip.js init     # services, plugin, MCP servers, worker CLIs, f
 ekip                             # start the lead; ask for anything
 ```
 
-On first start, ekip greets you and suggests any setup steps still missing.
+On first start ekip greets you, and every start it checks what is still missing: a newer ekip
+release, a project that is not indexed, no code graph or wiki, Claude history not in memory,
+memories without vectors, worker pools or free model keys not connected. Claude offers the most
+useful step once, in a sentence, and does it when you say yes. `ekip update` brings a new release
+in; you get one macOS notification (with the ekip icon) when a release is out.
 
 `ekip keys` opens each free provider's key page in turn. To keep memory, the free pool and a job queue
 running while your Mac is off, connect a VPS: [docs/install.md](docs/install.md).

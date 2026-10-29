@@ -16,6 +16,9 @@ Everyday
   ekip status
   ekip limits
   ekip doctor [--fix]
+  ekip update                     bring in the newest release (shows what changed)
+  ekip version                    this install's version and the newest release
+  ekip show <log...>              open a live pane on any log
 
 Workers
   ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"
