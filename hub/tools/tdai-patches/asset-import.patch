@@ -1,0 +1,281 @@
+diff --git a/agents/asset-import.ts b/agents/asset-import.ts
+index dd842dd..8665005 100644
+--- a/agents/asset-import.ts
++++ b/agents/asset-import.ts
+@@ -1,4 +1,4 @@
+-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
++import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+ import { spawnSync } from 'node:child_process';
+ import { createHash } from 'node:crypto';
+ import { homedir } from 'node:os';
+@@ -8,6 +8,37 @@ import { createInterface } from 'node:readline/promises';
+ import { fileURLToPath } from 'node:url';
+ import { createRequire } from 'node:module';
+ 
++// Session logs can exceed V8's max string length (~512 MB; e.g. a Claude Code session full of
++// base64 screenshots). Large files are read in chunks and lines over MAX_LINE (inline images,
++// file dumps) are dropped; the conversation text survives.
++const BIG_FILE = 256 * 1024 * 1024, MAX_LINE = 256 * 1024, MAX_TOTAL = 384 * 1024 * 1024;
++function readSessionText(path: string): string {
++  if (statSync(path).size <= BIG_FILE) return readFileSync(path, 'utf-8');
++  const fd = openSync(path, 'r');
++  const buf = Buffer.alloc(64 * 1024 * 1024);
++  const keep: string[] = [];
++  let carry: Buffer[] = [], carryLen = 0, dropping = false, total = 0;
++  try {
++    for (let n; (n = readSync(fd, buf, 0, buf.length, null)) > 0; ) {
++      let start = 0;
++      for (let i = buf.indexOf(10, 0); i !== -1 && i < n; i = buf.indexOf(10, i + 1)) {
++        if (!dropping && carryLen + (i - start) <= MAX_LINE && total < MAX_TOTAL) {
++          const line = Buffer.concat([...carry, buf.subarray(start, i)]).toString('utf-8');
++          // inline images ride on short lines too; they carry no conversation text
++          if (!line.includes('"type":"image"')) { keep.push(line); total += line.length; }
++        }
++        carry = []; carryLen = 0; dropping = false; start = i + 1;
++      }
++      if (start < n) {
++        if (dropping || carryLen + (n - start) > MAX_LINE) { dropping = true; carry = []; carryLen = 0; }
++        else { carry.push(Buffer.from(buf.subarray(start, n))); carryLen += n - start; }
++      }
++    }
++    if (!dropping && carryLen) keep.push(Buffer.concat(carry).toString('utf-8'));
++  } finally { closeSync(fd); }
++  return keep.join('\n');
++}
++
+ 
+ let KIND = 'openclaw';
+ // 以下为本文件内联的共享扫盘工具与导入引擎（原 MemoryPanel/scripts/asset-import/*）。
+@@ -175,7 +206,7 @@ export function collectSubfiles(skillDir: string, rel: string, acc: { path: stri
+       collectSubfiles(skillDir, join(rel, child), acc);
+     }
+   } else if (st.isFile()) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     acc.push({ path: rel.split('\\').join('/'), content: text });
+   }
+ }
+@@ -780,7 +811,8 @@ interface AgentRaw {
+ }
+ 
+ // ── 消息分批 + checkpoint ──
+-const MAX_MESSAGES_PER_REQUEST = 100;
++// ekip: 100 messages per request outran the gateway timeout on long sessions (504 KERNEL_TIMEOUT)
++const MAX_MESSAGES_PER_REQUEST = Number(process.env.TDAI_IMPORT_BATCH ?? 20);
+ const MAX_MESSAGE_CHARS = 8192;
+ 
+ interface ImportMessage {
+@@ -930,6 +962,12 @@ interface BatchInput {
+  * 工具以 [tool_call] / [tool_result] 文本形式并入对话流，且不出现 tool_call/tool_result 角色，
+  * 因为 memory 链路 /chat-memory/import → core /v3/conversation/add 的 schema 仅接受 user/assistant/system）。
+  */
++// TDAI_IMPORT_LEAN=1: memory gets the conversation, not the tool traffic. Tool results (file
++// dumps, command output, logs) are most of a coding session's bytes and none of its decisions;
++// dropping them, and shortening tool calls to name + a short argument, cuts the import many times.
++// The skill chain is separate and still sees the full structured pairs.
++const LEAN = process.env.TDAI_IMPORT_LEAN === '1';
++
+ function toMemoryMessages(msgs: ImportMessage[]): ImportMessage[] {
+   const groups = new Map<number, ImportMessage[]>();
+   for (const m of msgs) {
+@@ -944,10 +982,12 @@ function toMemoryMessages(msgs: ImportMessage[]): ImportMessage[] {
+       .map((m) => {
+         if (m.role === 'tool_call') {
+           const one = m.content.replace(/\s+/g, ' ').trim();
+-          const capped = one.length > 4000 ? `${one.slice(0, 4000)}…` : one;
++          const cap = LEAN ? 160 : 4000;
++          const capped = one.length > cap ? `${one.slice(0, cap)}…` : one;
+           return `[tool_call] ${m.tool_name || 'unknown'}(${capped})`;
+         }
+         if (m.role === 'tool_result') {
++          if (LEAN) return '';
+           const inner = m.content.replace(/\s+/g, ' ').trim();
+           const capped = inner.length > 4000 ? `${inner.slice(0, 4000)}…` : inner;
+           return `[tool_result${m.tool_name ? `:${m.tool_name}` : ''}] ${capped}`;
+@@ -991,9 +1031,19 @@ async function uploadBatches(client: PanelClient, ctx: WriteCtx, input: BatchInp
+         m.ts !== undefined ? { role: m.role, content: m.content, ts: m.ts } : { role: m.role, content: m.content },
+       ),
+     };
+-    const env = await client.post('/chat-memory/import', body);
+-    if (env.code !== 0) {
+-      throw new Error(`chat-memory/import 失败 code=${env.code} msg=${env.message ?? ''}`);
++    // ekip: retry a failed batch in place (timeouts, dropped connections while memory-core is busy)
++    // instead of failing the whole session; a long session used to restart from zero every round.
++    for (let attempt = 0; ; attempt++) {
++      let env: { code: number; message?: string } | null = null, err: unknown = null;
++      try { env = await client.post('/chat-memory/import', body); } catch (e) { err = e; }
++      if (env && env.code === 0) {
++        // ekip: per-batch beacon so a reporter can show progress inside one very long session
++        try { writeFileSync(join(home(), 'import-progress.json'), JSON.stringify({ session: input.sessionId, batch: i + 1, total: batches.length, at: new Date().toISOString() })); } catch { /* best effort */ }
++        break;
++      }
++      const why = env ? `code=${env.code} msg=${env.message ?? ''}` : String((err as Error)?.message ?? err);
++      if (attempt >= 5 || (env && ![504, 502, 503, 401, 429].includes(env.code))) throw new Error(`chat-memory/import 失败 ${why}`);
++      await new Promise((r) => setTimeout(r, Math.min(120_000, 10_000 * 2 ** attempt)));
+     }
+   }
+ }
+@@ -1479,6 +1529,8 @@ async function main(): Promise<void> {
+         await uploadSession(client, ctx, { session: s, extract: opts.extract });
+         results.imported++;
+         markDone(cp, ck(s.sourceKey));
++        // checkpoint per session: a long folder otherwise shows no progress and restarts from zero
++        saveCheckpoint(opts.stateFile, cp);
+       } catch (e) {
+         results.failed++;
+         results.errors.push(`session ${s.sessionId}: ${(e as Error).message}`);
+@@ -1674,7 +1726,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+     if (!existsSync(sessionsDirPath)) continue;
+     for (const f of listJsonlRecursive(sessionsDirPath)) {
+       if (f.endsWith('.lock') || f.endsWith('.trajectory.jsonl')) continue;
+-      const msgs = parseJsonlLines(readFileSync(f, 'utf-8'));
++      const msgs = parseJsonlLines(readSessionText(f));
+       if (msgs.length) out.push({ sessionId: `${agentId}/${basename(f, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
+     }
+   }
+@@ -1686,11 +1738,18 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+   const out: ScannedSession[] = [];
+   if (!existsSync(sessionsDir)) return out;
+   const st = statSync(sessionsDir);
+-  const jsonlFiles = st.isDirectory()
++  // ekip: TDAI_IMPORT_SINCE_DAYS / TDAI_IMPORT_MAX_MB keep a first import to recent, readable
++  // sessions (a full history of multi-hundred-MB tool-heavy logs took many hours).
++  const sinceMs = Number(process.env.TDAI_IMPORT_SINCE_DAYS ?? 0) * 86400000;
++  const maxBytes = Number(process.env.TDAI_IMPORT_MAX_MB ?? 0) * 1024 * 1024;
++  const keep = (f: string) => { const s = statSync(f); return (!sinceMs || Date.now() - s.mtimeMs <= sinceMs) && (!maxBytes || s.size <= maxBytes); };
++  const allJsonl = st.isDirectory()
+     ? listJsonlRecursive(sessionsDir)
+     : sessionsDir.endsWith('.jsonl')
+       ? [sessionsDir]
+       : [];
++  const jsonlFiles = allJsonl.filter(keep);
++  if (allJsonl.length > jsonlFiles.length) console.log(`[ekip] ${allJsonl.length - jsonlFiles.length} oturum dosyası atlandı (eski ya da çok büyük)`);
+   const jsonFiles = st.isDirectory()
+     ? readdirSync(sessionsDir)
+         .filter((f) => f.endsWith('.json'))
+@@ -1699,7 +1758,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -1764,7 +1823,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+       const dir = join(root, proj);
+       if (!statSync(dir).isDirectory()) continue;
+       for (const f of listJsonlRecursive(dir)) {
+-        const msgs = parseJsonlLines(readFileSync(f, 'utf-8'));
++        const msgs = parseJsonlLines(readSessionText(f));
+         if (msgs.length) out.push({ sessionId: `${proj}/${basename(f, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
+       }
+     }
+@@ -1773,7 +1832,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+   const legacy = join(home(), '.codebuddy', 'sessions');
+   if (existsSync(legacy)) {
+     for (const f of listJsonlRecursive(legacy)) {
+-      const msgs = parseJsonlLines(readFileSync(f, 'utf-8'));
++      const msgs = parseJsonlLines(readSessionText(f));
+       if (msgs.length) out.push({ sessionId: basename(f, '.jsonl'), messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
+     }
+   }
+@@ -1798,7 +1857,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -1872,7 +1931,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+   const sessionsRoot = join(codexHome(), 'sessions');
+   if (!existsSync(sessionsRoot)) return out;
+   for (const full of listJsonlRecursive(sessionsRoot)) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({ sessionId: extractCodexSessionId(full, text), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
+@@ -1898,7 +1957,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -1962,7 +2021,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+     for (const f of readdirSync(pd)) {
+       if (!f.endsWith('.jsonl')) continue;
+       const full = join(pd, f);
+-      const msgs = parseJsonlLines(readFileSync(full, 'utf-8'));
++      const msgs = parseJsonlLines(readSessionText(full));
+       if (msgs.length) {
+         out.push({ sessionId: f.replace('.jsonl', ''), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
+       }
+@@ -1990,7 +2049,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -2197,7 +2256,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+   const sessionsRoot = join(dshHome(), 'sessions');
+   if (!existsSync(sessionsRoot)) return out;
+   for (const full of walkFiles(sessionsRoot, (n) => n === 'session.jsonl.zstd' || n === 'session.jsonl')) {
+-    const text = full.endsWith('.zstd') ? readZstdUtf8(full) : readFileSync(full, 'utf-8');
++    const text = full.endsWith('.zstd') ? readZstdUtf8(full) : readSessionText(full);
+     if (!text) continue;
+     const msgs = parseDshSessionLines(text);
+     if (!msgs.length) continue;
+@@ -2224,7 +2283,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -2521,7 +2580,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({
+@@ -2591,7 +2650,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
+   for (const f of readdirSync(root)) {
+     if (!f.endsWith('.jsonl') && !f.endsWith('.json')) continue;
+     const full = join(root, f);
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = f.endsWith('.json') ? normalizeResponsesJson(full) : parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({ sessionId: basename(f, f.endsWith('.json') ? '.json' : '.jsonl'), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
+@@ -2602,7 +2661,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
+       const dir = join(projectsRoot, proj);
+       if (!statSync(dir).isDirectory()) continue;
+       for (const full of listJsonlRecursive(dir)) {
+-        const msgs = parseJsonlLines(readFileSync(full, 'utf-8'));
++        const msgs = parseJsonlLines(readSessionText(full));
+         if (!msgs.length) continue;
+         out.push({ sessionId: `${proj}/${basename(full, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
+       }
+@@ -2634,7 +2693,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+       ? [sessionsDir]
+       : [];
+   for (const full of jsonlFiles) {
+-    const text = readFileSync(full, 'utf-8');
++    const text = readSessionText(full);
+     const msgs = parseJsonlLines(text);
+     if (!msgs.length) continue;
+     out.push({

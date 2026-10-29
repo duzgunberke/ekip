@@ -95,14 +95,16 @@ export function create({ title, project, steps = [] }) {
 }
 
 /** Mark step n (1-based): running [pct] | done | failed | skipped; starting one finishes earlier running ones. */
-export function step(id, n, status = "done", { pct, note, detail, parallel = false } = {}) {
+export function step(id, n, status = "done", { pct, note, detail, parallel = false, alive = false } = {}) {
   return update(id, (t) => {
     const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
     // a late progress update from a script must not reopen a step of a task that is already closed
     if (t.status !== "running" && status === "running") return;
     if (status === "running" && !parallel) for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
-    // progressAt: when the step last moved; a running step that stops moving is shown as stalled
-    if ((pct != null && pct !== s.pct) || (status === "running" && s.status !== "running")) s.progressAt = now();
+    // progressAt: when the step last moved; a running step that stops moving is shown as stalled.
+    // --alive: the reporter measured real work (records written, batches sent) even though the
+    // percent did not change yet, as with one very long item; that is progress, not a stall.
+    if ((pct != null && pct !== s.pct) || alive || (status === "running" && s.status !== "running")) s.progressAt = now();
     if (detail != null) s.detail = detail;
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
@@ -257,7 +259,7 @@ export async function main([sub = "ls", ...args]) {
     console.log(t.id);
   } else if (sub === "step") {
     const [id, n, status = "done"] = rest();
-    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note"), detail: opt("--detail"), parallel: args.includes("--parallel") });
+    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note"), detail: opt("--detail"), parallel: args.includes("--parallel"), alive: args.includes("--alive") });
   } else if (sub === "add") {
     const [id, ...titles] = rest();
     addSteps(id, titles.join(" ").split(";").map((s) => s.trim()).filter(Boolean));
@@ -294,5 +296,5 @@ export async function main([sub = "ls", ...args]) {
       if (watching) await sleep(2000);
       if (watching && codeChanged()) await restartWatch();
     } while (watching);
-  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
 }
