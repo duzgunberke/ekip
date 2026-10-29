@@ -28,7 +28,7 @@ Claude Code kotasının çoğu **okumaya** gider: dosyalar, loglar, geçmiş ve 
 
 <p align="center"><img src="docs/assets/savings.svg" alt="Kurulum sırasında işin yüzde 58'i Claude dışında yürütüldü: Claude'da 110 milyon girdi eşdeğeri token'ın 46 milyonu, diğer kotalarda 64 milyonu kullanıldı" width="100%"></p>
 
-Bu rakamlar en kötü senaryoyu gösteriyor: ekip'in kendisini geliştirmek ve 15 projeyi ilk kez indekslemek için geçen iki gün; yalnızca liderin yapabileceği işler. Günlük proje işlerinde lider çoğunlukla planlama ve inceleme yapar, dolayısıyla işin daha büyük bir kısmı başka kotalarda yürür.
+Bu rakamlar en kötü senaryoyu gösteriyor: ekip'in kendisini geliştirmek ve 15 projeyi ilk kez indekslemek için geçen iki gün; yalnızca liderin yapabileceği işler. Ertesi gün, hâlâ çoğunlukla geliştirme yaparken, `ekip savings` **işin %81'inin Claude dışında** yürüdüğünü ölçtü. Kendi işinde çalıştır: Claude oturumlarını, worker loglarını ve ücretsiz havuzu gün gün okur.
 
 ## Nasıl çalışır?
 

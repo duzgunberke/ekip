@@ -1,113 +1,107 @@
-# Memory: vectors, wiki, code graph, skills
+<h1><img src="brand/logo-mark.svg" width="40" height="40" alt="" style="vertical-align: middle"> Memory</h1>
 
+See how ekip indexes projects and uses memory, skills, a wiki, and code graphs to prepare context.
 
-How a project gets indexed and what each memory layer does.
+[README](../README.md) · [How it works](architecture.md) · **Memory** · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
 
+## Project indexing
 
-
-[← back to the README](../README.md)
-
-
-## How a project gets indexed
-
-`ekip project scan` finds every git repo you committed to in the last 30 days; `ekip project add
-<path>` adds one by hand (a folder with several repos inside is one project with sub-repos). Each
-project then goes through the same pipeline, four parts running side by side:
+`ekip project scan` finds repositories with recent commits; `ekip project add <path>` registers one directly. Registration creates a project card, a local codegraph index, and a per-project TencentDB Agent Memory workspace with a wiki and GitHub code graph.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
 flowchart LR
-  add["ekip project add / scan"] --> reg["registry<br/>data/projects.json<br/>name, path, repos, remotes"]
-  reg --> cg["local code graph<br/>codegraph init<br/>.codegraph/ SQLite index"]
-  reg --> tdai["TDAI agent + team<br/>memories are isolated per project"]
-  tdai --> rg["code graph from GitHub<br/>one per repo, built on the hub"]
-  tdai --> wiki["LLM wiki<br/>README, docs/, notes, ≤80 Markdown files"]
-  reg --> card["project card<br/>a worker reads the repo once and writes<br/>stack, commands, layout, frequent tasks, gotchas"]
-  card --> wiki
+  add["ekip project add / scan"] --> card["Project card"]
+  add --> local["Local codegraph index"]
+  add --> memory["Per-project memory"]
+  memory --> wiki["Wiki from project docs"]
+  memory --> graph["GitHub code graph"]
+  card --> brief["Session context and worker briefs"]
+  local --> cli["Local codegraph MCP"]
+  wiki --> mcp["Wiki search and read"]
+  graph --> mcp
+  memory --> mcp
+  classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
+  classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
+  class add,card,local,memory,wiki,graph,brief,cli,mcp teal;
 ```
 
-| Part | What it is | Who uses it |
-|---|---|---|
-| **Card** (`data/projects/<name>.md`) | one page: what the project is, stack, build/test/deploy commands, folder layout, frequent tasks, gotchas; written once by a worker that reads the repo | injected at session start in that project; put in every worker brief |
-| **Local code graph** ([codegraph](https://github.com/colbymchenry/codegraph)) | a SQLite index of every symbol, file and call edge in the repo (30+ languages), kept in `.codegraph/` and hidden from git | the `codegraph` MCP server: one `codegraph_explore` call returns the exact source of the symbols a question touches, plus the call paths between them, instead of a grep-and-read loop |
-| **Code graph from GitHub** | the same idea built by TDAI on the hub from the remote repo | agents that run on the hub, the panel's code map |
-| **LLM wiki** | pages written by an LLM from the project's docs, linked to each other | `wiki_search` / `wiki_read` MCP tools, worker briefs |
-| **Memory and skills** | see the next section | session start, worker briefs, `memory_search` / `skill_search` |
+| Index | Purpose |
+|---|---|
+| Project card | Stack, layout, build and test commands, recurring tasks, and gotchas. Injected when a session starts in that project and included in worker briefs. |
+| Local codegraph | A local SQLite code index in `.codegraph/`, queried through the codegraph MCP server or CLI for relevant symbols and call paths. |
+| GitHub code graph | A TencentDB graph built from each registered GitHub repository. Agents and the panel use it to inspect project structure and symbols. |
+| Wiki | Linked pages generated from project documentation and searchable through the wiki MCP tools. |
+| Memories and skills | Per-project facts, decisions, and learned procedures, described below. |
 
-`ekip project sync <name>` refreshes all of it after big changes; `ekip doctor` shows each project's
-graphs, wiki and memory, and `--fix` re-queues what failed.
+Use `ekip project sync <name>` to refresh project indexes. `ekip doctor` reports their status; `ekip doctor --fix` re-queues safe repairs.
 
-**Why a code graph saves tokens.** Without one, an agent answering "how does the paywall decide who
-is premium?" greps, opens five files, reads them whole, and greps again. With one, it asks the graph
-for the symbols involved and gets back only their source and how they call each other: the same
-answer for a fraction of the tokens, and in one round trip.
+## Memory layers and tools
 
-## The memory: vectors, wiki, graph, skills
-
-Memory is [TencentDB Agent Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory) (TDAI),
-self-hosted on the hub, with every LLM call going to the free pool. Each registered project gets its
-own agent inside it, so memories never leak between projects.
+TencentDB Agent Memory runs on the hub or local stack. Each registered project has its own memory agent, keeping project context separate.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
 flowchart TB
-  subgraph in["What goes in"]
-    live["Live sessions<br/>stop hook after every reply"]
-    hist["Past sessions<br/>ekip memory import-history"]
-    runs["Worker reports"]
-    docs["Project docs<br/>README, docs/, notes"]
-    repo["GitHub repo"]
-  end
-
-  subgraph tdai["TencentDB Agent Memory (per project)"]
-    L0["<b>L0</b> raw conversation<br/>every message, vectorized"]
-    L1["<b>L1</b> facts and decisions<br/>extracted every 5 messages,<br/>deduplicated and merged"]
-    L2["<b>L2</b> scenes and persona<br/>long-term summaries"]
-    SK["Skills<br/>procedures learned from sessions"]
-    WK["LLM wiki<br/>pages + index"]
-    CG["Code graph<br/>symbols, calls, files"]
-  end
-
-  live & hist & runs --> L0 --> L1 --> L2
-  L0 --> SK
-  docs --> WK
-  repo --> CG
-
-  subgraph out["What comes out"]
-    ss["Session start<br/>card + top memories injected"]
-    br["Worker briefs<br/>matching skills + memories"]
-    mcp["MCP tools for any agent<br/>memory_search · wiki_search ·<br/>skill_search · code_graph"]
-  end
-  L1 & L2 --> ss
-  SK & L1 --> br
-  L1 & WK & SK & CG --> mcp
+  conversation["Live conversations, imported history, worker reports"] --> l0["L0: conversation records"]
+  l0 --> l1["L1: extracted facts and decisions"]
+  l1 --> l2["L2: scenes and project persona"]
+  conversation --> skills["Skills: learned procedures"]
+  docs["Project documentation"] --> wiki["Wiki: linked reference pages"]
+  repo["GitHub repository"] --> graph["Code graph: symbols and calls"]
+  l1 --> hook["Prompt and session context"]
+  l1 --> tools["Memory search MCP"]
+  l2 --> tools
+  skills --> tools
+  wiki --> tools
+  graph --> tools
+  classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
+  classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
+  class conversation,l0,l1,l2,skills,docs,wiki,repo,graph,hook,tools teal;
 ```
 
-| Layer | What it holds | How it is searched |
+| Layer | Contents | Retrieval |
 |---|---|---|
-| **L0** | every user and assistant message | vector (semantic) + BM25 (keywords), merged |
-| **L1** | facts, decisions, preferences, recurring fixes | vector + BM25 |
-| **L2** | scene files and a persona per project | read whole |
-| **Skills** | "how this project builds, releases, fixes X", with a name and description | BM25 routing, then the body |
-| **Wiki** | pages written from the project's docs, with links between them | full text + graph |
-| **Code graph** | symbols and call edges from the repo | `code_graph` tool, or `codegraph` locally |
+| L0 | Conversation messages and worker reports | Semantic vectors and keyword search |
+| L1 | Extracted, deduplicated facts and decisions | Semantic and keyword search |
+| L2 | Long-term scene summaries and project persona | Read as project context |
+| Skills | Procedures learned from project work, such as build, release, and recurring fixes | Search by description, then read the skill |
+| Wiki | Pages generated from project documentation | Search and read linked pages |
+| Graph | Repository files, symbols, and call relationships | Code graph tools or local codegraph |
 
-**What is stored, and what is deliberately not.** The conversation is stored: your messages, the
-lead's replies, worker reports, and the facts extracted from them. Tool traffic is not: file dumps,
-command output and logs are most of a coding session's bytes and none of its decisions, and storing
-them drowned the facts and multiplied the cost (`TDAI_IMPORT_LEAN=1` is the default). Thinking is not
-stored either; the conclusion is already in the reply.
+## Memory that follows your message
 
-**Vectors.** All layers use one pinned embedding model, `nemotron-3-embed-1b` (2048 dimensions,
-multilingual), served by NVIDIA with an OpenRouter fallback that returns identical vectors. A Turkish
-question finds an English or Chinese memory about the same thing. The model never changes for an
-existing index; `ekip memory reindex` backfills records that have no vector, resumably.
+The `UserPromptSubmit` hook looks for registered project names and repository folder names in each message. Matching tolerates common typos; it adds relevant L1 facts, project skills, and the card summary to the prompt. It searches up to two named projects. If no project is named, it uses the registered project containing the current folder. L1 lookup is typically about a second, within a short hook time budget.
 
-**Language.** Memories are written in the language you wrote in. TDAI's prompts are Chinese, and
-small free models drift into Chinese because of it, so ekip patches the prompts with one strict
-language rule (see [patches](operations.md#patches-to-upstream-projects)) and ships a translator for records that
-were already written in the wrong language (`hub/tools/tdai-translate-l1.mjs`).
+## Joining a project in flight
 
-**Wiki.** Each project's Markdown is sent to TDAI's wiki builder, which extracts candidate pages with
-an LLM, merges them into existing pages and indexes the result. Sources the model fails on are retried
-by `ekip doctor --fix` once the wiki is ready.
+`ekip memory import-history` imports past Claude Code sessions into their registered project memories. By default it considers sessions from the last 30 days and up to 200 MB each; imports are incremental. Use `--all` for the full history, or adjust the limits:
+
+```bash
+ekip memory import-history
+ekip memory import-history --days 90 --max-mb 500
+ekip memory import-history --all
+```
+
+## What is stored, and what is not
+
+Memory keeps conversation text, worker reports, and facts extracted from them. Lean import is enabled by default: tool output such as file dumps, command output, and logs is not imported. Model reasoning is not stored either; the assistant's reply contains the useful conclusion. Set `TDAI_IMPORT_LEAN=0` only if you explicitly need full tool traffic.
+
+## Vectors and language
+
+The index uses the pinned `nemotron-3-embed-1b` embedding model with 2048 dimensions. NVIDIA serves it, with OpenRouter as a fallback using the same model so existing vectors remain compatible. `ekip memory reindex` resumably fills records without vectors.
+
+Memory text follows the language of the user's message. TencentDB prompts are patched with a strict language rule because their original Chinese instructions could cause smaller models to answer in Chinese or copy the language of older memories. See [the upstream patch notes](operations.md#upstream-patches).
+
+For the background on vector databases, see the author's [2023 article on Medium](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac).
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/panel-projects-dark.png" alt="Projects panel with registered projects and their index status"><br><sub>Registered projects</sub></td>
+    <td width="50%"><img src="screenshots/panel-codemap-dark.png" alt="Code map showing a project's repository structure and symbols"><br><sub>Project code graph</sub></td>
+  </tr>
+</table>
 
 ---
+
+[← Back to README](../README.md) · Next: [Install](install.md)

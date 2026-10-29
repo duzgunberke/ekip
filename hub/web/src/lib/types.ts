@@ -1,6 +1,8 @@
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
 export type Via = 'auto' | 'free' | 'copilot'
 
+export type SavingsSnapshot = { days: number; rows: { day: string; claude: number; other: number; pools: Record<string, number>; unmeasured: number }[]; totals: { claude: number; other: number; outsidePercent: number; unmeasured: number }; claudeWithoutOtherWouldBe: number; note: string }
+
 export type Project = {
   name: string
   repo: string | null

@@ -40,6 +40,7 @@ export function openStore(dir) {
     tasks: new Collection(dir, "tasks", []),
     clients: new Collection(dir, "clients", {}),
     limits: new Collection(dir, "limits", null),
+    savings: new Collection(dir, "savings", null),
   };
   s.flushAll = () => { for (const c of Object.values(s)) if (c instanceof Collection) c.flush(); };
   return s;

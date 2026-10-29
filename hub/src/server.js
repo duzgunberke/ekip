@@ -359,6 +359,15 @@ async function api(req, res, url) {
   }
   if (p === "/api/limits" && m === "GET") return send(res, 200, store.limits.data);
 
+  if (p === "/api/savings" && m === "PUT") {
+    const body = await readJson(req, 500_000, { allowEmpty: false });
+    if (!body || typeof body !== "object" || Array.isArray(body) || !Array.isArray(body.rows)) bad("expected a savings snapshot");
+    store.savings.data = { ...body, receivedAt: new Date().toISOString() };
+    store.savings.save();
+    return send(res, 200, { ok: true });
+  }
+  if (p === "/api/savings" && m === "GET") return send(res, 200, store.savings.data);
+
   if (p === "/api/projects" && m === "GET") return send(res, 200, store.projects.data);
   if (p === "/api/projects" && m === "PUT") {
     const body = await readJson(req, 5_000_000);

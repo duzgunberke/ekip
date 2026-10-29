@@ -12,7 +12,7 @@ import {
 import { duration, firstLine } from '@/lib/format'
 import { poolProviders } from '@/lib/pools'
 import { cn } from '@/lib/utils'
-import { useJobs, useLimits, useProjects, useRuns, useStatus } from '@/hooks/queries'
+import { useJobs, useLimits, useProjects, useRuns, useSavings, useStatus } from '@/hooks/queries'
 import { useNewJob } from '@/context/new-job-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,6 +32,7 @@ import { TimeAgo } from '@/components/ekip/time-ago'
 import { formatNumber, useT } from '@/lib/i18n'
 import { ActiveTasksMini } from '@/features/tasks/mini'
 import { JobsChart } from './jobs-chart'
+import { SavingsChart } from './savings-chart'
 
 export function Overview() {
   const t = useT()
@@ -40,6 +41,7 @@ export function Overview() {
   const jobs = useJobs()
   const runs = useRuns()
   const limits = useLimits()
+  const savings = useSavings()
   const { openNewJob } = useNewJob()
 
   const s = status.data
@@ -63,6 +65,16 @@ export function Overview() {
         />
 
         <ActiveTasksMini />
+
+        <Card className='mb-5'>
+          <CardHeader>
+            <CardTitle>{t('Claude vs diğer kotalar')}</CardTitle>
+            <CardDescription>{t('Son 14 gün · girdi eşdeğeri token')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {savings.isLoading ? <Skeleton className='h-64' /> : <SavingsChart snapshot={savings.data} />}
+          </CardContent>
+        </Card>
 
         {status.isError && (
           <QueryError className='mb-4' error={status.error} onRetry={() => status.refetch()} />

@@ -1,67 +1,74 @@
-# Commands and pools
+<h1><img src="brand/logo-mark.svg" width="40" height="40" alt="" style="vertical-align: middle"> Commands and pools</h1>
 
+Use the CLI reference below to launch the lead, manage workers and projects, and control the optional hub.
 
-Every command, every worker pool.
+[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Install](install.md) · **Commands** · [Operations](operations.md)
 
+## CLI help
 
+These command groups and usage forms match `EKIP_LANG=en node plugin/bin/ekip.js help`.
 
-[← back to the README](../README.md)
+```text
+Everyday
+  ekip
+  ekip --free
+  ekip --safe
+  ekip status
+  ekip limits
+  ekip doctor [--fix]
 
+Workers
+  ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "task"
+  ekip clean <id>
+  ekip agents ls|install|login|test
+  ekip team up|down|ls|open [--open]
 
-## Commands
+Projects and memory
+  ekip project add|scan|ls|show|sync|card
+  ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
+  ekip skill ls|search|show <project> [query|name]
 
-```bash
-# daily
-ekip                         # the lead session (your subscription); it dispatches by itself
-ekip --free                  # the lead on free models, when your Claude limit is out
-ekip status                  # pools, memory, panel, team, last runs
-ekip limits                  # what is limited, where a new task would go
-ekip doctor [--fix]          # check (and repair) everything
-ekip tasks [--watch|--all]   # the task list the panes and panel show
+VPS hub
+  ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
+  ekip hub link|push|status|open
+  ekip remote <ssh-host>
+  ekip tunnel install|status
+  ekip vps add|token|status|sh|apps|deploy|logs|restart
 
-# workers
-ekip run [--via POOL|a,b,c] [--project NAME|--cwd DIR] [--model ID] [--plugin P] [--skill S] [--task ID --label L] "task"
-ekip clean <id>              # worktrees of a multi-pool run
-ekip reconcile               # close runs whose process vanished
-ekip agents ls|install|login|test
-
-# projects and memory
-ekip project add|scan|ls|show|sync|card
-ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
-ekip skill ls|search|show <project> [query|name]
-
-# hub
-ekip job "task" --project NAME [--via auto|copilot|free] | job ls | job show ID
-ekip hub link|push|status|open   ·   ekip remote <host>   ·   ekip tunnel install|status
-ekip vps add|token|status|sh|apps|deploy|logs|restart     # SSH + Coolify API
-
-# setup
-ekip init · ekip keys [--all|apply] · ekip key add|list · ekip up|down|logs
+Setup
+  ekip init
+  ekip keys [--all|apply]
+  ekip key add|list
+  ekip up|down|logs
 ```
 
-## Pools
+`ekip run` sends a worker brief; the task can be read from standard input with `-`. Use a comma-separated `--via` list to run the same work in separate worktrees and branches. `ekip reconcile` closes runs whose process disappeared without reporting.
 
-| `--via` | what | quota |
+<img src="screenshots/terminal-help.png" alt="Terminal help showing ekip's command groups and options" width="100%">
+
+## Worker pools
+
+| Pool | Worker | Quota or route |
 |---|---|---|
-| `agy` | Antigravity CLI | your Google account |
-| `codex` | OpenAI Codex CLI | your ChatGPT plan (works on the free plan with lower limits) |
+| `auto` | First eligible worker in the learned order, then `free` | Tested and available workers; limited pools are skipped |
+| `agy` | Antigravity | Google account quota |
+| `codex` | OpenAI Codex CLI | ChatGPT plan |
+| `gemini` | Gemini CLI | `GEMINI_API_KEY`; hidden unless configured |
 | `copilot` | GitHub Copilot CLI | Copilot free tier or plan |
-| `qwen` | Qwen Code | the free pool, or your Qwen account |
-| `opencode` | OpenCode | its free models, or your providers |
-| `grok` | grok-cli | the free pool, or xAI with `GROK_API_KEY` |
-| `gemini` | Gemini CLI | `GEMINI_API_KEY` (the personal free tier is Antigravity now) |
-| `free` | Claude Code `--bare` on the free pool, through the memory proxy for registered projects | free pool |
-| `claude` | headless Claude with your skills and plugins | your subscription; last resort |
-| `auto` | the first ready, unlimited pool in the ranked order, then `free` | |
+| `qwen` | Qwen Code | Qwen OAuth, or freellmapi until signed in |
+| `opencode` | OpenCode | Its free models or configured providers |
+| `grok` | grok-cli | freellmapi, or xAI with `GROK_API_KEY` |
+| `free` | Free-pool route | freellmapi free-tier models |
+| `claude` | Headless Claude | Claude subscription; reserve for work that needs it |
 
-`--plugin` / `--skill` work with every pool: Claude workers load them, the others are told to read and
-follow the skill's `SKILL.md`. Example: `--via copilot --plugin lemo-opuscar` directs a film.
+`auto` is based on configured order, recent pool success rates, and a 15-minute cooldown after failures. `ekip limits` shows the next worker, quota resets, provider availability, and model routes.
 
-Inside the lead, two Claude subagents keep its own context small: `scout` (Haiku, read-only) finds
-code and facts, `implementer` (Sonnet) does a coding step that needs the session's tools.
+<img src="screenshots/terminal-limits.png" alt="Terminal limits report with worker pools, provider availability, and current route" width="100%">
 
 ## Shared tools
 
-Third-party tools used by more than one project live in one shared `tools/` folder next to your projects, never inside a project: freellmapi, TencentDB Agent Memory, hoptell, earshot (sound for
-code-made films, also an MCP server), ACE-Step (music), img2threejs. The paths are in
-`data/config.json` (`freellmapiDir`, `tdaiDir`, `hoptellDir`).
+Shared services and utilities live outside project repositories: freellmapi, TencentDB Agent Memory, hoptell, earshot, ACE-Step, and img2threejs. Their configured locations are stored in `data/config.json`; projects use the shared installations rather than maintaining copies.
+
+---
+
+[← Back to README](../README.md) · Next: [Operations](operations.md)

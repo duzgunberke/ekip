@@ -1,174 +1,86 @@
-# How ekip works
+<h1><img src="brand/logo-mark.svg" width="40" height="40" alt="" style="vertical-align: middle"> How ekip works</h1>
 
+Follow a request from Claude's plan through worker routing, live progress, and review.
 
-The full picture: the request lifecycle, routing between pools, and how you see what is going on.
+[README](../README.md) · **How it works** · [Memory](memory.md) · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
 
+<img src="assets/how-it-works.svg" alt="One Claude lead routes work to independent worker pools, all starting with project memory; an optional hub keeps services available" width="100%">
 
+## Request lifecycle
 
-[← back to the README](../README.md)
-
-
-## How it works
+Claude is the lead: it understands the request, creates a task with steps, dispatches scoped work to other pools, then reviews the result. Workers receive the project card, relevant memories, and skills; their reports return to the lead and project memory.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
 flowchart LR
-  you([You]) --> lead
-
-  subgraph mac["Your Mac"]
-    lead["Lead Claude session<br/><i>ekip</i>"]
-    run["ekip run<br/>worker dispatch"]
-    panes["Terminal panes<br/>live worker logs + task list"]
-    hooks["Hooks<br/>session start: project card + memories<br/>after each reply: transcript → memory"]
-    lead --> run
-    lead --- hooks
-    run --> panes
-  end
-
-  subgraph pools["Worker pools (their own quotas)"]
-    agy[Antigravity]
-    codex[Codex]
-    copilot[Copilot]
-    qwen[Qwen / OpenCode / Grok]
-    free["free: Claude Code harness<br/>on the free model pool"]
-  end
-  run --> agy & codex & copilot & qwen & free
-
-  subgraph vps["VPS hub (always on)"]
-    panel["ekip-hub<br/>web panel, API, job queue"]
-    fla["freellmapi<br/>~60 free models, 6+ providers,<br/>failover and cooldowns"]
-    tdai["TencentDB Agent Memory<br/>vector memory · LLM wiki ·<br/>code graph · skills"]
-  end
-
-  mac <== "SSH tunnel (launchd)<br/>same localhost ports" ==> vps
-  free --> fla
-  qwen --> fla
-  tdai --> fla
-  run -. "run reports, task progress,<br/>limits snapshot" .-> panel
-  hooks -. "memories in / out" .-> tdai
+  user["You"] --> lead["Lead Claude: plan and create task"]
+  lead --> memory["Project memory: card, facts, skills"]
+  memory --> task["Task tracker: steps and progress"]
+  task --> worker["Worker: scoped brief and project context"]
+  worker --> task
+  task --> panel["Hub panel: live task updates"]
+  worker --> memory
+  lead --> review["Review changes and verify"]
+  review --> user
+  lead --> memory
+  classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
+  classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
+  class lead amber;
+  class user,task,worker,panel,memory,review teal;
 ```
 
-Four ideas carry the whole design:
+## Pool selection
 
-1. **Claude decides, others type.** The lead plans and reviews. Everything well scoped goes to a worker
-   on another quota, briefed like a capable colleague with no context: goal, files, constraints, how
-   to verify, what to report.
-2. **Context is prepared once, not re-read every time.** Projects are indexed ahead of time (memory,
-   wiki, graph, skills, card). Workers get the relevant slice in their brief and can query the rest
-   through the `ekip` MCP server.
-3. **Nothing runs blind.** Every request becomes a task with steps; every worker gets its own terminal
-   pane; the hub panel shows runs, tasks, pools and limits. A step that stops moving is flagged as
-   stalled, whatever its label says.
-4. **The always-on parts live on a server.** Memory, the free pool and the job queue keep working when
-   the Mac is off. The Mac reaches them through an SSH tunnel on the same localhost ports, so local and
-   remote setups look identical to every tool.
-
-### The life of a request
+`--via auto` considers installed, visible worker CLIs that passed `ekip agents test`. It starts with the configured order, ranks recent outcomes by success rate, and moves a pool that failed in the last 15 minutes to the back. A pool with a detected quota limit is skipped; the free pool is always last.
 
 ```mermaid
-sequenceDiagram
-  autonumber
-  participant U as You
-  participant L as Lead (Claude)
-  participant T as Task (panel)
-  participant W as Worker pool
-  participant M as Project memory
-  participant H as Hub
-
-  U->>L: "fix the paywall bug in sports-center"
-  L->>M: project card, memories, skills (session-start hook)
-  L->>T: ekip task new … --steps "Find; Fix; Test"
-  T-->>H: progress (percent, current step, ETA)
-  L->>W: ekip run --via auto --project sports-center "brief…"
-  Note over W: brief = task + project skills + relevant memories
-  W->>W: works headless in the repo, own terminal pane
-  W-->>H: run started / finished, report
-  W-->>M: report saved to the project's memory
-  L->>L: reviews the diff, runs the tests
-  L->>U: result, what was verified, what is left
-  L-->>M: the conversation itself (stop hook)
-```
-
----
-
-## Where a task goes
-
-```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
 flowchart LR
-  task["ekip run --via auto"] --> order{"auto order<br/>ready pools,<br/>re-ranked by real<br/>success rate"}
-  order -->|"first not limited"| copilot[copilot]
-  order --> codex[codex]
-  order --> qwen[qwen / opencode / grok]
-  order -->|"limited: skipped<br/>(e.g. quota resets in 5 days)"| agy[agy]
-  order -->|"always last"| free[free]
-  free --> fla["freellmapi"]
-  fla --> p1["auto: best open model"]
-  fla --> p2["auto:memory: strong text models<br/>for extraction and wiki"]
-  fla --> p3["auto:translate: fast models<br/>kept apart from memory"]
+  task["ekip run --via auto"] --> eligible["Tested, installed pools"]
+  eligible --> rank["Configured order, ranked by recent success"]
+  rank --> cool["Recent failure moves a pool back"]
+  cool --> limits{"Quota limit detected?"}
+  limits -->|No| worker["Dispatch to this worker"]
+  limits -->|Yes| next["Skip to next ranked pool"]
+  next --> more{"Another worker pool?"}
+  more -->|Yes| limits
+  more -->|No| free["Free pool, always last"]
+  free --> models["freellmapi routing profiles"]
+  classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
+  classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
+  class task,eligible,rank,cool,limits,worker,next,more,free,models teal;
 ```
 
-- **Worker pools** come in a configured order and are re-ranked by their real success rate; a pool that
-  failed in the last 15 minutes goes to the back; a pool whose last run hit a quota ("Resets in 140h")
-  is skipped until it reopens.
-- **The free pool** is [freellmapi](https://github.com/tashfeenahmed/freellmapi): one OpenAI-compatible
-  endpoint over the free tiers of Google, Groq, NVIDIA, OVH, OpenRouter, Zhipu, Cerebras, Mistral,
-  Cloudflare and more. It tracks every provider's rate limits and cools a model down when it hits one.
-  ekip uses three routing profiles so background work never starves the rest: `auto`, `auto:memory`
-  (strong instruction-following models only; weak ones broke the wiki format) and `auto:translate`.
-### The free pool in numbers
-
-| | |
-|---|---|
-| Models in freellmapi's catalog | **411** across **35** providers |
-| Usable with the 7 keys set up here | **64** models (NVIDIA 17, Google 15, OVH 12, OpenRouter 10, Groq 7, Zhipu 3, HuggingFace 0) |
-| Served in October (measured, free) | **178 million tokens**, 158,500 requests: memory extraction, wiki pages, embeddings, translation |
-| Ceiling with the same keys (estimate) | **a few billion tokens a month**: NVIDIA alone allows 40 requests/min with no daily cap (~1.7M requests a month), Groq ~14,400 requests/day, Google ~1,000/day per model |
-| Each extra free provider | adds its own daily allowance: Cerebras, Mistral (~50-100M/month), Cloudflare (~18-45M), Routeway and BazaarLink (DeepSeek V4), … `ekip keys` opens their pages |
-
-The ceiling is a rate-limit ceiling, not a promise: free models are slower than paid ones, time out
-under load and cool down when they hit a limit. That is why ekip routes background work to the free
-pool and keeps your Claude for decisions.
-
-### Everything ekip draws on (not only the free pool)
-
-| Source | What it gives | Cost to you |
-|---|---|---|
-| **Antigravity** (`agy`) | the strongest worker; long autonomous coding and film runs | your Google account's quota |
-| **Codex** | OpenAI's coding agent | your ChatGPT plan, the free plan included (lower limits) |
-| **Copilot CLI** | GitHub's coding agent; auto-picks a strong model per run | Copilot free tier or plan |
-| **Qwen Code, OpenCode, grok-cli** | more coding harnesses; on the free pool, or on their own accounts | free |
-| **freellmapi** | ~60 models from Google, NVIDIA, Groq, OVH, OpenRouter, Zhipu (and any provider you add) behind one endpoint | free tiers |
-| **Free DeepSeek routes** | DeepSeek V4 Flash/Pro via Routeway, BazaarLink, Router9, ModelScope | free (add their keys with `ekip keys`) |
-| **NVIDIA embeddings** | the vector index (`nemotron-3-embed-1b`), with an identical OpenRouter fallback | free |
-| **Headless Claude** (`--via claude`) | your skills and plugins, for what nothing else can do | your Claude subscription: last resort |
-| **The lead** | planning, review, decisions | your Claude subscription |
-
-- `--via a,b,c` runs the same task on several pools at once, each in its own git worktree and branch;
-  you compare and merge the best.
-
----
+`ekip limits` shows pool readiness, recent success rates, cooldowns, quota reset times, free-provider model availability, and the route a new task would take. The `auto:memory` and `auto:translate` freellmapi profiles keep memory and translation work on their own routes.
 
 ## Seeing what is going on
 
-You should never have to ask an agent "is it still working?".
-
-| Where | What you see |
+| Surface | What it shows |
 |---|---|
-| **Task pane** (bottom of the lead's terminal) | every request as a task: percent, current step, ETA; a running step's detail line (rate, model, last error); **⚠ stalled** when a step has not moved for 15 minutes; two lines per task when space is short |
-| **Worker panes** | one per worker, titled with its label, live tool calls, a quiet "still working · 12 min" line when it thinks, closes itself when the worker ends or is killed |
-| `ekip limits` | which pool is limited and when it reopens, each free provider's open models and last-24h errors, and where a new task would go right now |
-| `ekip doctor [--fix]` | tunnel, pools, every project's graphs, wiki and memory, the vector index; `--fix` repairs what is safe to repair; launchd runs it every 30 minutes |
-| **Web panel** | overview (daily jobs from the VPS queue and the Mac), tasks with steps and stalls, runs (started, finished, cancelled), pools with worker quotas and routing, projects with their code map |
+| Terminal task pane | Task progress, current step, elapsed time, ETA, and a detail line. A step with no progress for 15 minutes shows the elapsed stall time. When the pane is short, each task switches to a two-line compact view. The web panel labels this state `stalled for N min`. |
+| Worker panes | A title using the worker label or project, live output, and a quiet line confirming the worker is still working. A killed worker is detected; its pane shows that it stopped and closes after 90 seconds. Completed panes also close after 90 seconds; Enter closes either immediately. |
+| `ekip limits` | Worker and free-provider limits, open models, recent errors, and current routing. |
+| `ekip doctor [--fix]` | Checks the tunnel, pools, project graphs, wiki, and memory; `--fix` starts safe repairs. Launchd runs the check every 30 minutes. |
+| `ekip reconcile` | Closes runs whose processes disappeared without reporting. It also runs before a new worker run and as part of `doctor`. |
+| Web panel | Overview, projects and code maps, jobs, runs, worker pools, panels, and live tasks with step details and stall status. The interface supports English and Turkish; route paths remain English. |
 
-```
-◆ ekip  görevler · 2
-● Fix the paywall · sports-center  ████████░░░░ 63% · 14 dk kaldı
-    2/4 bitti  ▶ Test on device · copilot · 3 dk
-● Memory import · ekip  ███████████░ 92% · 20 dk kaldı
-    5/6 bitti  ⚠ Import sessions 23 dk'dır ilerleme yok
-```
+Panel routes: `/tasks`, `/overview`, `/projects`, `/code-map`, `/jobs`, `/runs`, `/pools`, and `/panels`.
 
-Runs killed from outside (a closed terminal, a hard kill) report themselves as cancelled on their way
-out; runs that vanished without a word are found and closed by `ekip reconcile` (also run by `doctor`
-and before every new run).
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/panel-tasks-dark.png" alt="Web panel task list showing progress, steps, and stalled work"><br><sub>Live tasks and step status</sub></td>
+    <td width="50%"><img src="screenshots/terminal-tasks.png" alt="Terminal task pane with progress and current step"><br><sub>Task progress beside the lead session</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"><br><sub>Overview across the hub</sub></td>
+    <td width="50%"><img src="screenshots/panel-runs-dark.png" alt="Web panel run history with worker and task results"><br><sub>Run history and reports</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/panel-pools-dark.png" alt="Worker pools with quota and readiness information"><br><sub>Worker pools and routing</sub></td>
+    <td width="50%"><img src="screenshots/terminal-limits.png" alt="Terminal limits view showing worker readiness and free-provider models"><br><sub>Current limits from the terminal</sub></td>
+  </tr>
+</table>
 
 ---
+
+[← Back to README](../README.md) · Next: [Memory](memory.md)

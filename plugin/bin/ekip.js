@@ -1149,8 +1149,10 @@ switch (cmd) {
   }
   case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest);
     // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd)
-    await (await import("../lib/limits.js")).push().catch(() => {}); break;
+    await (await import("../lib/limits.js")).push().catch(() => {});
+    await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
+  case "savings": await (await import("../lib/savings.js")).report(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");

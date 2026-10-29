@@ -35,8 +35,9 @@ session. ekip changes who does what:
 <p align="center"><img src="docs/assets/savings.svg" alt="During the setup phase, 58% of the work ran outside Claude: 46M of 110M input-equivalent tokens on Claude, 64M on other quotas" width="100%"></p>
 
 Those numbers are the worst case: two days of building ekip itself and indexing 15 projects cold,
-work only the lead could do. On everyday project work the lead mostly plans and reviews, so a larger
-share runs elsewhere.
+work only the lead could do. The next day, still mostly building, `ekip savings` measured **81% of the
+work outside Claude**. Run it on your own work: it reads your Claude sessions, the workers' logs and the
+free pool, day by day.
 
 ## How it works
 
