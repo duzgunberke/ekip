@@ -44,6 +44,12 @@ export async function main(args = []) {
   const onboarding = await import("../projects/onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd() }), { heading: true });
 
+  const env = onboarding.envChecks();
+  console.log(title(t("Ortam")));
+  line(env.gitIdentity ? "ok" : "bad", "git", env.gitIdentity ? t("kimlik tanımlı") : t("Git kimliği tanımlı değil"));
+  line(env.ghAuth ? "ok" : "warn", "gh", env.ghAuth ? t("oturum açık") : env.ghInstalled ? t("gh oturumu açık değil") : t("GitHub CLI (gh) kurulu değil"));
+  if (!env.gitIdentity) problems++;
+
   console.log(title(t("Bağlantı")));
   if (REMOTE) {
     const t = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
@@ -54,6 +60,8 @@ export async function main(args = []) {
   const free = await healthy();
   line(free ? "ok" : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}` : t("erişilemiyor"));
   if (!free) problems++;
+  const embed = !!process.env.MEMORY_EMBEDDING_BASE_URL || (() => { try { return keyCounts({ timeout: 500 }).some(([p]) => p === "nvidia"); } catch { return false; } })();
+  line(embed ? "ok" : "warn", t("vektör sağlayıcı"), embed ? t("vektörler açık") : t("anahtar kelimeye düşer") + " → ekip keys");
   const mem = await tdaiUp();
   line(mem ? "ok" : "bad", "TencentDB", mem ? t("açık") : t("erişilemiyor"));
   if (!mem) { problems++; console.log(`\n  ${c.red(t("Hafıza servisine ulaşılamıyor; proje kontrolleri atlandı."))}`); return 1; }
