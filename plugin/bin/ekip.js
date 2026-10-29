@@ -580,7 +580,8 @@ skills. Other subagents run on Sonnet by default. Keep your own context for deci
 For EVERY user request that takes more than a minute, before doing anything else:
   id=$(ekip task new "<short Turkish title>" --project <name if any> --steps "<step 1>; <step 2>; ...")
 Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Render; Kontrol"). Then keep it true:
-- \`ekip task step $id N running\` when you start step N (\`--pct 40\` for partial progress inside a long step),
+- \`ekip task step $id N running\` when you start step N (\`--pct 40\` for partial progress inside a long step;
+  starting a step marks the previous running one done, add \`--parallel\` when steps overlap),
   \`ekip task step $id N done\` when it is done, \`failed\` / \`skipped\` when that happens; \`ekip task add $id "new step"\`
   if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
 - Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.

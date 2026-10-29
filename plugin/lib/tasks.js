@@ -68,10 +68,10 @@ export function create({ title, project, steps = [] }) {
 }
 
 /** Mark step n (1-based): running [pct] | done | failed | skipped; starting one finishes earlier running ones. */
-export function step(id, n, status = "done", { pct, note } = {}) {
+export function step(id, n, status = "done", { pct, note, parallel = false } = {}) {
   return update(id, (t) => {
     const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
-    if (status === "running") for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
+    if (status === "running" && !parallel) for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
     if (status === "failed") notify(`ekip · ${t.title}`, `Adım takıldı: ${s.title}`);
@@ -133,7 +133,7 @@ export async function main([sub = "ls", ...args]) {
     console.log(t.id);
   } else if (sub === "step") {
     const [id, n, status = "done"] = rest();
-    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note") });
+    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note"), parallel: args.includes("--parallel") });
   } else if (sub === "add") {
     const [id, ...titles] = rest();
     addSteps(id, titles.join(" ").split(";").map((s) => s.trim()).filter(Boolean));
@@ -152,5 +152,5 @@ export async function main([sub = "ls", ...args]) {
       if (watching) process.stdout.write(`\x1b[H\x1b[2J${out}`); else console.log(out);
       if (watching) await sleep(2000);
     } while (watching);
-  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
 }
