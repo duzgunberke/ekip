@@ -410,13 +410,14 @@ export async function reconcileRuns() {
   let files = [];
   try { files = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")); } catch { return 0; }
   let n = 0;
-  const synced = runsSynced();
+  const synced = runsSynced(), logs = logsSynced(), uploaded = [];
   for (const f of files) {
     const file = path.join(RUNS, f);
     const st = fs.statSync(file);
     if (Date.now() - st.mtimeMs > 7 * 86400_000) continue;
     const tail = (() => { const fd = fs.openSync(file, "r"); const len = Math.min(st.size, 4096); const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return b.toString("utf8"); })();
     const exit = tail.match(/\[exit (-?\d+)\][^\n]*\s*$/)?.[1];
+    if (exit != null && SETTINGS.hubUrl && !logs.has(f.slice(0, -4)) && await uploadRunLog(f.slice(0, -4), file)) uploaded.push(f.slice(0, -4));
     if (exit != null) {
       if (SETTINGS.hubUrl && !synced.has(f.slice(0, -4))) {
         const head = fs.readFileSync(file, "utf8").slice(0, 4000);
@@ -442,6 +443,7 @@ export async function reconcileRuns() {
     try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, via, project: project && project !== "-" ? project : null, label, brief: task, status: "cancelled" }); } catch { /* usage logging must never affect reconciliation */ }
     n++;
   }
+  markLogsSynced(uploaded);
   return n;
 }
 
@@ -482,8 +484,20 @@ async function uploadRunLog(id, file) {
     const st = fs.statSync(file), len = Math.min(st.size, 64 * 1024), fd = fs.openSync(file, "r"), b = Buffer.alloc(len);
     fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd);
     const log = b.toString("utf8").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/(?:Bearer\s+|(?:api[_-]?key|token|secret|password)\s*[:=]\s*)(?:"[^"\n]+"|'[^'\n]+'|[^\s,;]+)/gi, "****").replace(/(?:sk-[A-Za-z0-9_-]{12,}|(?:gh[pousr]_|github_pat_|gsk_|hf_|nvapi-)[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16})/gi, "****");
-    await fetch(`${SETTINGS.hubUrl}/api/runs/${encodeURIComponent(id)}/log`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ log }), signal: AbortSignal.timeout(8000) }).catch(() => {});
-  } catch { /* log delivery is best effort */ }
+    const r = await fetch(`${SETTINGS.hubUrl}/api/runs/${encodeURIComponent(id)}/log`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ log }), signal: AbortSignal.timeout(8000) }).catch(() => null);
+    return !!r?.ok;
+  } catch { return false; /* log delivery is best effort */ }
+}
+
+// Finished runs whose final log tail reached the hub; reconcileRuns uploads the rest (runs from
+// before log upload existed, or whose upload failed), so every run on the panel has its log.
+const LOGS_SYNCED = () => path.join(HOME, "logs-synced.json");
+const logsSynced = () => { try { return new Set(JSON.parse(fs.readFileSync(LOGS_SYNCED(), "utf8"))); } catch { return new Set(); } };
+function markLogsSynced(ids) {
+  if (!ids.length) return;
+  const s = logsSynced();
+  for (const id of ids) s.add(id);
+  try { fs.writeFileSync(LOGS_SYNCED(), JSON.stringify([...s].slice(-2000))); } catch { /* best effort */ }
 }
 
 async function run(args) {
