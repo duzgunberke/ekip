@@ -244,24 +244,25 @@ function reposAtDepth(root) {
   return found;
 }
 
-function rewritePathFile(file, oldPath, newPath) {
+function rewritePathFile(file, oldPath, newPath, dryRun = false) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
   const before = fs.readFileSync(file, "utf8");
   const after = before.replace(new RegExp(`${oldPath.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?![\\w.-])`, "g"), newPath);
   if (after === before) return false;
-  fs.writeFileSync(file, after); return true;
+  if (!dryRun) fs.writeFileSync(file, after);
+  return true;
 }
 
-function rewriteFiles(patterns, oldPath, newPath) {
+function rewriteFiles(patterns, oldPath, newPath, dryRun = false) {
   const changed = [];
   for (const entry of patterns) {
     const abs = path.resolve(entry);
-    if (!entry.includes("*") && !entry.includes("?")) { if (rewritePathFile(abs, oldPath, newPath)) changed.push(abs); continue; }
+    if (!entry.includes("*") && !entry.includes("?")) { if (rewritePathFile(abs, oldPath, newPath, dryRun)) changed.push(abs); continue; }
     const base = path.resolve(entry.slice(0, Math.max(entry.lastIndexOf("/"), entry.lastIndexOf(path.sep))));
-    const pattern = entry.slice(base.length + 1).replace(/[.+^${}()|[\\]\\\\]/g, "\\\\$&").replace(/\\*/g, ".*").replace(/\\?/g, ".");
+    const pattern = entry.slice(base.length + 1).replace(/[.+^${}()|[\\]\\\\]/g, "\\\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
     const re = new RegExp(`^${pattern}$`);
     let names = []; try { names = fs.readdirSync(base); } catch { continue; }
-    for (const name of names) if (re.test(name) && rewritePathFile(path.join(base, name), oldPath, newPath)) changed.push(path.join(base, name));
+    for (const name of names) if (re.test(name) && rewritePathFile(path.join(base, name), oldPath, newPath, dryRun)) changed.push(path.join(base, name));
   }
   return changed;
 }
@@ -276,9 +277,9 @@ export function moveProject(identifier, destination, { dryRun = false } = {}) {
   const lsof = spawnSync("sh", ["-c", "command -v lsof"], { stdio: "ignore" });
   if (lsof.status === 0) {
     const open = spawnSync("lsof", ["+D", oldPath], { encoding: "utf8", timeout: 10000 });
-    if (open.status === 0 && open.stdout.trim().split("\\n").length > 1) throw new Error("eski klasörde açık dosyalar var; önce kullanan süreçleri kapatın");
+    if (open.status === 0 && open.stdout.trim().split("\n").length > 1) throw new Error("eski klasörde açık dosyalar var; önce kullanan süreçleri kapatın");
   }
-  const repos = reposAtDepth(oldPath).map((repo) => ({ repo, worktrees: git(repo, "worktree", "list", "--porcelain").stdout.split("\\n").filter((x) => x.startsWith("worktree ")).map((x) => x.slice(9)) }));
+  const repos = reposAtDepth(oldPath).map((repo) => ({ repo, worktrees: git(repo, "worktree", "list", "--porcelain").stdout.split("\n").filter((x) => x.startsWith("worktree ")).map((x) => x.slice(9)) }));
   const historyRoot = path.join(os.homedir(), ".claude/projects");
   const oldEncoded = encodeHistory(oldPath), newEncoded = encodeHistory(newPath);
   const historyMoves = [];
@@ -288,7 +289,12 @@ export function moveProject(identifier, destination, { dryRun = false } = {}) {
     const link = path.join(os.homedir(), d.name); let real; try { real = fs.realpathSync(link); } catch { continue; }
     if (under(oldPath, real)) collectHistory(encodeHistory(path.join(link, path.relative(real, oldPath))), encodeHistory(path.join(link, path.relative(real, newPath))));
   }
-  const plan = { oldPath, newPath, repos, historyMoves: historyMoves.map(([a, b]) => [path.basename(a), path.basename(b)]) };
+  const state = path.join(HOME, "memory-state/asset-import.json");
+  let memoryStateChanged = false;
+  try { memoryStateChanged = (JSON.parse(fs.readFileSync(state, "utf8")).done ?? []).some((k) => String(k).includes(oldEncoded)); } catch { /* no history state yet */ }
+  const plan = { oldPath, newPath, repos, historyMoves: historyMoves.map(([a, b]) => [path.basename(a), path.basename(b)]), rewritten: [], memoryStateChanged };
+  const rewrite = [path.join(CARDS, "*.md"), path.join(HOME, "config.json"), ...(SETTINGS.moveRewrite ?? [])];
+  plan.rewritten = rewriteFiles(rewrite, oldPath, newPath, true);
   if (dryRun) return plan;
   fs.renameSync(oldPath, newPath);
   for (const { repo, worktrees } of repos) {
@@ -304,10 +310,8 @@ export function moveProject(identifier, destination, { dryRun = false } = {}) {
     if (fs.existsSync(src)) for (const f of fs.readdirSync(src)) { const from = path.join(src, f), to = path.join(dst, f); if (!fs.existsSync(to)) fs.renameSync(from, to); }
     try { fs.rmdirSync(src); } catch { /* merged target may have retained files */ }
   }
-  const state = path.join(HOME, "memory-state/asset-import.json");
-  try { const data = JSON.parse(fs.readFileSync(state, "utf8")); data.done = (data.done ?? []).map((k) => String(k).replaceAll(oldEncoded, newEncoded)); fs.writeFileSync(state, `${JSON.stringify(data, null, 2)}\\n`); } catch { /* no history state yet */ }
-  const rewrite = [path.join(CARDS, "*.md"), path.join(HOME, "config.json"), ...(SETTINGS.moveRewrite ?? [])];
-  plan.rewritten = rewriteFiles(rewrite, oldPath, newPath);
+  try { if (plan.memoryStateChanged) { const data = JSON.parse(fs.readFileSync(state, "utf8")); data.done = (data.done ?? []).map((k) => String(k).replaceAll(oldEncoded, newEncoded)); fs.writeFileSync(state, `${JSON.stringify(data, null, 2)}\n`); } } catch { /* no history state yet */ }
+  rewriteFiles(rewrite, oldPath, newPath);
   return plan;
 }
 
@@ -319,7 +323,10 @@ export async function main(argv) {
     if (!args[0] || !args[1]) die("kullanım: ekip project move <ad|eski-yol> <yeni-yol> [--dry-run]");
     const result = moveProject(args[0], args[1], { dryRun });
     console.log(`${dryRun ? "Plan" : "Taşındı"}: ${result.oldPath} → ${result.newPath}`);
-    console.log(`Git depoları/worktree'ler: ${result.repos.length}; Claude geçmişi: ${result.historyMoves.length}${result.rewritten ? `; güncellenen metinler: ${result.rewritten.length}` : ""}`);
+    console.log(`Kayıt: ${dryRun ? "planlandı" : "güncellendi"}; Git depoları/worktree'ler: ${result.repos.length}; Claude geçmişi: ${result.historyMoves.length}; hafıza durumu: ${result.memoryStateChanged ? "güncellendi" : "yok"}; metinler: ${result.rewritten.length}`);
+    for (const repo of result.repos) console.log(`  git: ${repo.repo} (${repo.worktrees.length} worktree)`);
+    for (const [from, to] of result.historyMoves) console.log(`  Claude: ${from} → ${to}`);
+    for (const file of result.rewritten) console.log(`  metin: ${file}`);
     return;
   }
   if (sub === "add") {
