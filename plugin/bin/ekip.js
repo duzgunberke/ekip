@@ -871,7 +871,9 @@ async function importHistory() {
     console.log(`\n── ${x.dir} → ${x.project}`);
     spawnSync("node", [importer, "--source", "claude-code", "--sessions", path.join(base, x.dir), "--agent-id", x.agentId, "--team-id", x.teamId, "--state-file", stateFile, "-y"], {
       cwd: tdai, stdio: "inherit",
-      env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key },
+      env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key,
+        // conversation only, no tool output (see agents/asset-import.ts LEAN); TDAI_IMPORT_LEAN=0 for everything
+        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1" },
     });
   }
 }
