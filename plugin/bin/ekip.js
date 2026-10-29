@@ -189,15 +189,34 @@ const WORKER_BRIEF = [
   "TASK:",
 ].join("\n");
 
+// Watchdog for every worker: one that prints nothing for EKIP_IDLE_MIN minutes (default 15) or runs
+// past EKIP_TIMEOUT_MIN (default 90) is stopped, so a hung CLI never sits on a task for hours; the
+// task gets the reason and the lead re-dispatches. Exit code 124, like timeout(1).
+function watchdog(child, log) {
+  const idleMs = Number(process.env.EKIP_IDLE_MIN ?? SETTINGS.idleMin ?? 15) * 60_000;
+  const maxMs = Number(process.env.EKIP_TIMEOUT_MIN ?? SETTINGS.timeoutMin ?? 90) * 60_000;
+  const t0 = Date.now(); let seen = Date.now(), why = null;
+  const tick = setInterval(() => {
+    const idle = Date.now() - seen, total = Date.now() - t0;
+    if (idle < idleMs && total < maxMs) return;
+    why = idle >= idleMs ? `${Math.round(idle / 60000)} dk sessiz kaldı, durduruldu` : `${Math.round(total / 60000)} dk sınırını aştı, durduruldu`;
+    log.write(`\n[ekip] ${why}\n`);
+    child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+  }, 30_000);
+  tick.unref();
+  return { alive: () => { seen = Date.now(); }, stop: () => clearInterval(tick), why: () => why };
+}
+
 function runChild(cmd, argv, opts, logFile) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n`);
     const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
-    child.stdout.on("data", (d) => { out += d; log.write(d); });
-    child.stderr.on("data", (d) => { out += d; log.write(d); });
-    child.on("close", (code) => { log.end(`\n[exit ${code}]\n`); resolve({ code, out }); });
+    const dog = watchdog(child, log);
+    child.stdout.on("data", (d) => { dog.alive(); out += d; log.write(d); });
+    child.stderr.on("data", (d) => { dog.alive(); out += d; log.write(d); });
+    child.on("close", (code) => { dog.stop(); if (dog.why()) { code = 124; out += `\n${dog.why()}`; } log.end(`\n[exit ${code}]\n`); resolve({ code, out }); });
   });
 }
 
@@ -232,16 +251,18 @@ function runStream(cmd, argv, opts, logFile, kind) {
         } else if (e.type === "result") final = e.result ?? "";
       }
     };
+    const dog = watchdog(child, log);
     child.stdout.on("data", (d) => {
-      raw += d; buf += d;
+      dog.alive(); raw += d; buf += d;
       let i;
       while ((i = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         try { onEvent(JSON.parse(line)); } catch { if (line.trim()) log.write(`${line}\n`); }
       }
     });
-    child.stderr.on("data", (d) => { raw += d; log.write(d); });
+    child.stderr.on("data", (d) => { dog.alive(); raw += d; log.write(d); });
     child.on("close", (code) => {
+      dog.stop(); if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
       if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
       log.end(`\n\n[exit ${code}]\n`);
       resolve({ code, out: final.trim() ? final : raw });
@@ -335,7 +356,7 @@ async function runOne(o, via, id) {
   const r = await runOneInner(o, via, id);
   activeRuns.delete(id);
   recordStat(r.via ?? via, r.ok, Date.now() - t0);
-  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed");
+  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu");
   return r;
 }
 
@@ -661,6 +682,9 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   as soon as its result is reviewed. A task closes by itself when every step is done or its last worker
   ends with nothing pending, and is closed as failed after 6 hours without activity, but never leave
   that to the safety net. The user must never have to tell you "this is still open".
+- Every worker has a watchdog: 15 min without output or 90 min in total stops it (EKIP_IDLE_MIN,
+  EKIP_TIMEOUT_MIN) and notes why on the task. When that happens, re-dispatch at once with a sharper
+  brief or another pool; for a long render, raise the limit on that run instead of waiting.
 - Be proactive: when a job is slow or stuck, look at why (logs, CPU, rate limits, a duplicate copy)
   and fix it or move it to a faster pool, then tell the user what you did. Don't wait to be asked.
 - Check your own output before reporting it: look at every screenshot, video frame and page you made

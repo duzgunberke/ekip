@@ -37,7 +37,8 @@ export function percent(t) {
 /** Estimated finish: elapsed time scaled by what is left, once anything is measurable. */
 export function eta(t) {
   const p = percent(t);
-  if (t.status !== "running" || p < 5) return null;
+  // no guess until there is a real basis: a stalled step or early progress gives absurd numbers
+  if (t.status !== "running" || p < 15 || t.steps.some((s) => s.status === "running" && stalledFor(s))) return null;
   const elapsed = Date.now() - Date.parse(t.createdAt);
   return new Date(Date.now() + elapsed * (100 - p) / p).toISOString();
 }
@@ -111,7 +112,7 @@ export function finish(id, status = "done", note) {
 
 /** Called by `ekip run --task ID`: the worker shows under the task while it runs. */
 export function linkWorker(id, w) { try { update(id, (t) => { t.workers.push({ ...w, startedAt: now(), status: "running" }); }); } catch { /* unknown task: ignore */ } }
-export function endWorker(id, runId, status) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); autoClose(t); }); } catch { /* ignore */ } }
+export function endWorker(id, runId, status, why) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); if (why) t.notes.push({ at: now(), text: `${w?.label ?? runId}: ${why}` }); autoClose(t); }); } catch { /* ignore */ } }
 
 // Tasks nobody moved for hours (no live worker, no step update) are orphans: flagged after 2 h,
 // closed as failed after 6 h, so the pane and panel never show yesterday's work as running.
