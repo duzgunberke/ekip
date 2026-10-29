@@ -33,7 +33,7 @@ import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { formatNumber, useT } from '@/lib/i18n'
 
-const route = getRouteApi('/_authenticated/isler/$id')
+const route = getRouteApi('/_authenticated/jobs/$id')
 
 export function JobDetail() {
   const t = useT()
@@ -58,7 +58,7 @@ export function JobDetail() {
       <AppHeader />
       <Main>
         <Button variant='ghost' size='sm' className='-ms-2 mb-3 text-muted-foreground' asChild>
-          <Link to='/isler'>
+          <Link to='/jobs'>
             <ArrowLeft /> {t('İşler')}
           </Link>
         </Button>
@@ -73,7 +73,7 @@ export function JobDetail() {
               description={t('"{id}" kimlikli bir iş yok; silinmiş olabilir.', { id })}
               action={
                 <Button variant='outline' asChild>
-                  <Link to='/isler'>{t('İşlere dön')}</Link>
+                  <Link to='/jobs'>{t('İşlere dön')}</Link>
                 </Button>
               }
             />
@@ -99,7 +99,7 @@ export function JobDetail() {
                   {firstLine(j.task) || j.id}
                 </h1>
                 <p className='mt-1 text-sm text-muted-foreground'>
-                  <Link to='/projeler' search={{ p: j.project }} className='font-medium text-foreground hover:underline'>
+                  <Link to='/projects' search={{ p: j.project }} className='font-medium text-foreground hover:underline'>
                     {j.project}
                   </Link>{' '}
                   · <TimeAgo iso={j.createdAt} /> {t('oluşturuldu')}

@@ -1,8 +1,8 @@
-import { z } from 'zod'
-import { createFileRoute } from '@tanstack/react-router'
-import { Projects } from '@/features/projects'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { legacyRouteHref } from '@/lib/legacy-route'
 
 export const Route = createFileRoute('/_authenticated/projeler')({
-  validateSearch: z.object({ p: z.string().optional(), q: z.string().optional() }),
-  component: Projects,
+  beforeLoad: ({ location }) => {
+    throw redirect({ href: legacyRouteHref(location, '/projects') })
+  },
 })

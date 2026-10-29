@@ -1,4 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Pools } from '@/features/pools'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { legacyRouteHref } from '@/lib/legacy-route'
 
-export const Route = createFileRoute('/_authenticated/havuzlar')({ component: Pools })
+export const Route = createFileRoute('/_authenticated/havuzlar')({
+  beforeLoad: ({ location }) => {
+    throw redirect({ href: legacyRouteHref(location, '/pools') })
+  },
+})

@@ -9,18 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
+import { Route as AuthenticatedRunsRouteImport } from './routes/_authenticated/runs'
 import { Route as AuthenticatedProjelerRouteImport } from './routes/_authenticated/projeler'
+import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedPoolsRouteImport } from './routes/_authenticated/pools'
+import { Route as AuthenticatedPanelsRouteImport } from './routes/_authenticated/panels'
 import { Route as AuthenticatedPanellerRouteImport } from './routes/_authenticated/paneller'
+import { Route as AuthenticatedOverviewRouteImport } from './routes/_authenticated/overview'
 import { Route as AuthenticatedKodHaritasiRouteImport } from './routes/_authenticated/kod-haritasi'
 import { Route as AuthenticatedHavuzlarRouteImport } from './routes/_authenticated/havuzlar'
+import { Route as AuthenticatedGorevlerRouteImport } from './routes/_authenticated/gorevler'
+import { Route as AuthenticatedGenelBakisRouteImport } from './routes/_authenticated/genel-bakis'
 import { Route as AuthenticatedGenelRouteImport } from './routes/_authenticated/genel'
+import { Route as AuthenticatedCodeMapRouteImport } from './routes/_authenticated/code-map'
 import { Route as AuthenticatedCalistirmalarRouteImport } from './routes/_authenticated/calistirmalar'
+import { Route as AuthenticatedJobsIndexRouteImport } from './routes/_authenticated/jobs/index'
 import { Route as AuthenticatedIslerIndexRouteImport } from './routes/_authenticated/isler/index'
+import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs/$id'
 import { Route as AuthenticatedIslerIdRouteImport } from './routes/_authenticated/isler/$id'
 
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -35,14 +52,44 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTasksRoute = AuthenticatedTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRunsRoute = AuthenticatedRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedProjelerRoute = AuthenticatedProjelerRouteImport.update({
   id: '/projeler',
   path: '/projeler',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPoolsRoute = AuthenticatedPoolsRouteImport.update({
+  id: '/pools',
+  path: '/pools',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPanelsRoute = AuthenticatedPanelsRouteImport.update({
+  id: '/panels',
+  path: '/panels',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPanellerRoute = AuthenticatedPanellerRouteImport.update({
   id: '/paneller',
   path: '/paneller',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOverviewRoute = AuthenticatedOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedKodHaritasiRoute =
@@ -56,9 +103,24 @@ const AuthenticatedHavuzlarRoute = AuthenticatedHavuzlarRouteImport.update({
   path: '/havuzlar',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedGorevlerRoute = AuthenticatedGorevlerRouteImport.update({
+  id: '/gorevler',
+  path: '/gorevler',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGenelBakisRoute = AuthenticatedGenelBakisRouteImport.update({
+  id: '/genel-bakis',
+  path: '/genel-bakis',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedGenelRoute = AuthenticatedGenelRouteImport.update({
   id: '/genel',
   path: '/genel',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCodeMapRoute = AuthenticatedCodeMapRouteImport.update({
+  id: '/code-map',
+  path: '/code-map',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCalistirmalarRoute =
@@ -67,9 +129,19 @@ const AuthenticatedCalistirmalarRoute =
     path: '/calistirmalar',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedJobsIndexRoute = AuthenticatedJobsIndexRouteImport.update({
+  id: '/jobs/',
+  path: '/jobs/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedIslerIndexRoute = AuthenticatedIslerIndexRouteImport.update({
   id: '/isler/',
   path: '/isler/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedJobsIdRoute = AuthenticatedJobsIdRouteImport.update({
+  id: '/jobs/$id',
+  path: '/jobs/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedIslerIdRoute = AuthenticatedIslerIdRouteImport.update({
@@ -81,88 +153,168 @@ const AuthenticatedIslerIdRoute = AuthenticatedIslerIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/sign-in': typeof SignInRoute
   '/calistirmalar': typeof AuthenticatedCalistirmalarRoute
+  '/code-map': typeof AuthenticatedCodeMapRoute
   '/genel': typeof AuthenticatedGenelRoute
+  '/genel-bakis': typeof AuthenticatedGenelBakisRoute
+  '/gorevler': typeof AuthenticatedGorevlerRoute
   '/havuzlar': typeof AuthenticatedHavuzlarRoute
   '/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
+  '/overview': typeof AuthenticatedOverviewRoute
   '/paneller': typeof AuthenticatedPanellerRoute
+  '/panels': typeof AuthenticatedPanelsRoute
+  '/pools': typeof AuthenticatedPoolsRoute
+  '/projects': typeof AuthenticatedProjectsRoute
   '/projeler': typeof AuthenticatedProjelerRoute
+  '/runs': typeof AuthenticatedRunsRoute
+  '/tasks': typeof AuthenticatedTasksRoute
   '/isler/$id': typeof AuthenticatedIslerIdRoute
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/isler/': typeof AuthenticatedIslerIndexRoute
+  '/jobs/': typeof AuthenticatedJobsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/sign-in': typeof SignInRoute
   '/calistirmalar': typeof AuthenticatedCalistirmalarRoute
+  '/code-map': typeof AuthenticatedCodeMapRoute
   '/genel': typeof AuthenticatedGenelRoute
+  '/genel-bakis': typeof AuthenticatedGenelBakisRoute
+  '/gorevler': typeof AuthenticatedGorevlerRoute
   '/havuzlar': typeof AuthenticatedHavuzlarRoute
   '/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
+  '/overview': typeof AuthenticatedOverviewRoute
   '/paneller': typeof AuthenticatedPanellerRoute
+  '/panels': typeof AuthenticatedPanelsRoute
+  '/pools': typeof AuthenticatedPoolsRoute
+  '/projects': typeof AuthenticatedProjectsRoute
   '/projeler': typeof AuthenticatedProjelerRoute
+  '/runs': typeof AuthenticatedRunsRoute
+  '/tasks': typeof AuthenticatedTasksRoute
   '/': typeof AuthenticatedIndexRoute
   '/isler/$id': typeof AuthenticatedIslerIdRoute
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/isler': typeof AuthenticatedIslerIndexRoute
+  '/jobs': typeof AuthenticatedJobsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/sign-in': typeof SignInRoute
   '/_authenticated/calistirmalar': typeof AuthenticatedCalistirmalarRoute
+  '/_authenticated/code-map': typeof AuthenticatedCodeMapRoute
   '/_authenticated/genel': typeof AuthenticatedGenelRoute
+  '/_authenticated/genel-bakis': typeof AuthenticatedGenelBakisRoute
+  '/_authenticated/gorevler': typeof AuthenticatedGorevlerRoute
   '/_authenticated/havuzlar': typeof AuthenticatedHavuzlarRoute
   '/_authenticated/kod-haritasi': typeof AuthenticatedKodHaritasiRoute
+  '/_authenticated/overview': typeof AuthenticatedOverviewRoute
   '/_authenticated/paneller': typeof AuthenticatedPanellerRoute
+  '/_authenticated/panels': typeof AuthenticatedPanelsRoute
+  '/_authenticated/pools': typeof AuthenticatedPoolsRoute
+  '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/projeler': typeof AuthenticatedProjelerRoute
+  '/_authenticated/runs': typeof AuthenticatedRunsRoute
+  '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/isler/$id': typeof AuthenticatedIslerIdRoute
+  '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/_authenticated/isler/': typeof AuthenticatedIslerIndexRoute
+  '/_authenticated/jobs/': typeof AuthenticatedJobsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/sign-in'
     | '/calistirmalar'
+    | '/code-map'
     | '/genel'
+    | '/genel-bakis'
+    | '/gorevler'
     | '/havuzlar'
     | '/kod-haritasi'
+    | '/overview'
     | '/paneller'
+    | '/panels'
+    | '/pools'
+    | '/projects'
     | '/projeler'
+    | '/runs'
+    | '/tasks'
     | '/isler/$id'
+    | '/jobs/$id'
     | '/isler/'
+    | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/sign-in'
     | '/calistirmalar'
+    | '/code-map'
     | '/genel'
+    | '/genel-bakis'
+    | '/gorevler'
     | '/havuzlar'
     | '/kod-haritasi'
+    | '/overview'
     | '/paneller'
+    | '/panels'
+    | '/pools'
+    | '/projects'
     | '/projeler'
+    | '/runs'
+    | '/tasks'
     | '/'
     | '/isler/$id'
+    | '/jobs/$id'
     | '/isler'
+    | '/jobs'
   id:
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/sign-in'
     | '/_authenticated/calistirmalar'
+    | '/_authenticated/code-map'
     | '/_authenticated/genel'
+    | '/_authenticated/genel-bakis'
+    | '/_authenticated/gorevler'
     | '/_authenticated/havuzlar'
     | '/_authenticated/kod-haritasi'
+    | '/_authenticated/overview'
     | '/_authenticated/paneller'
+    | '/_authenticated/panels'
+    | '/_authenticated/pools'
+    | '/_authenticated/projects'
     | '/_authenticated/projeler'
+    | '/_authenticated/runs'
+    | '/_authenticated/tasks'
     | '/_authenticated/'
     | '/_authenticated/isler/$id'
+    | '/_authenticated/jobs/$id'
     | '/_authenticated/isler/'
+    | '/_authenticated/jobs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  SignInRoute: typeof SignInRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -184,6 +336,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tasks': {
+      id: '/_authenticated/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof AuthenticatedTasksRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/runs': {
+      id: '/_authenticated/runs'
+      path: '/runs'
+      fullPath: '/runs'
+      preLoaderRoute: typeof AuthenticatedRunsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/projeler': {
       id: '/_authenticated/projeler'
       path: '/projeler'
@@ -191,11 +357,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjelerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/projects': {
+      id: '/_authenticated/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/pools': {
+      id: '/_authenticated/pools'
+      path: '/pools'
+      fullPath: '/pools'
+      preLoaderRoute: typeof AuthenticatedPoolsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/panels': {
+      id: '/_authenticated/panels'
+      path: '/panels'
+      fullPath: '/panels'
+      preLoaderRoute: typeof AuthenticatedPanelsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/paneller': {
       id: '/_authenticated/paneller'
       path: '/paneller'
       fullPath: '/paneller'
       preLoaderRoute: typeof AuthenticatedPanellerRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/overview': {
+      id: '/_authenticated/overview'
+      path: '/overview'
+      fullPath: '/overview'
+      preLoaderRoute: typeof AuthenticatedOverviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/kod-haritasi': {
@@ -212,11 +406,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHavuzlarRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/gorevler': {
+      id: '/_authenticated/gorevler'
+      path: '/gorevler'
+      fullPath: '/gorevler'
+      preLoaderRoute: typeof AuthenticatedGorevlerRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/genel-bakis': {
+      id: '/_authenticated/genel-bakis'
+      path: '/genel-bakis'
+      fullPath: '/genel-bakis'
+      preLoaderRoute: typeof AuthenticatedGenelBakisRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/genel': {
       id: '/_authenticated/genel'
       path: '/genel'
       fullPath: '/genel'
       preLoaderRoute: typeof AuthenticatedGenelRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/code-map': {
+      id: '/_authenticated/code-map'
+      path: '/code-map'
+      fullPath: '/code-map'
+      preLoaderRoute: typeof AuthenticatedCodeMapRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/calistirmalar': {
@@ -226,11 +441,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCalistirmalarRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/jobs/': {
+      id: '/_authenticated/jobs/'
+      path: '/jobs'
+      fullPath: '/jobs/'
+      preLoaderRoute: typeof AuthenticatedJobsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/isler/': {
       id: '/_authenticated/isler/'
       path: '/isler'
       fullPath: '/isler/'
       preLoaderRoute: typeof AuthenticatedIslerIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/jobs/$id': {
+      id: '/_authenticated/jobs/$id'
+      path: '/jobs/$id'
+      fullPath: '/jobs/$id'
+      preLoaderRoute: typeof AuthenticatedJobsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/isler/$id': {
@@ -245,26 +474,48 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCalistirmalarRoute: typeof AuthenticatedCalistirmalarRoute
+  AuthenticatedCodeMapRoute: typeof AuthenticatedCodeMapRoute
   AuthenticatedGenelRoute: typeof AuthenticatedGenelRoute
+  AuthenticatedGenelBakisRoute: typeof AuthenticatedGenelBakisRoute
+  AuthenticatedGorevlerRoute: typeof AuthenticatedGorevlerRoute
   AuthenticatedHavuzlarRoute: typeof AuthenticatedHavuzlarRoute
   AuthenticatedKodHaritasiRoute: typeof AuthenticatedKodHaritasiRoute
+  AuthenticatedOverviewRoute: typeof AuthenticatedOverviewRoute
   AuthenticatedPanellerRoute: typeof AuthenticatedPanellerRoute
+  AuthenticatedPanelsRoute: typeof AuthenticatedPanelsRoute
+  AuthenticatedPoolsRoute: typeof AuthenticatedPoolsRoute
+  AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedProjelerRoute: typeof AuthenticatedProjelerRoute
+  AuthenticatedRunsRoute: typeof AuthenticatedRunsRoute
+  AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedIslerIdRoute: typeof AuthenticatedIslerIdRoute
+  AuthenticatedJobsIdRoute: typeof AuthenticatedJobsIdRoute
   AuthenticatedIslerIndexRoute: typeof AuthenticatedIslerIndexRoute
+  AuthenticatedJobsIndexRoute: typeof AuthenticatedJobsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCalistirmalarRoute: AuthenticatedCalistirmalarRoute,
+  AuthenticatedCodeMapRoute: AuthenticatedCodeMapRoute,
   AuthenticatedGenelRoute: AuthenticatedGenelRoute,
+  AuthenticatedGenelBakisRoute: AuthenticatedGenelBakisRoute,
+  AuthenticatedGorevlerRoute: AuthenticatedGorevlerRoute,
   AuthenticatedHavuzlarRoute: AuthenticatedHavuzlarRoute,
   AuthenticatedKodHaritasiRoute: AuthenticatedKodHaritasiRoute,
+  AuthenticatedOverviewRoute: AuthenticatedOverviewRoute,
   AuthenticatedPanellerRoute: AuthenticatedPanellerRoute,
+  AuthenticatedPanelsRoute: AuthenticatedPanelsRoute,
+  AuthenticatedPoolsRoute: AuthenticatedPoolsRoute,
+  AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedProjelerRoute: AuthenticatedProjelerRoute,
+  AuthenticatedRunsRoute: AuthenticatedRunsRoute,
+  AuthenticatedTasksRoute: AuthenticatedTasksRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedIslerIdRoute: AuthenticatedIslerIdRoute,
+  AuthenticatedJobsIdRoute: AuthenticatedJobsIdRoute,
   AuthenticatedIslerIndexRoute: AuthenticatedIslerIndexRoute,
+  AuthenticatedJobsIndexRoute: AuthenticatedJobsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -273,6 +524,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

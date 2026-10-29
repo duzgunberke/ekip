@@ -26,7 +26,7 @@ export function ActiveTasksMini() {
         <CardDescription>{translate("Mac'teki isteklerin canlı ilerlemesi")}</CardDescription>
         <CardAction>
           <Button variant='ghost' size='sm' asChild>
-            <Link to='/'>
+            <Link to='/tasks'>
               {translate('Görevler')} <ArrowRight />
             </Link>
           </Button>
@@ -44,7 +44,7 @@ export function ActiveTasksMini() {
               const eta = etaText(t, now)
               return (
                 <li key={t.id}>
-                  <Link to='/' className='block rounded-lg border px-3 py-2.5 hover:bg-muted/40'>
+                  <Link to='/tasks' className='block rounded-lg border px-3 py-2.5 hover:bg-muted/40'>
                     <div className='flex items-baseline justify-between gap-3'>
                       <p className='min-w-0 truncate text-sm font-medium'>{t.title}</p>
                       <span className='shrink-0 text-sm font-semibold tabular-nums'>{formatPercent(Math.round(t.pct))}</span>

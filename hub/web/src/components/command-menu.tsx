@@ -98,7 +98,7 @@ export function CommandMenu() {
                 <CommandItem
                   key={p.name}
                   value={`${t('proje')} ${p.name}`}
-                  onSelect={() => run(() => navigate({ to: '/projeler', search: { p: p.name } }))}
+                  onSelect={() => run(() => navigate({ to: '/projects', search: { p: p.name } }))}
                 >
                   <FolderGit2 />
                   {p.name}

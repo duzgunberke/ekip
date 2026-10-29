@@ -1,8 +1,8 @@
-import { z } from 'zod'
-import { createFileRoute } from '@tanstack/react-router'
-import { CodeMap } from '@/features/codemap'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { legacyRouteHref } from '@/lib/legacy-route'
 
 export const Route = createFileRoute('/_authenticated/kod-haritasi')({
-  validateSearch: z.object({ proje: z.string().optional() }),
-  component: CodeMap,
+  beforeLoad: ({ location }) => {
+    throw redirect({ href: legacyRouteHref(location, '/code-map') })
+  },
 })

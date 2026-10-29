@@ -15,6 +15,6 @@ export function useSignOut() {
     }
     qc.clear()
     toast.success(translate('Çıkış yapıldı.'))
-    navigate({ to: '/login', search: {}, replace: true })
+    navigate({ to: '/sign-in', search: {}, replace: true })
   }
 }

@@ -22,7 +22,7 @@ export function GeneralError({ className, minimal = false }: GeneralErrorProps) 
             <Button variant='outline' onClick={() => history.go(-1)}>
               {t('Geri dön')}
             </Button>
-            <Button onClick={() => navigate({ to: '/' })}>{t('Ana sayfaya git')}</Button>
+            <Button onClick={() => navigate({ to: '/tasks' })}>{t('Ana sayfaya git')}</Button>
           </div>
         )}
       </div>

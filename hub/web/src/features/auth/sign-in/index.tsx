@@ -5,7 +5,7 @@ import { useT } from '@/lib/i18n'
 import { AuthLayout } from '../auth-layout'
 import { UserAuthForm } from './components/user-auth-form'
 
-const route = getRouteApi('/login')
+const route = getRouteApi('/sign-in')
 
 export function SignIn() {
   const { redirect } = route.useSearch()

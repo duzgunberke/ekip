@@ -15,7 +15,7 @@ import { CodeFlow, type GraphState, type Selection, dirId, repoId } from './flow
 import { DetailPanel } from './panel'
 import { formatNumber, useT } from '@/lib/i18n'
 
-const route = getRouteApi('/_authenticated/kod-haritasi')
+const route = getRouteApi('/_authenticated/code-map')
 
 export function CodeMap() {
   const t = useT()

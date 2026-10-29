@@ -78,7 +78,7 @@ export function Overview() {
             loading={projects.isLoading}
             value={projects.data ? formatNumber(projects.data.length) : t('Yok')}
             hint={t('{count} tanesi hafızaya bağlı', { count: memoryLinked })}
-            to='/projeler'
+            to='/projects'
           />
           <Kpi
             title={t('Çalışan / kuyrukta iş')}
@@ -95,7 +95,7 @@ export function Overview() {
               )
             }
             hint={s ? t('{count} işçi slotu · {done} bitti', { count: s.workers.length, done: s.queue.done ?? 0 }) : undefined}
-            to='/isler'
+            to='/jobs'
           />
           <Kpi
             title={t('Sağlıklı sağlayıcı')}
@@ -122,7 +122,7 @@ export function Overview() {
                       ? t('freellmapi hazır değil')
                       : t('freellmapi kapalı')
             }
-            to='/havuzlar'
+            to='/pools'
           />
           <Kpi
             title={t('Mac son görülme')}
@@ -164,7 +164,7 @@ export function Overview() {
               <CardDescription>{t('freellmapi sağlayıcıları ve hafıza')}</CardDescription>
               <CardAction>
                 <Button variant='ghost' size='sm' asChild>
-                  <Link to='/havuzlar'>
+                  <Link to='/pools'>
                     {t('Tümü')} <ArrowRight />
                   </Link>
                 </Button>
@@ -256,7 +256,7 @@ function Kpi({
   value: React.ReactNode
   hint?: React.ReactNode
   loading?: boolean
-  to?: '/projeler' | '/isler' | '/havuzlar'
+  to?: '/projects' | '/jobs' | '/pools'
   valueClassName?: string
 }) {
   const body = (
@@ -309,7 +309,7 @@ function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null;
         <p className='text-sm font-medium'>Slot #{formatNumber(slot)}</p>
         {jobId ? (
           <Link
-            to='/isler/$id'
+            to='/jobs/$id'
             params={{ id: jobId }}
             className='block truncate text-xs text-muted-foreground hover:text-foreground hover:underline'
           >
@@ -344,7 +344,7 @@ function RecentJobs({ className }: { className?: string }) {
         <CardDescription>{t("Hub'da çalışan son görevler")}</CardDescription>
         <CardAction>
           <Button variant='ghost' size='sm' asChild>
-            <Link to='/isler'>
+            <Link to='/jobs'>
               {t('Tümü')} <ArrowRight />
             </Link>
           </Button>
@@ -373,7 +373,7 @@ function RecentJobs({ className }: { className?: string }) {
               <li key={j.id}>
                 <button
                   type='button'
-                  onClick={() => navigate({ to: '/isler/$id', params: { id: j.id } })}
+                  onClick={() => navigate({ to: '/jobs/$id', params: { id: j.id } })}
                   className='flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-start transition-colors duration-150 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none'
                 >
                   <div className='min-w-0 flex-1'>

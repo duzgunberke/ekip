@@ -30,7 +30,7 @@ export function AppSidebar() {
   const groups = navGroups.map((g) => ({
     ...g,
     items: g.items.map((it) =>
-      it.url === '/isler' && active > 0
+      it.url === '/jobs' && active > 0
         ? { ...it, badge: formatNumber(active) }
         : it.url === '/' && runningTasks > 0
           ? { ...it, badge: formatNumber(runningTasks) }
@@ -44,7 +44,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size='lg' asChild tooltip='ekip'>
-              <Link to='/' onClick={() => setOpenMobile(false)}>
+              <Link to='/tasks' onClick={() => setOpenMobile(false)}>
                 <span className='flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary'>
                   <Logo className='size-7' />
                 </span>

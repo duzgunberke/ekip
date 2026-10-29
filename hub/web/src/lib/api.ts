@@ -64,7 +64,13 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** Post-login redirect target: same-origin, path-absolute, never back to /login. */
+/** Post-login redirect target: same-origin, path-absolute, never back to a sign-in route. */
 export function safeRedirect(r: string | undefined) {
-  return r && r.startsWith('/') && !r.startsWith('//') && !r.startsWith('/login') ? r : '/'
+  return r &&
+    r.startsWith('/') &&
+    !r.startsWith('//') &&
+    !r.startsWith('/login') &&
+    !r.startsWith('/sign-in')
+    ? r
+    : '/tasks'
 }

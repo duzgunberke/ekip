@@ -17,17 +17,17 @@ import { routeTree } from './routeTree.gen'
 import 'sonner/dist/styles.css'
 import './styles/index.css'
 
-// Any 401 from the API means the session cookie is gone or expired: back to /login.
+// Any 401 from the API means the session cookie is gone or expired: back to /sign-in.
 let redirecting = false
 function onUnauthorized() {
   if (redirecting) return
   const { pathname, search } = router.history.location
-  if (pathname === '/login') return
+  if (pathname === '/sign-in' || pathname === '/login') return
   redirecting = true
   queryClient.clear()
   toast.error(translate('Oturum sona erdi, tekrar giriş yapın.'))
   router
-    .navigate({ to: '/login', search: { redirect: `${pathname}${search}` }, replace: true })
+    .navigate({ to: '/sign-in', search: { redirect: `${pathname}${search}` }, replace: true })
     .finally(() => {
       redirecting = false
     })

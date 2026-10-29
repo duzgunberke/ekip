@@ -17,7 +17,7 @@ import { TimeAgo } from '@/components/ekip/time-ago'
 import { ProjectSheet } from './project-sheet'
 import { formatNumber, useLanguage, useT } from '@/lib/i18n'
 
-const route = getRouteApi('/_authenticated/projeler')
+const route = getRouteApi('/_authenticated/projects')
 
 export function Projects() {
   const t = useT()

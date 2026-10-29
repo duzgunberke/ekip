@@ -80,7 +80,7 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
       onSuccess: (job) => {
         onOpenChange(false)
         toast.success(t('İş kuyruğa eklendi'), { description: `${job.project} · ${job.id}` })
-        navigate({ to: '/isler/$id', params: { id: job.id } })
+        navigate({ to: '/jobs/$id', params: { id: job.id } })
       },
       onError: (e) => form.setError('root', { message: errorMessage(e) }),
     })

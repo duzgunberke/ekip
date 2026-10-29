@@ -13,7 +13,7 @@ export const Route = createFileRoute('/_authenticated')({
         retry: false,
       })
     } catch (e) {
-      if (isUnauthorized(e)) throw redirect({ to: '/login', search: { redirect: location.href } })
+      if (isUnauthorized(e)) throw redirect({ to: '/sign-in', search: { redirect: location.href } })
       // Network/server trouble: render the app; each page shows its own error state.
     }
   },

@@ -1,4 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Tasks } from '@/features/tasks'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { legacyRouteHref } from '@/lib/legacy-route'
 
-export const Route = createFileRoute('/_authenticated/')({ component: Tasks })
+export const Route = createFileRoute('/_authenticated/')({
+  beforeLoad: ({ location }) => {
+    throw redirect({ href: legacyRouteHref(location, '/tasks') })
+  },
+})

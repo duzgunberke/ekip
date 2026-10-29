@@ -44,7 +44,7 @@ const columns: ColumnDef<Job>[] = [
     cell: ({ row }) => (
       <div className='grid max-w-[16rem] min-w-0 gap-0.5 sm:max-w-md'>
         <Link
-          to='/isler/$id'
+          to='/jobs/$id'
           params={{ id: row.original.id }}
           className='truncate font-medium hover:underline'
         >
@@ -200,7 +200,7 @@ export function Jobs() {
               table={table}
               loading={jobs.isLoading}
               empty={t('Filtrelere uyan iş yok.')}
-              onRowClick={(row) => navigate({ to: '/isler/$id', params: { id: row.original.id } })}
+              onRowClick={(row) => navigate({ to: '/jobs/$id', params: { id: row.original.id } })}
             />
           </div>
         )}

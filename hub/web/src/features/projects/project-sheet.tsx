@@ -104,7 +104,7 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
 
             <SheetFooter className='border-t px-6 py-4 sm:flex-row sm:justify-end'>
               <Button variant='outline' asChild>
-                <Link to='/kod-haritasi' search={{ proje: p.name }}>
+                <Link to='/code-map' search={{ proje: p.name }}>
                   <Network /> {t('Kod haritası')}
                 </Link>
               </Button>
