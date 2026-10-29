@@ -32,6 +32,7 @@ project work the share is higher.
 ## Contents
 
 - [How it works](#how-it-works)
+- [How a project gets indexed](#how-a-project-gets-indexed)
 - [The memory: vectors, wiki, graph, skills](#the-memory-vectors-wiki-graph-skills)
 - [Where a task goes](#where-a-task-goes)
 - [Seeing what is going on](#seeing-what-is-going-on)
@@ -125,6 +126,39 @@ sequenceDiagram
 ```
 
 ---
+
+## How a project gets indexed
+
+`ekip project scan` finds every git repo you committed to in the last 30 days; `ekip project add
+<path>` adds one by hand (a folder with several repos inside is one project with sub-repos). Each
+project then goes through the same pipeline, four parts running side by side:
+
+```mermaid
+flowchart LR
+  add["ekip project add / scan"] --> reg["registry<br/>data/projects.json<br/>name, path, repos, remotes"]
+  reg --> cg["local code graph<br/>codegraph init<br/>.codegraph/ SQLite index"]
+  reg --> tdai["TDAI agent + team<br/>memories are isolated per project"]
+  tdai --> rg["code graph from GitHub<br/>one per repo, built on the hub"]
+  tdai --> wiki["LLM wiki<br/>README, docs/, notes, ≤80 Markdown files"]
+  reg --> card["project card<br/>a worker reads the repo once and writes<br/>stack, commands, layout, frequent tasks, gotchas"]
+  card --> wiki
+```
+
+| Part | What it is | Who uses it |
+|---|---|---|
+| **Card** (`data/projects/<name>.md`) | one page: what the project is, stack, build/test/deploy commands, folder layout, frequent tasks, gotchas; written once by a worker that reads the repo | injected at session start in that project; put in every worker brief |
+| **Local code graph** ([codegraph](https://github.com/colbymchenry/codegraph)) | a SQLite index of every symbol, file and call edge in the repo (30+ languages), kept in `.codegraph/` and hidden from git | the `codegraph` MCP server: one `codegraph_explore` call returns the exact source of the symbols a question touches, plus the call paths between them, instead of a grep-and-read loop |
+| **Code graph from GitHub** | the same idea built by TDAI on the hub from the remote repo | agents that run on the hub, the panel's code map |
+| **LLM wiki** | pages written by an LLM from the project's docs, linked to each other | `wiki_search` / `wiki_read` MCP tools, worker briefs |
+| **Memory and skills** | see the next section | session start, worker briefs, `memory_search` / `skill_search` |
+
+`ekip project sync <name>` refreshes all of it after big changes; `ekip doctor` shows each project's
+graphs, wiki and memory, and `--fix` re-queues what failed.
+
+**Why a code graph saves tokens.** Without one, an agent answering "how does the paywall decide who
+is premium?" greps, opens five files, reads them whole, and greps again. With one, it asks the graph
+for the symbols involved and gets back only their source and how they call each other: the same
+answer for a fraction of the tokens, and in one round trip.
 
 ## The memory: vectors, wiki, graph, skills
 
@@ -234,6 +268,20 @@ flowchart LR
 The ceiling is a rate-limit ceiling, not a promise: free models are slower than paid ones, time out
 under load and cool down when they hit a limit. That is why ekip routes background work to the free
 pool and keeps your Claude for decisions.
+
+### Everything ekip draws on (not only the free pool)
+
+| Source | What it gives | Cost to you |
+|---|---|---|
+| **Antigravity** (`agy`) | the strongest worker; long autonomous coding and film runs | your Google account's quota |
+| **Codex** | OpenAI's coding agent | your ChatGPT plan, the free plan included (lower limits) |
+| **Copilot CLI** | GitHub's coding agent; auto-picks a strong model per run | Copilot free tier or plan |
+| **Qwen Code, OpenCode, grok-cli** | more coding harnesses; on the free pool, or on their own accounts | free |
+| **freellmapi** | ~60 models from Google, NVIDIA, Groq, OVH, OpenRouter, Zhipu (and any provider you add) behind one endpoint | free tiers |
+| **Free DeepSeek routes** | DeepSeek V4 Flash/Pro via Routeway, BazaarLink, Router9, ModelScope | free (add their keys with `ekip keys`) |
+| **NVIDIA embeddings** | the vector index (`nemotron-3-embed-1b`), with an identical OpenRouter fallback | free |
+| **Headless Claude** (`--via claude`) | your skills and plugins, for what nothing else can do | your Claude subscription: last resort |
+| **The lead** | planning, review, decisions | your Claude subscription |
 
 - `--via a,b,c` runs the same task on several pools at once, each in its own git worktree and branch;
   you compare and merge the best.
