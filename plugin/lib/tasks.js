@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { HOME, SETTINGS, die, sleep } from "./core.js";
 import { c, dot, mark, progress, fit } from "./ui.js";
 import { t as tr, lang } from "./i18n.js";
@@ -139,7 +139,7 @@ export function finish(id, status = "done", note) {
 
 /** Called by `ekip run --task ID`: the worker shows under the task while it runs. */
 export function linkWorker(id, w) { try { update(id, (t) => { t.workers.push({ ...w, startedAt: now(), status: "running" }); }); } catch { /* unknown task: ignore */ } }
-export function endWorker(id, runId, status, why) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); if (why) t.notes.push({ at: now(), text: `${w?.label ?? runId}: ${why}` }); autoClose(t); }); } catch { /* ignore */ } }
+export function endWorker(id, runId, status, why, model = null) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now(), model }); if (why) t.notes.push({ at: now(), text: `${w?.label ?? runId}: ${why}` }); autoClose(t); }); } catch { /* ignore */ } }
 
 // Tasks nobody moved for hours (no live worker, no step update) are orphans: flagged after 2 h,
 // closed as failed after 6 h, so the pane and panel never show yesterday's work as running.
@@ -234,6 +234,21 @@ function recentRuns(limit = 4) {
   }).slice(0, limit);
 }
 
+// The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
+// shows older logic than the web panel.
+const CODE = ["tasks.js", "ui.js", "i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), f));
+const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
+const startedStamp = codeStamp();
+const codeChanged = () => codeStamp() !== startedStamp;
+function restartWatch() {
+  process.stdout.write("\x1b[?25h\x1b[?1049l");
+  const child = spawn(process.execPath, process.argv.slice(1), { stdio: "inherit" });
+  process.removeAllListeners("SIGINT"); process.removeAllListeners("SIGTERM");
+  for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));
+  child.on("exit", (code) => process.exit(code ?? 0));
+  return new Promise(() => {}); // the child owns the pane from here
+}
+
 export async function main([sub = "ls", ...args]) {
   const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
   const rest = () => args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
@@ -277,6 +292,7 @@ export async function main([sub = "ls", ...args]) {
         process.stdout.write(`\x1b[H${lines.map((l) => `${l}\x1b[K`).join("\n")}\x1b[J`);
       } else console.log(out);
       if (watching) await sleep(2000);
+      if (watching && codeChanged()) await restartWatch();
     } while (watching);
   } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
 }
