@@ -17,7 +17,10 @@ export const VENDOR = path.join(ROOT, "vendor");
 export const SETTINGS_FILE = path.join(HOME, "config.json");
 export const SETTINGS = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) : {};
 export const FREE_DIR = process.env.EKIP_FREELLMAPI_DIR ?? SETTINGS.freellmapiDir ?? path.join(VENDOR, "freellmapi");
-export const FREE_NODE = process.env.EKIP_FREELLMAPI_NODE ?? SETTINGS.freellmapiNode ?? "/opt/homebrew/opt/node@24/bin/node";
+// Read at call time: `ekip init` finds a suitable Node and saves it after this module loaded, and a
+// fixed fallback path (a Homebrew one) only exists on some Macs. Without a setting, the running node.
+export const freeNode = () => process.env.EKIP_FREELLMAPI_NODE ?? SETTINGS.freellmapiNode ?? process.execPath;
+export const FREE_NODE = freeNode(); // kept for older importers; use freeNode()
 export const PORT = Number(process.env.EKIP_FREELLMAPI_PORT ?? SETTINGS.port ?? 3001);
 export const FREELLMAPI_REPO = "https://github.com/tashfeenahmed/freellmapi.git";
 export const KEYLESS = ["ovh"];
@@ -106,7 +109,7 @@ export async function up({ quiet = false } = {}) {
   const env = { ...process.env, FREEAPI_ENV_PATH: path.join(FREE_DIR, ".env"), HOST: "127.0.0.1", PORT: String(PORT) };
   if (fs.existsSync(CONFIG)) env.FREEAPI_CONFIG_PATH = CONFIG;
   const out = fs.openSync(LOG, "a");
-  const child = spawn(FREE_NODE, ["server/dist/index.js"], { cwd: FREE_DIR, env, detached: true, stdio: ["ignore", out, out] });
+  const child = spawn(freeNode(), ["server/dist/index.js"], { cwd: FREE_DIR, env, detached: true, stdio: ["ignore", out, out] });
   child.unref();
   fs.writeFileSync(PID, String(child.pid));
   for (let i = 0; i < 60; i++) {
