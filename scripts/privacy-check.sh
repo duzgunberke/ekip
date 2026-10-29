@@ -5,8 +5,10 @@ patterns=(
   'hf_''[A-Za-z0-9]{30,}'
   'sk-''[A-Za-z0-9]{20,}'
   'ghp_''[A-Za-z0-9]{30,}'
-  '-----BEGIN .*''PRIVATE KEY-----'
 )
+key_begin='-----BEGIN .*'
+key_end='PRIVATE KEY-----'
+patterns+=("${key_begin}${key_end}")
 if [[ -f .privacy-denylist ]]; then
   while IFS= read -r pattern || [[ -n "$pattern" ]]; do
     [[ -z "$pattern" || "$pattern" == \\#* ]] && continue
