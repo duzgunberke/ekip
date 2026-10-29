@@ -294,7 +294,8 @@ function cleanTask(b) {
 
 async function getJson(url, headers = {}) {
   try {
-    const r = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+    // 8 s: under load (a big import, a busy box) a healthy service answers late; late is not down
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
     let body = null;
     try { body = await r.json(); } catch { /* not json */ }
     return { ok: r.ok, status: r.status, body };
@@ -324,9 +325,11 @@ async function status() {
     time: new Date().toISOString(),
     freellmapi: {
       configured: !!cfg.freellmapiUrl,
-      up: !!ready && ready.status > 0,
+      // a timeout means slow, not offline: the panel says "slow" and keeps the provider data
+      slow: ready?.error === "TimeoutError",
+      up: (!!ready && ready.status > 0) || ready?.error === "TimeoutError",
       ready: !!ready?.ok,
-      reason: ready?.body?.reason ?? ready?.error ?? null,
+      reason: ready?.error === "TimeoutError" ? "slow" : ready?.body?.reason ?? ready?.error ?? null,
       providers: plist.map((p) => ({ platform: p.platform, name: p.name, status: p.status, keys: p.keys, resumeAt: p.resume_at ?? null })),
       providerCount: plist.length,
       counts: providers?.body?.counts ?? null,

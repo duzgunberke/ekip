@@ -129,6 +129,7 @@ export type Status = {
     configured: boolean
     up: boolean
     ready: boolean
+    slow?: boolean
     reason: string | null
     providers: Provider[]
     providerCount: number

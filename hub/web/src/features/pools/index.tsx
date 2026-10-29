@@ -169,7 +169,7 @@ export function Pools() {
               {f && (
                 <CardAction>
                   <ToneBadge tone={!f.configured ? 'off' : f.ready ? 'ok' : f.up ? 'warn' : 'bad'}>
-                    {!f.configured ? t('ayarlı değil') : f.ready ? t('çalışıyor') : f.up ? t('hazır değil') : t('çevrimdışı')}
+                    {!f.configured ? t('ayarlı değil') : f.ready ? t('çalışıyor') : f.slow ? t('yavaş yanıt veriyor') : f.up ? t('hazır değil') : t('çevrimdışı')}
                   </ToneBadge>
                 </CardAction>
               )}
@@ -187,7 +187,9 @@ export function Pools() {
               )}
               {f && !f.ready && f.reason && (
                 <p className='mb-3 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground'>
-                  {t('Neden:')} <span className='font-mono text-xs'>{f.reason}</span>
+                  {f.slow
+                    ? t('Sunucu yoğun; sağlık kontrolü 8 sn içinde yanıt alamadı. Havuz çalışıyor, istekler gecikmeli.')
+                    : <>{t('Neden:')} <span className='font-mono text-xs'>{f.reason}</span></>}
                 </p>
               )}
               {status.isLoading && limits.isLoading ? (

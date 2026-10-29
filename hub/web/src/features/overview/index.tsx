@@ -130,7 +130,9 @@ export function Overview() {
                   ? t('freellmapi ayarlı değil')
                   : s.freellmapi.ready
                     ? t('freellmapi çalışıyor')
-                    : s.freellmapi.up
+                    : s.freellmapi.slow
+                      ? t('freellmapi yavaş yanıt veriyor')
+                      : s.freellmapi.up
                       ? t('freellmapi hazır değil')
                       : t('freellmapi kapalı')
             }
