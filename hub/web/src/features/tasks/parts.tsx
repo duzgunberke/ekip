@@ -96,6 +96,12 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
                   </span>
                 )}
               </div>
+              {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && (
+                <p className='mt-1 text-xs font-medium text-destructive'>
+                  {elapsed(s.progressAt, null, now)}dır ilerleme yok
+                </p>
+              )}
+              {running && s.detail && <p className='mt-0.5 text-xs text-muted-foreground'>{s.detail}</p>}
               {running && s.pct != null && (
                 <ProgressBar value={s.pct} className='mt-1.5 h-1' label={`${s.title} ilerlemesi`} />
               )}

@@ -196,7 +196,7 @@ export type Task = {
   createdAt: string | null
   updatedAt: string | null
   endedAt: string | null
-  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null }[]
+  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null }[]
   workers: { runId: string | null; via: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null }[]
   notes: { at: string | null; text: string }[]
   pct: number

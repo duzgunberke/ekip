@@ -68,10 +68,13 @@ export function create({ title, project, steps = [] }) {
 }
 
 /** Mark step n (1-based): running [pct] | done | failed | skipped; starting one finishes earlier running ones. */
-export function step(id, n, status = "done", { pct, note, parallel = false } = {}) {
+export function step(id, n, status = "done", { pct, note, detail, parallel = false } = {}) {
   return update(id, (t) => {
     const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
     if (status === "running" && !parallel) for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
+    // progressAt: when the step last moved; a running step that stops moving is shown as stalled
+    if ((pct != null && pct !== s.pct) || (status === "running" && s.status !== "running")) s.progressAt = now();
+    if (detail != null) s.detail = detail;
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
     if (status === "failed") notify(`ekip · ${t.title}`, `Adım takıldı: ${s.title}`);
@@ -104,6 +107,10 @@ function bar(p, width = 24) {
   return `${c.cyan("█".repeat(full))}${c.gray("░".repeat(width - full))}`;
 }
 
+// a running step whose pct/detail has not moved for 15 min is stalled, whatever its label says
+const STALL_MS = 15 * 60 * 1000;
+const stalledFor = (s) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS ? Date.now() - Date.parse(s.progressAt) : 0);
+
 function render(t) {
   const p = percent(t);
   const e = eta(t);
@@ -115,7 +122,10 @@ function render(t) {
     const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
     const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
-    return `    ${icon} ${i + 1}. ${label}${extra}`;
+    const stall = stalledFor(s);
+    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)}dır ilerleme yok`)}` : "";
+    const det = s.status === "running" && s.detail ? `\n       ${c.gray(s.detail)}` : "";
+    return `    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`;
   });
   // A worker killed from outside never reports its end; its pid tells.
   const alive = (w) => { if (!w.pid) return true; try { process.kill(w.pid, 0); return true; } catch { return false; } };
@@ -133,7 +143,7 @@ function renderCompact(t) {
   const p = percent(t);
   const e = eta(t);
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => `${c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}`);
+  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)}dır ilerleme yok`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
   const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} kaldı`) : "";
@@ -150,7 +160,7 @@ export async function main([sub = "ls", ...args]) {
     console.log(t.id);
   } else if (sub === "step") {
     const [id, n, status = "done"] = rest();
-    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note"), parallel: args.includes("--parallel") });
+    step(id, Number(n), status, { pct: opt("--pct") != null ? Number(opt("--pct")) : undefined, note: opt("--note"), detail: opt("--detail"), parallel: args.includes("--parallel") });
   } else if (sub === "add") {
     const [id, ...titles] = rest();
     addSteps(id, titles.join(" ").split(";").map((s) => s.trim()).filter(Boolean));
@@ -184,5 +194,5 @@ export async function main([sub = "ls", ...args]) {
       } else console.log(out);
       if (watching) await sleep(2000);
     } while (watching);
-  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
 }

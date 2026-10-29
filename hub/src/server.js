@@ -263,7 +263,8 @@ function cleanTask(b) {
     steps: arr(b.steps, 50, "steps").map((s, i) => {
       const st = str(s.status, 20, `steps[${i}].status`, { required: true });
       if (!STEP_STATUS.includes(st)) bad(`steps[${i}].status must be one of ${STEP_STATUS.join(", ")}`);
-      return { title: str(s.title, 200, `steps[${i}].title`, { required: true }), status: st, pct: pctOf(s.pct, `steps[${i}].pct`), startedAt: ts(s.startedAt, `steps[${i}].startedAt`), endedAt: ts(s.endedAt, `steps[${i}].endedAt`) };
+      return { title: str(s.title, 200, `steps[${i}].title`, { required: true }), status: st, pct: pctOf(s.pct, `steps[${i}].pct`), startedAt: ts(s.startedAt, `steps[${i}].startedAt`), endedAt: ts(s.endedAt, `steps[${i}].endedAt`),
+        progressAt: ts(s.progressAt, `steps[${i}].progressAt`), detail: str(s.detail, 300, `steps[${i}].detail`) ?? null };
     }),
     workers: arr(b.workers, 100, "workers").map((w, i) => ({
       runId: str(w.runId, 128, `workers[${i}].runId`) ?? null,
