@@ -1083,7 +1083,9 @@ async function importHistory(args = []) {
   const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
   const all = args.includes("--all");
   const days = all ? "0" : opt("--days") ?? "30";
-  const maxMb = all ? "0" : opt("--max-mb") ?? "200";
+  // Sessions above 20 MB are mostly tool output and take hours each through the memory server
+  // (one took 3+ hours on 29 Oct); they are skipped unless --max-mb or --all asks for them.
+  const maxMb = all ? "0" : opt("--max-mb") ?? "20";
   console.log(all ? "geçmişin tamamı içe aktarılıyor" : `son ${days} günün oturumları, en fazla ${maxMb} MB (hepsi için: --all)`);
   // one import at a time: two would read the same sessions and double the memory writes
   const lock = path.join(path.dirname(RUNS), "import-history.lock");
