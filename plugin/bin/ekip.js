@@ -327,9 +327,55 @@ const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "u
 async function runOne(o, via, id) {
   const t0 = Date.now();
   const r = await runOneInner(o, via, id);
+  activeRuns.delete(id);
   recordStat(r.via ?? via, r.ok, Date.now() - t0);
   if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed");
   return r;
+}
+
+// Runs of this process, so a stop signal can still report them: a killed worker used to stay
+// "running" on the hub forever.
+const activeRuns = new Map();
+let stopHandler = false;
+function onStop() {
+  if (stopHandler) return;
+  stopHandler = true;
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, async () => {
+    for (const [id, r] of activeRuns) {
+      try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
+      await postRun({ ...r, status: "cancelled", report: "durduruldu", finishedAt: new Date().toISOString() });
+    }
+    const { pending } = await import("../lib/tasks.js");
+    await Promise.race([Promise.allSettled([...pending]), sleep(4000)]);
+    process.exit(143);
+  });
+}
+
+// Runs whose process died without a word (killed hard, machine slept, terminal closed): their log
+// has no [exit] line and their pid is gone. Close them in the log and on the hub.
+export async function reconcileRuns() {
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  let files = [];
+  try { files = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")); } catch { return 0; }
+  let n = 0;
+  for (const f of files) {
+    const file = path.join(RUNS, f);
+    const st = fs.statSync(file);
+    if (Date.now() - st.mtimeMs > 7 * 86400_000) continue;
+    const tail = (() => { const fd = fs.openSync(file, "r"); const len = Math.min(st.size, 4096); const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return b.toString("utf8"); })();
+    if (/\[exit -?\d+\]/.test(tail)) continue;
+    const head = fs.readFileSync(file, "utf8").slice(0, 4000);
+    const pid = Number(head.match(/^pid: (\d+)$/m)?.[1]) || null;
+    // logs from before pids were written: only when quiet for 3 hours
+    if (pid ? alive(pid) : Date.now() - st.mtimeMs < 3 * 3600_000) continue;
+    const id = f.slice(0, -4);
+    fs.appendFileSync(file, "\n[exit 143] durduruldu (süreç kayıp)\n");
+    const project = head.match(/^project: (.*)$/m)?.[1];
+    await postRun({ id, via: id.split("Z-")[1] ?? null, project: project && project !== "-" ? project : null,
+      task: head.split("\ntask:\n")[1]?.split("\n\n")[0] ?? "", status: "cancelled", report: "durduruldu (süreç kayıp)", finishedAt: st.mtime.toISOString() });
+    n++;
+  }
+  return n;
 }
 
 async function runOneInner(o, via, id) {
@@ -337,6 +383,8 @@ async function runOneInner(o, via, id) {
   if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
   await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
+  activeRuns.set(id, { id, via, project: o.project, task: o.task });
+  onStop();
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
   const order = via === "auto" ? autoOrder() : [via];
@@ -352,6 +400,7 @@ async function runOneInner(o, via, id) {
 
 async function run(args) {
   const o = parseRun(args);
+  await reconcileRuns().catch(() => {});
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
   if (o.vias.length === 1) {
     const r = await runOne(o, o.vias[0], id);
@@ -1054,7 +1103,8 @@ switch (cmd) {
     else die("usage: ekip skill ls|search|show <project> [query|name]");
     break;
   }
-  case "doctor": code = await (await import("../lib/doctor.js")).main(rest); break;
+  case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest); break;
+  case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
     if (cmd === "task" && rest[0] === "new") {
