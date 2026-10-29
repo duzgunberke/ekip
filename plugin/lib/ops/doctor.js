@@ -133,6 +133,7 @@ export async function main(args = []) {
     try {
       const ci = await (await fetch(`${SETTINGS.hubUrl}/api/ci`, { headers: { authorization: `Bearer ${SETTINGS.hubToken}` }, signal: AbortSignal.timeout(5000) })).json();
       if (ci.status && ci.status !== "none") {
+        try { fs.writeFileSync(path.join(HOME, "ci-last.json"), JSON.stringify({ status: ci.status, step: ci.step, sha: ci.sha })); } catch { /* status line only */ }
         line(ci.status === "pass" ? "ok" : "bad", "CI", `${ci.status === "pass" ? t("sıfırdan kurulum geçti") : `${t("sıfırdan kurulum başarısız")}: ${ci.step}`} · ${ci.sha ?? ""}`);
         const seen = path.join(HOME, "ci-notified.json");
         let last = null; try { last = JSON.parse(fs.readFileSync(seen, "utf8")).sha; } catch { /* first */ }

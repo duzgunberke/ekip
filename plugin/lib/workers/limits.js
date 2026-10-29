@@ -51,6 +51,15 @@ function routingState() {
   }
 }
 
+/** A provider's state from its real requests: serving, failing more than serving, at its limit, or idle. */
+export function trafficStatus(m) {
+  if (!m.models) return "no_models";
+  const limitErr = /429|rate.?limit|quota|too many/i.test(m.lastError ?? "");
+  if (m.ok24 === 0 && m.fail24 === 0) return "idle";
+  if (m.ok24 === 0) return limitErr ? "rate_limited" : "degraded";
+  return m.fail24 > m.ok24 ? (limitErr ? "rate_limited" : "degraded") : "healthy";
+}
+
 export async function freePool(rs) {
   const [prov, usage] = await Promise.all([freeJson("/v1/providers"), freeJson("/v1/usage").catch(() => null)]);
   const used = Object.fromEntries((usage?.byPlatform ?? []).map((u) => [u.platform, u]));
@@ -58,7 +67,9 @@ export async function freePool(rs) {
     const m = rs.platforms[p.platform] ?? { models: 0, cooling: 0, ok24: 0, fail24: 0, lastError: null };
     // a valid key with nothing to serve (no catalog models, or HuggingFace out of credits)
     // "no models" only from a successful reading that says so; unknown routing keeps the provider's own status
-    const status = p.status === "healthy" && !m.models && !rs.unknown ? "no_models" : p.status;
+    let status = p.status === "healthy" && !m.models && !rs.unknown ? "no_models" : p.status;
+    // freellmapi says "unknown" until its own health probe runs; the last 24 h of real traffic says more
+    if (status === "unknown" && !rs.unknown) status = trafficStatus(m);
     return { platform: p.platform, name: p.name, status, keys: p.keys, resumeAt: p.resume_at ?? null,
       models: m.models, cooling: m.cooling, ok24: m.ok24, fail24: m.fail24, lastError: m.lastError,
       monthRequests: used[p.platform]?.requests ?? 0, monthTokens: used[p.platform]?.tokens ?? 0 };

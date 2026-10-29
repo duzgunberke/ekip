@@ -329,6 +329,8 @@ const en: Record<string, string> = Object.fromEntries([
   ["model yok", "no models"],
   ["geçersiz", "invalid"],
   ["bilinmiyor", "unknown"],
+  ["sorunlu", "degraded"],
+  ["boşta", "idle"],
   ["Otomatik", "Auto"],
   ["Depolar", "Repositories"],
   ["Dil bilgisi yok.", "No language information."],

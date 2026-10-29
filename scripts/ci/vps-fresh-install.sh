@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ekip's own CI on the user's server: a fresh install of a git ref inside an isolated container that
 # runs its own Docker daemon (docker-in-docker), so the memory stack the test starts never touches the
-# server's real services or ports. Same checks as .github/workflows/fresh-install.yml.
+# server's real services or ports. /var/lib/docker inside is a volume: overlay on overlay does not mount. Same checks as .github/workflows/fresh-install.yml.
 #   vps-fresh-install.sh <repo url> <ref> <result.json>
 set -uo pipefail
 repo="$1"; ref="$2"; out="$3"
 name="ekip-ci-$(date +%s)"
 log="$(dirname "$out")/ci-$(date +%Y%m%d-%H%M%S).log"
 started=$(date -u +%FT%TZ)
-cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 result() { # status, step
@@ -25,7 +25,7 @@ step() { echo "== $1" | tee -a "$log"; }
 run() { docker exec "$name" bash -lc "$1" >> "$log" 2>&1; }
 
 step "isolated machine"
-docker run -d --privileged --cpus 2 --memory 6g --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
+docker run -d --privileged -v /var/lib/docker --cpus 2 --memory 6g --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
 run 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq git sqlite3 tmux curl ca-certificates docker.io python3 sudo >/dev/null
 (dockerd > /var/log/dockerd.log 2>&1 &) ; for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info >/dev/null
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null

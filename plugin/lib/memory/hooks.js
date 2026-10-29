@@ -74,6 +74,20 @@ export async function main([sub, ...rest] = []) {
         const r = await mem.capture(p, transcript, sessionId);
         console.log(`${new Date().toISOString()} ${p.name} ${sessionId}: ${JSON.stringify(r)}`);
       }
+      // A lead opened in the home folder that works on a project: those turns belong to that project's
+      // memory too, so its workers and later sessions find them (only turns that mention the project).
+      if (p.name === "genel" && transcript && fs.existsSync(transcript)) {
+        const { listProjects: all } = await import("../projects/projects.js");
+        const list = all().filter((x) => x.tdai?.agentId);
+        const counts = mem.projectsMentioned(fs.readFileSync(transcript, "utf8"), list);
+        // projects the session really worked on, not ones it only listed in passing
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        for (const x of list.filter((x) => (counts[x.name] ?? 0) >= Math.max(5, total * 0.05))) {
+          const named = new RegExp(`\\b${x.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          const r = await mem.capture(x, transcript, sessionId, { only: (l) => named.test(l) || l.includes(x.path) });
+          console.log(`${new Date().toISOString()} ${x.name} ${sessionId} (from home): ${JSON.stringify(r)}`);
+        }
+      }
     }
   } catch (e) { logErr(e); }
   return 0;

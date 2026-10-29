@@ -45,6 +45,8 @@ const POOL_CLS: Record<string, string> = {
   rate_limited: 'border-warning/30 bg-warning/12 text-warning',
   no_models: 'border-destructive/30 bg-destructive/12 text-destructive',
   invalid: 'border-destructive/30 bg-destructive/12 text-destructive',
+  degraded: 'border-warning/30 bg-warning/12 text-warning',
+  idle: 'text-muted-foreground',
   unknown: 'text-muted-foreground',
 }
 const POOL_DOT: Record<string, string> = {
@@ -52,6 +54,8 @@ const POOL_DOT: Record<string, string> = {
   rate_limited: 'bg-warning',
   no_models: 'bg-destructive',
   invalid: 'bg-destructive',
+  degraded: 'bg-warning',
+  idle: 'bg-muted-foreground/40',
   unknown: 'bg-muted-foreground/60',
 }
 

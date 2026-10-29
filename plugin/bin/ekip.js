@@ -1041,6 +1041,8 @@ async function init({ skipKeys = false } = {}) {
   if (!oldNode) die("freellmapi needs Node 22-24 next to your default node: brew install node@24");
   saveSettings({ freellmapiNode: oldNode });
   console.log(`ok (freellmapi node: ${oldNode}; agy: ${has("agy") ? "found" : "not found, optional"})`);
+  // what ekip is doing, under every Claude Code prompt (kept if the user already has a status line)
+  try { if ((await import("../lib/ops/statusline.js")).install(ROOT)) console.log("ok (Claude Code status line: ekip statusline)"); } catch { /* optional */ }
 
   // Global npm installs (worker CLIs, codegraph, hoptell) need a writable prefix. With a system node
   // that is root-owned; point npm at ~/.local instead, whose bin/ is on PATH after the next step.
@@ -1593,6 +1595,7 @@ switch (cmd) {
     await (await import("../lib/memory/usage.js")).push().catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/workers/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/workers/savings.js")).report(rest); break;
+  case "statusline": code = await (await import("../lib/ops/statusline.js")).main(); break;
   case "stats": code = await (await import("../lib/memory/usage.js")).main(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {

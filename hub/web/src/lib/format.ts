@@ -68,6 +68,8 @@ const POOL_KEY: Record<string, string> = {
   rate_limited: 'limitte',
   no_models: 'model yok',
   invalid: 'geçersiz',
+  degraded: 'sorunlu',
+  idle: 'boşta',
   unknown: 'bilinmiyor',
 }
 

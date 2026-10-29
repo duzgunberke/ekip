@@ -14,7 +14,7 @@ import { formatNumber, formatPercent, translate, useT } from '@/lib/i18n'
 import { ProviderLogo } from '@/components/provider-logo'
 import { useNow } from '@/hooks/use-now'
 
-const ORDER: Record<string, number> = { healthy: 0, rate_limited: 1, no_models: 2, unknown: 3, invalid: 4 }
+const ORDER: Record<string, number> = { healthy: 0, degraded: 1, rate_limited: 2, idle: 3, no_models: 4, unknown: 5, invalid: 6 }
 const WORKER_LABEL: Record<string, string> = {
   ready: 'hazır',
   limited: 'limitte',

@@ -413,12 +413,13 @@ function turnText(entry) {
 }
 
 // Incremental: remembers how many complete transcript lines were already sent for this session.
-export async function capture(project, transcriptPath, sessionId) {
+export async function capture(project, transcriptPath, sessionId, { only } = {}) {
   const p = resolve(project);
   const dir = path.join(STATE_DIR, "capture");
   fs.mkdirSync(dir, { recursive: true });
   const sid = String(sessionId || path.basename(transcriptPath, ".jsonl")).replace(/[^A-Za-z0-9_-]/g, "_");
-  const stateFile = path.join(dir, `${sid}.json`);
+  // a session from outside any project is also filed under the project it worked on: own progress per project
+  const stateFile = path.join(dir, only ? `${sid}--${p.name.replace(/[^A-Za-z0-9_-]/g, "_")}.json` : `${sid}.json`);
   const lock = `${stateFile}.lock`;
   try { fs.mkdirSync(lock); } catch {
     // another capture of this session is running (or died long ago)
@@ -433,6 +434,7 @@ export async function capture(project, transcriptPath, sessionId) {
     if (lines.length <= state.lines) return { sent: 0, lines: lines.length };
     const msgs = [];
     for (const l of lines.slice(state.lines)) {
+      if (only && !only(l)) continue;
       try { const m = turnText(JSON.parse(l)); if (m) msgs.push(m); } catch { /* not json */ }
     }
     const sent = msgs.length ? await addConversation(p, sid, msgs) : 0;
@@ -441,6 +443,18 @@ export async function capture(project, transcriptPath, sessionId) {
   } finally {
     fs.rmSync(lock, { recursive: true, force: true });
   }
+}
+
+/** The registered project a home-folder session talks about: `--project X`, `"project":"X"` or its path. */
+export function projectsMentioned(text, projects) {
+  const counts = {};
+  for (const p of projects) {
+    const n = p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`--project[ =]${n}\\b|\\\\?"project\\\\?"\\s*:\\s*\\\\?"${n}\\\\?"|${p.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|\\b)`, "g");
+    const k = (text.match(re) ?? []).length;
+    if (k) counts[p.name] = k;
+  }
+  return counts;
 }
 
 // ---- CLI: ekip memory search|remember|ingest|capture ------------------------------------------------
