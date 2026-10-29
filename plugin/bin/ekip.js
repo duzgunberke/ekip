@@ -342,15 +342,9 @@ function skillDocs(o) {
 
 async function runVia(via, o, logFile) {
   const docs = AGENTS[via] ? skillDocs(o) : [];
-  // The project's own procedures that match this task (learned from past sessions).
-  let procs = "";
-  if (o.project) {
-    try {
-      const { skillSearch } = await import("../lib/memory/memory.js");
-      const hits = await Promise.race([skillSearch(o.project, o.task, 3), sleep(8000).then(() => [])]);
-      if (hits.length) procs = `This project has procedures that may apply. Read the relevant ones before you start with \`ekip skill show ${o.project} <name>\`:\n${hits.map((h) => `- ${h.name}: ${h.description ?? ""}`).join("\n")}\n\n`;
-    } catch { /* memory offline: go without */ }
-  }
+  // the project's learned skills come with projectKnowledge (added once to the brief); listing them
+  // here as well sent the same descriptions twice
+  const procs = "";
   const prompt = `${WORKER_BRIEF}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
   if (AGENTS[via]) {
     const a = AGENTS[via];
@@ -468,7 +462,8 @@ async function projectKnowledge(o, runId) {
     const mem = await import("../lib/memory/memory.js");
     const { redact } = await import("../lib/core/redact.js");
     const q = o.task.slice(0, 600);
-    const proj = (await import("../lib/projects/projects.js")).getProject(o.project);
+    const general = o.project === "genel";
+    const proj = general ? null : (await import("../lib/projects/projects.js")).getProject(o.project);
     const [skillsT, factsT, wikiT] = await Promise.all([
       timed(timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000)),
       timed(timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000)),
@@ -476,10 +471,10 @@ async function projectKnowledge(o, runId) {
     ]);
     const [skills, facts, wiki] = [skillsT.value ?? [], factsT.value ?? [], wikiT?.value ?? null];
     const lines = [];
-    const projectRules = (await import("../lib/projects/project-config.js")).rules(proj);
+    const projectRules = proj ? (await import("../lib/projects/project-config.js")).rules(proj) : "";
     if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
     // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
-    const local = (await import("../lib/projects/project-skills.js")).projectSkills(proj?.path, q).slice(0, 4);
+    const local = proj ? (await import("../lib/projects/project-skills.js")).projectSkills(proj.path, q).slice(0, 4) : [];
     if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
     if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
@@ -489,7 +484,7 @@ async function projectKnowledge(o, runId) {
     usage?.recordUse({ ...base, kind: "skill", hits: skills.length, names: skills.map((k) => k.name), ms: skillsT.ms });
     if (wikiT) usage?.recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
     usage?.recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
-    return lines.length ? redact(`\n\n## Project knowledge (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
+    return lines.length ? redact(`\n\n## ${general ? "Knowledge from earlier work outside projects" : "Project knowledge"} (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
   } catch (e) { usage?.recordUse({ ...base, kind: "memory", hits: 0, error: e?.message }); return ""; /* memory down: the worker still gets the brief */ }
 }
 
@@ -502,6 +497,9 @@ async function runOneInner(o, via, id) {
     const { SETTINGS } = await import("../lib/core/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
     if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o, id); }
+  } else if (!o.knowledgeAdded) {
+    // outside registered projects: what the general space remembers (one-off work, unregistered repos)
+    o.knowledgeAdded = true; o.task += await projectKnowledge({ ...o, project: "genel" }, id);
   }
   try { (await import("../lib/projects/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
@@ -1229,6 +1227,15 @@ export function patchTdaiScripts(dir) {
   if (fs.existsSync(ip) && spawnSync("git", ["-C", clone, "apply", "--reverse", "--check", ip], { stdio: "ignore" }).status !== 0) {
     const r = spawnSync("git", ["-C", clone, "apply", "--3way", ip], { encoding: "utf8" });
     if (r.status !== 0) console.error(`ekip: importer patch did not apply (${r.stderr.trim().split("\n")[0]}); history import works without its retries`);
+  }
+  // memory-core reaches the free pool at host.docker.internal (LLM for facts, embeddings), but unlike
+  // the proxy and hub scripts it is started without the host-gateway entry: on Linux Docker Engine the
+  // name did not resolve and fact extraction and vectors failed silently (macOS Docker adds it itself)
+  {
+    const sc = path.join(dir, "start-memory-core.sh");
+    const st = fs.readFileSync(sc, "utf8");
+    if (!st.includes("host.docker.internal:host-gateway") && st.includes('$DOCKER run -d --name "$CONTAINER" \\\n'))
+      fs.writeFileSync(sc, st.replace('$DOCKER run -d --name "$CONTAINER" \\\n', '$DOCKER run -d --name "$CONTAINER" \\\n  --add-host=host.docker.internal:host-gateway \\\n'));
   }
   // memory-core ships with embeddings off ("provider: none" = keyword search only); make the block
   // read MEMORY_EMBEDDING_* so it can use an OpenAI-compatible embeddings endpoint (freellmapi).

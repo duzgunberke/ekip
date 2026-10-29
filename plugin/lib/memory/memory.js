@@ -310,7 +310,8 @@ export async function recall(project, query, limit = 5, { timeoutMs = 10000, fac
     if (out.some((o) => o.content === m.content)) continue;
     out.push({ layer: "L0", role: m.role, content: m.content, score: m.score, session: m.session_id, at: m.recorded_at ?? m.timestamp });
   }
-  if (!out.length && l1.status === "rejected" && l0.status === "rejected") throw l1.reason;
+  // a failed facts search is an error, not "no facts" (callers log it and say memory was unreachable)
+  if (!out.length && l1.status === "rejected" && (factsOnly || l0.status === "rejected")) throw l1.reason;
   return out.slice(0, limit);
 }
 

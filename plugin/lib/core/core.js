@@ -117,8 +117,17 @@ export const tdaiContainer = (name) => spawnSync("sh", ["-c", TDAI_CONTAINER_SH(
 export const TUNNEL_LABEL = "io.ekip.tunnel";
 export const ssh = (cmd, opts = {}) => spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, cmd], { encoding: "utf8", ...opts });
 
+/** Linux: let the memory containers reach the local free pool (see docker-bridge.js); no-op elsewhere. */
+export function dockerBridge() {
+  if (process.platform !== "linux") return;
+  const ip = (spawnSync("sh", ["-c", "ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1"], { encoding: "utf8" }).stdout ?? "").trim();
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
+  const child = spawn(process.execPath, [path.join(REPO, "plugin/lib/core/docker-bridge.js"), ip, String(PORT)], { detached: true, stdio: "ignore" });
+  child.unref();
+}
+
 export async function up({ quiet = false } = {}) {
-  if (await healthy()) return;
+  if (await healthy()) { dockerBridge(); return; }
   if (REMOTE) {
     spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
     for (let i = 0; i < 40; i++) { if (await healthy()) return; await sleep(500); }
@@ -131,6 +140,7 @@ export async function up({ quiet = false } = {}) {
   const child = spawn(freeNode(), ["server/dist/index.js"], { cwd: FREE_DIR, env, detached: true, stdio: ["ignore", out, out] });
   child.unref();
   fs.writeFileSync(PID, String(child.pid));
+  dockerBridge();
   for (let i = 0; i < 60; i++) {
     if (await healthy()) { if (!quiet) console.error(`ekip: freellmapi up on ${URL_ROOT}`); return; }
     await sleep(500);
@@ -254,9 +264,12 @@ export function clone(name) {
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     sh("git", ["clone", "--depth", "50", DEPS[name].repo, dir]);
     if (DEPS[name].ref) {
+      // the pinned commit drifts deeper than the shallow clone as upstream moves on: fetch the full
+      // history then, and stop loudly if it is still missing (patches only fit that commit)
       if (spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" }).status !== 0) {
-        spawnSync("git", ["-C", dir, "fetch", "-q", "--depth", "200", "origin"], { stdio: "ignore" });
-        spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" });
+        spawnSync("git", ["-C", dir, "fetch", "-q", "--unshallow", "origin"], { stdio: "ignore" });
+        if (spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" }).status !== 0)
+          die(`${name}: pinned commit ${DEPS[name].ref} not found in ${DEPS[name].repo}`);
       }
     }
   }

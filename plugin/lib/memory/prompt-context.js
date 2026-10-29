@@ -66,7 +66,9 @@ export async function main() {
   const { listProjects, findProject } = await import("../projects/projects.js");
   const projects = listProjects().filter((p) => p.tdai?.agentId);
   let hits = mentioned(prompt, projects).slice(0, 2);
-  if (!hits.length) { const here = findProject(input.cwd || process.cwd()); if (here?.tdai?.agentId) hits = [{ p: here, by: "folder" }]; }
+  // the registered project of this folder, even before it has a memory agent: its rules and local
+  // skills still apply (memory lookups for it then just come back empty)
+  if (!hits.length) { const here = findProject(input.cwd || process.cwd()); if (here) hits = [{ p: here, by: "folder" }]; }
   const mem = await import("./memory.js");
   // Work outside any project (a one-off ask, a repo that is not registered) is remembered in the
   // general space; it is searched for every such message, so nothing done there is lost.
