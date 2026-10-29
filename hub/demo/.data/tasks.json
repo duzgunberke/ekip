@@ -1,0 +1,392 @@
+[
+ {
+  "id": "task-demo-1",
+  "title": "Fix checkout race condition",
+  "project": "storefront-web",
+  "status": "running",
+  "createdAt": "2026-10-29T11:13:38.660Z",
+  "updatedAt": "2026-10-29T12:20:38.660Z",
+  "endedAt": null,
+  "steps": [
+   {
+    "title": "Reproduce duplicate submit",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "35 items checked · worker agy"
+   },
+   {
+    "title": "Trace cart state updates",
+    "status": "running",
+    "pct": 19,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:20:38.660Z",
+    "detail": "412/600 records · 38 records/min · model auto:memory"
+   },
+   {
+    "title": "Add idempotency guard",
+    "status": "pending",
+    "pct": null,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "105 items checked · worker agy"
+   },
+   {
+    "title": "Run checkout regression suite",
+    "status": "pending",
+    "pct": null,
+    "startedAt": "2026-10-29T11:48:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker agy"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-001",
+    "via": "agy",
+    "label": "Antigravity",
+    "status": "running",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Investigating a narrow race between optimistic cart updates and the payment redirect."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Checkpoint saved; tests and artifacts attached to the run."
+   }
+  ],
+  "pct": 48,
+  "eta": "18 min",
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ },
+ {
+  "id": "task-demo-2",
+  "title": "Ship paywall A/B test",
+  "project": "ios-app",
+  "status": "running",
+  "createdAt": "2026-10-29T10:09:38.660Z",
+  "updatedAt": "2026-10-29T12:40:38.660Z",
+  "endedAt": null,
+  "steps": [
+   {
+    "title": "Define experiment variants",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "35 items checked · worker codex"
+   },
+   {
+    "title": "Wire remote config",
+    "status": "running",
+    "pct": 8,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "70 items checked · worker codex"
+   },
+   {
+    "title": "Add purchase analytics",
+    "status": "pending",
+    "pct": null,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "105 items checked · worker codex"
+   },
+   {
+    "title": "Validate StoreKit sandbox",
+    "status": "pending",
+    "pct": null,
+    "startedAt": "2026-10-29T11:48:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker codex"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-002",
+    "via": "codex",
+    "label": "Codex",
+    "status": "running",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Variant assignment is stable across app restarts; validating purchase restore now."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Checkpoint saved; tests and artifacts attached to the run."
+   }
+  ],
+  "pct": 37,
+  "eta": "34 min",
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ },
+ {
+  "id": "task-demo-3",
+  "title": "Generate 3 promo videos",
+  "project": "game-unity",
+  "status": "running",
+  "createdAt": "2026-10-29T09:14:38.660Z",
+  "updatedAt": "2026-10-29T12:37:38.660Z",
+  "endedAt": null,
+  "steps": [
+   {
+    "title": "Capture gameplay sequences",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "47 items checked · worker copilot"
+   },
+   {
+    "title": "Build three edit timelines",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "93 items checked · worker copilot"
+   },
+   {
+    "title": "Render social formats",
+    "status": "running",
+    "pct": 14,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker copilot"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-003",
+    "via": "copilot",
+    "label": "Copilot",
+    "status": "running",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Render queue is healthy; final vertical export is being encoded."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Checkpoint saved; tests and artifacts attached to the run."
+   }
+  ],
+  "pct": 72,
+  "eta": "9 min",
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ },
+ {
+  "id": "task-demo-4",
+  "title": "Migrate auth to passkeys",
+  "project": "payments-api",
+  "status": "done",
+  "createdAt": "2026-10-29T02:25:38.660Z",
+  "updatedAt": "2026-10-29T05:35:38.660Z",
+  "endedAt": "2026-10-29T12:45:38.660Z",
+  "steps": [
+   {
+    "title": "Review session model",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "47 items checked · worker free"
+   },
+   {
+    "title": "Add WebAuthn endpoints",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "93 items checked · worker free"
+   },
+   {
+    "title": "Update integration tests",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker free"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-004",
+    "via": "free",
+    "label": "Free pool",
+    "status": "done",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": "2026-10-29T06:05:38.660Z"
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Passkey enrollment and recovery paths merged after compatibility review."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Checkpoint saved; tests and artifacts attached to the run."
+   }
+  ],
+  "pct": 100,
+  "eta": null,
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ },
+ {
+  "id": "task-demo-5",
+  "title": "Index docs into the wiki",
+  "project": "docs-site",
+  "status": "done",
+  "createdAt": "2026-10-28T17:55:38.660Z",
+  "updatedAt": "2026-10-28T20:15:38.660Z",
+  "endedAt": "2026-10-29T12:45:38.660Z",
+  "steps": [
+   {
+    "title": "Collect canonical docs",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "47 items checked · worker agy"
+   },
+   {
+    "title": "Build wiki index",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "93 items checked · worker agy"
+   },
+   {
+    "title": "Check search relevance",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker agy"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-005",
+    "via": "agy",
+    "label": "Antigravity",
+    "status": "done",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": "2026-10-29T06:05:38.660Z"
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Indexed 86 pages and verified the top 20 support queries."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Checkpoint saved; tests and artifacts attached to the run."
+   }
+  ],
+  "pct": 100,
+  "eta": null,
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ },
+ {
+  "id": "task-demo-6",
+  "title": "Backfill inventory snapshots",
+  "project": "data-pipeline",
+  "status": "failed",
+  "createdAt": "2026-10-28T22:45:38.660Z",
+  "updatedAt": "2026-10-29T09:35:38.660Z",
+  "endedAt": "2026-10-29T09:35:38.660Z",
+  "steps": [
+   {
+    "title": "Inspect late-arriving events",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "47 items checked · worker codex"
+   },
+   {
+    "title": "Patch partition window",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:26:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "93 items checked · worker codex"
+   },
+   {
+    "title": "Replay last 30 days",
+    "status": "done",
+    "pct": 100,
+    "startedAt": "2026-10-29T11:37:38.660Z",
+    "endedAt": null,
+    "progressAt": "2026-10-29T12:42:38.660Z",
+    "detail": "140 items checked · worker codex"
+   }
+  ],
+  "workers": [
+   {
+    "runId": "run-demo-006",
+    "via": "codex",
+    "label": "Codex",
+    "status": "failed",
+    "startedAt": "2026-10-29T11:15:38.660Z",
+    "endedAt": "2026-10-29T09:35:38.660Z"
+   }
+  ],
+  "notes": [
+   {
+    "at": "2026-10-29T11:59:38.660Z",
+    "text": "Replay stopped at a malformed vendor payload; failure is isolated and logged."
+   },
+   {
+    "at": "2026-10-29T12:33:38.660Z",
+    "text": "Retry queued after payload validation fix."
+   }
+  ],
+  "pct": 46,
+  "eta": null,
+  "host": "macbook-pro",
+  "receivedAt": "2026-10-29T12:44:38.660Z"
+ }
+]

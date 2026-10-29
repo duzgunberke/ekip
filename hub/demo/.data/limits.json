@@ -1,0 +1,209 @@
+{
+ "at": "2026-10-29T12:42:38.660Z",
+ "host": "northwind-dev-mbp",
+ "receivedAt": "2026-10-29T12:43:38.660Z",
+ "workers": [
+  {
+   "name": "agy",
+   "quota": "Antigravity",
+   "status": "limited",
+   "limit": {
+    "message": "Individual quota reached",
+    "at": "2026-10-29T12:40:38.660Z",
+    "resetAt": "2026-10-31T12:45:38.660Z"
+   },
+   "runs": 31,
+   "successRate": 87,
+   "cooling": false
+  },
+  {
+   "name": "codex",
+   "quota": "OpenAI Codex",
+   "status": "ready",
+   "limit": null,
+   "runs": 46,
+   "successRate": 96,
+   "cooling": false
+  },
+  {
+   "name": "copilot",
+   "quota": "GitHub Copilot",
+   "status": "ready",
+   "limit": null,
+   "runs": 29,
+   "successRate": 93,
+   "cooling": false
+  },
+  {
+   "name": "qwen",
+   "quota": "Qwen",
+   "status": "ready",
+   "limit": null,
+   "runs": 22,
+   "successRate": 91,
+   "cooling": false
+  },
+  {
+   "name": "opencode",
+   "quota": "OpenCode",
+   "status": "ready",
+   "limit": null,
+   "runs": 18,
+   "successRate": 89,
+   "cooling": false
+  },
+  {
+   "name": "grok",
+   "quota": "Grok",
+   "status": "ready",
+   "limit": null,
+   "runs": 14,
+   "successRate": 86,
+   "cooling": false
+  }
+ ],
+ "free": [
+  {
+   "platform": "google",
+   "name": "Google AI Studio",
+   "status": "healthy",
+   "keys": 1,
+   "resumeAt": null,
+   "models": 2,
+   "cooling": 0,
+   "ok24": 340,
+   "fail24": 4,
+   "lastError": null,
+   "monthRequests": 12400,
+   "monthTokens": 8420000
+  },
+  {
+   "platform": "groq",
+   "name": "Groq",
+   "status": "healthy",
+   "keys": 1,
+   "resumeAt": null,
+   "models": 1,
+   "cooling": 0,
+   "ok24": 309,
+   "fail24": 5,
+   "lastError": null,
+   "monthRequests": 11270,
+   "monthTokens": 7810000
+  },
+  {
+   "platform": "nvidia",
+   "name": "NVIDIA NIM",
+   "status": "rate_limited",
+   "keys": 1,
+   "resumeAt": "2026-10-29T13:27:38.660Z",
+   "models": 1,
+   "cooling": 1,
+   "ok24": 278,
+   "fail24": 27,
+   "lastError": "Provider returned HTTP 429",
+   "monthRequests": 10140,
+   "monthTokens": 7200000
+  },
+  {
+   "platform": "ovh",
+   "name": "OVHcloud",
+   "status": "healthy",
+   "keys": 0,
+   "resumeAt": null,
+   "models": 1,
+   "cooling": 0,
+   "ok24": 247,
+   "fail24": 7,
+   "lastError": null,
+   "monthRequests": 9010,
+   "monthTokens": 6590000
+  },
+  {
+   "platform": "zhipu",
+   "name": "Z.ai",
+   "status": "healthy",
+   "keys": 1,
+   "resumeAt": null,
+   "models": 1,
+   "cooling": 0,
+   "ok24": 216,
+   "fail24": 8,
+   "lastError": null,
+   "monthRequests": 7880,
+   "monthTokens": 5980000
+  },
+  {
+   "platform": "cerebras",
+   "name": "Cerebras",
+   "status": "healthy",
+   "keys": 1,
+   "resumeAt": null,
+   "models": 1,
+   "cooling": 0,
+   "ok24": 185,
+   "fail24": 9,
+   "lastError": null,
+   "monthRequests": 6750,
+   "monthTokens": 5370000
+  },
+  {
+   "platform": "openrouter",
+   "name": "OpenRouter",
+   "status": "healthy",
+   "keys": 1,
+   "resumeAt": null,
+   "models": 1,
+   "cooling": 0,
+   "ok24": 154,
+   "fail24": 10,
+   "lastError": null,
+   "monthRequests": 5620,
+   "monthTokens": 4760000
+  }
+ ],
+ "route": {
+  "order": [
+   "agy",
+   "codex",
+   "copilot",
+   "qwen",
+   "opencode",
+   "grok",
+   "free"
+  ],
+  "worker": "codex",
+  "skipped": [
+   "agy"
+  ],
+  "profiles": {
+   "auto": {
+    "next": [
+     "google/gemini-2.5-flash",
+     "groq/openai/gpt-oss-120b",
+     "cerebras/qwen-3-32b"
+    ],
+    "models": 7,
+    "cooling": 1
+   },
+   "auto:memory": {
+    "next": [
+     "nvidia/nemotron-3-ultra",
+     "ovh/Qwen3.5-397B",
+     "google/gemini-3-flash-preview"
+    ],
+    "models": 5,
+    "cooling": 0
+   },
+   "auto:translate": {
+    "next": [
+     "zhipu/glm-4.7-flash",
+     "openrouter/deepseek-v4-flash:free",
+     "google/gemini-2.5-flash"
+    ],
+    "models": 6,
+    "cooling": 0
+   }
+  }
+ }
+}

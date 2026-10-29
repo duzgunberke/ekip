@@ -1,0 +1,11 @@
+{
+ "demo-mac": {
+  "client": "demo-mac",
+  "host": "northwind-dev-mbp",
+  "agents": [
+   "Claude Code",
+   "Codex"
+  ],
+  "lastSeen": "2026-10-29T12:44:38.660Z"
+ }
+}
