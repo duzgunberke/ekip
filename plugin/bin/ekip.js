@@ -1274,14 +1274,16 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip status")}                   pools, memory, panel, team, recent runs
   ${c.cyan("ekip limits")}                   pool limits and where a new task will go
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
+  ${c.cyan("ekip savings")}                  measure work routed outside Claude
 
 ${c.bold("Workers")}
-  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "task"')}
-  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b]")} review changes
+  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
+  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} review changes
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
+  ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           live task tracker; task step supports --alive
 
 ${c.bold("Development environment")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
@@ -1309,14 +1311,16 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
   ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
+  ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
 
 ${c.bold("İşçiler")}
-  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "iş"')}
-  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b]")} ${t("değişiklikleri denetle")}
+  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
+  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} ${t("değişiklikleri denetle")}
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
+  ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           canlı görev takibi; task step --alive
 
 ${c.bold("Geliştirme ortamı")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis

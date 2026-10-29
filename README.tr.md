@@ -86,8 +86,41 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
 - **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
   sahte bir sayı yerine hiç tahmin gösterilmez.
 - **Arka plan işleri tek kopya çalışır**, iki içe aktarma aynı kota için yarışmaz.
+- **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; `ekip agents`
+  ne zaman geri geleceğini gösterir.
+- **Panel doğruyu söyler.** Hub'a ulaşmayan güncellemeler yeniden gönderilir, biten her çalıştırma
+  logunu getirir, gerçek iş ölçüldükçe uzun bir adım "canlı" kalır ve terminal paneli ekip
+  güncellenince kendini yeniler.
 - **Bellek sizin dilinizde kalır.** Ücretsiz bir modelin yanlış dilde yazdığı kayıtları her gece bir
   tarama yeniden yazar: metin, arama dizini ve vektör birlikte.
+
+## Her projeye uyan inceleme ve beceriler
+
+Her projenin kendi kontrolleri ve kendi tuzakları var. ekip her şeye aynı genel incelemeyi uygulamak
+yerine bunları öğrenir.
+
+- **`ekip review`** neyin değiştiğine bakar, projenin o dosyalara dokunan kendi kontrol script'lerini
+  seçer (canlı servislere yazanları atlar), çalıştırır ve farklı havuzlardaki iki inceleyiciye farkı
+  projenin inceleme profiliyle okutur: `CLAUDE.md` kuralları, bilinen tuzaklar ve onları yakalayan
+  kontroller.
+- **Dersler kalır.** Bir worker başarısız olup sonraki deneme işe yarayınca lider, farkı yaratan şeyi
+  projenin belleğine yazar.
+- **Tekrarlanan iş beceriye dönüşür.** Aynı türden iş defalarca gelince ekip, gerçek çalıştırmalardan o
+  projeye özel düzgün bir `SKILL.md` taslağı çıkarır; tek komutla kabul edersiniz ve o andan itibaren
+  her agent kullanır.
+
+## Kendi ortamlarınızda çalışır (isteğe bağlı)
+
+Testler ve migration'lar hiçbir zaman production'a dokunmamalı. ekip'in worker'larının gerçek veri
+depolarıyla çalışmasını istiyorsanız, onlara bozulması sorun olmayan bir ortam verin:
+
+- **Kendi geliştirme ortamlarınız.** Şirketinizin zaten dev, test ya da UAT sistemleri varsa, onları
+  Claude Code'a herhangi bir aracı bağladığınız gibi bağlayın: veritabanı ya da servis için bir MCP
+  sunucusu veya projenin ortam değişkenlerindeki bağlantı ayarları. Worker'lar bunları kullanır,
+  production erişim dışında kalır.
+- **Ya da ekip barındırsın.** `ekip dev`, kendi sunucunuzda tek bir geliştirme Postgres'i ve Redis'i
+  tutar, her projeye ayrı bir veritabanı verir ve hazır bir `.env.ekip-dev` ile yerel tünel açar.
+  Geliştirme hedefi olmayan hiçbir şeye izin vermez.
 
 ## Birbiriyle konuşan agent'lar
 
@@ -107,7 +140,9 @@ ekip                             # lideri başlatın; ne isterseniz sorun
 
 Yapmadığı şey: ücretsiz modelleri Claude kadar iyi hâle getirmez. Daha yavaştırlar, yoğunlukta zaman aşımına uğrar ve limitlerine ulaşınca beklemeye geçerler. ekip bunları hesaba katar ve kararlar için Claude'u kullanır.
 
-## v2'de geliyor: ortak bellek
+## Sırada ne var
+
+### v2: koca bir ekip için tek ortak bellek
 
 <p align="center"><img src="docs/assets/team-memory.svg" alt="Kendi ekip'ine sahip birkaç kişi, kişisel, proje ve ekip katmanları olan ortak bir belleğe bilgi ekler ve bellekten bilgi alır" width="100%"></p>
 
@@ -120,6 +155,24 @@ Bugün ekip, tek kişi, bir Claude ve koca bir agent ekibi demek. Sırada **orta
 - Yeni katılanlar ekibin deneyiminden yararlanır; biri ayrılsa da bildikleri ekipte kalır.
 
 Temel zaten hazır: bellek, tek bir depoda proje ve agent bazında yalıtılmış durumda. v2 bunu roller ve gizlilik kurallarıyla birden fazla kişiye açacak. Gelişmeleri takip etmek için repo'yu izleyin.
+
+### v3: entegrasyonlar, sizin yerinize bağlanır
+
+Projelerin koddan fazlasına ihtiyacı var: hata takibi, uptime kontrolleri, analitik, metrikler,
+loglar. Çoğu ekip bu araçları zaten çalıştırıyor, çoğu zaman uygulamalarıyla aynı sunucuda. v3 ile
+ekip bunları bulur, eksikse kurar ve her projeye bağlar.
+
+```bash
+ekip integrate my-app errors     # hata takibi: kendi sunucunuzda GlitchTip ya da bir Sentry hesabı
+ekip integrate my-app uptime     # projenin her açık adresi için bir kontrol
+ekip integrate --all errors --dry-run
+```
+
+Her entegrasyon aynı beş adımı izler: zaten çalışanı **tespit et**, yoksa ve onay verirseniz sunucunuza
+**kur**, aracın içinde projeyi **bağla**, SDK'yı incelenen bir değişiklikle koda **ekle** ve bir test
+olayının ulaştığını **doğrula**. Sonra döngü kapanır: yeni hatalar ve başarısız kontroller, yığın
+iziyle birlikte ekip görevine dönüşür; tekrarlayan hataların düzeltmeleri ders ve beceri olur.
+Ayrıntılar: [yol haritası](docs/roadmap.md).
 
 ## Daha fazla bilgi
 
@@ -145,7 +198,3 @@ ve Antigravity, Codex, Copilot, Qwen Code, OpenCode ve grok-cli agent CLI'ları.
 MIT lisanslıdır. Üzerine kurulduğu projeler kendi lisanslarını korur.
 
 Pull request açmadan önce [Katkıda bulunma rehberini](CONTRIBUTING.md) okuyun.
-
-## Geliştirme veritabanları
-
-`ekip dev add PROJE` ile projeyi ayrı bir `_dev` veritabanına eşleyin; `ekip dev up PROJE` `.env.ekip-dev` dosyasını oluşturup yerel tüneli açar. Worker'lar bu dosyayı kullanmalı; test ve migration için production URL'lerini kullanmayın. Yalnızca geliştirme verisini `ekip dev reset PROJE --yes` ile sıfırlayın ve iş bitince `ekip dev down` çalıştırın.

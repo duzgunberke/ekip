@@ -22,3 +22,5 @@ Patched in the clone ekip runs (`tools/TencentDB-Agent-Memory`): streamed readin
 without inline images; `TDAI_IMPORT_LEAN` (conversation only); 20-message batches with in-place retry;
 a checkpoint after every session; `TDAI_IMPORT_SINCE_DAYS` / `TDAI_IMPORT_MAX_MB` filters. `ekip memory
 import-history` defaults to the last 30 days and sessions up to 200 MB (`--all` for everything).
+
+The importer writes a per-batch progress beacon to `import-progress.json` in the importer's `HOME` directory. Progress reporters read this file to show batch-level import progress.

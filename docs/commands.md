@@ -6,7 +6,7 @@ Use the CLI reference below to launch the lead, manage workers and projects, and
 
 ## CLI help
 
-These command groups and usage forms match `EKIP_LANG=en node plugin/bin/ekip.js help`.
+The command groups below match `EKIP_LANG=en node plugin/bin/ekip.js help`. Options are included where they materially change behavior.
 
 ```text
 Everyday
@@ -18,18 +18,24 @@ Everyday
   ekip doctor [--fix]
 
 Workers
-  ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "task"
+  ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"
+  ekip review [--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]
+  ekip review profile NAME [--refresh]
   ekip clean <id>
   ekip agents ls|install|login|test
   ekip team up|down|ls|open [--open]
 
 Development environment
-  ekip dev init --postgres <uuid> [--superuser NAME] [--secrets FILE] [--redis <uuid>] | ls|add|up|env|down|reset|sql|psql
+  ekip dev init --postgres <uuid> [--superuser NAME] [--secrets FILE] [--redis <uuid>]
+  ekip dev ls|add|up|env|down|reset|sql|psql
 
 Projects and memory
-  ekip project add|remove|scan|ls|show|sync|card
+  ekip project add|remove|move|scan|ls|show|sync|card
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
-  ekip skill ls|search|show <project> [query|name]
+  ekip skill ls|search|show|learn|prune|candidates|accept|reject
+  ekip tasks [--watch|--all]
+  ekip task new|step|add|note|done|fail|cancel
+  ekip tasks sync
 
 VPS hub
   ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
@@ -45,7 +51,25 @@ Setup
   ekip up|down|logs
 ```
 
-`ekip run` sends a worker brief; the task can be read from standard input with `-`. Use a comma-separated `--via` list to run the same work in separate worktrees and branches. `ekip reconcile` closes runs whose process disappeared without reporting.
+### Worker runs and review
+
+`ekip run` sends a worker brief; use `-` to read it from standard input. `--via auto` chooses among tested, eligible pools. A comma-separated list such as `--via agy,codex` races workers in separate Git worktrees and branches. `--worktree` gives one worker its own worktree. Child runs are capped; `--allow-nested` is an internal override for bounded nested work, not a general way to remove the cap.
+
+`ekip review` reviews the current changes with project profile lenses and configured checks. `--dry-run` prints the plan without running checks or reviewers; `--checks-only` skips reviewer runs. `--via` selects review pools. `ekip review profile NAME [--refresh]` creates or refreshes a registered project's profile. Review check commands pass through a safety filter.
+
+### Tasks and liveness
+
+`ekip tasks` lists live tasks; `--watch` follows updates and `--all` includes closed tasks. The lead creates and updates tasks with `ekip task new`, `step`, `add`, `note`, `done`, `fail`, and `cancel`. A step can be marked `running`, `done`, `failed`, or `skipped`; `--pct`, `--note`, `--detail`, `--parallel`, and `--alive` provide progress context. `--alive` refreshes liveness during a long step. `ekip tasks sync` resends task state to the hub if the panel is stale. `ekip reconcile` closes runs whose processes disappeared without reporting.
+
+### Development databases
+
+`ekip dev init --postgres UUID [--superuser NAME] [--secrets FILE] [--redis UUID]` configures shared development resources. Per-project operations are `ls`, `add`, `up`, `env`, `down`, `reset`, `sql`, and `psql`. `up` creates a project `.env.ekip-dev` and opens a tunnel. `reset` requires `--yes`. Production database targets are refused.
+
+### Skills and projects
+
+`ekip skill learn [PROJECT|--all] [--dry-run]` proposes reusable project procedures. `candidates` lists them; `accept PROJECT NAME` and `reject PROJECT NAME` record an explicit decision. `prune [PROJECT|--all] [--apply]` checks stale generated skills. `ls`, `search`, and `show` inspect skills.
+
+`ekip project add PATH`, `remove NAME`, and `move NAME OLD_PATH NEW_PATH [--dry-run]` manage registration. `scan`, `ls`, `show`, `sync`, and `card` discover or inspect projects and refresh their context.
 
 <img src="screenshots/terminal-help.png" alt="Terminal help showing ekip's command groups and options" width="100%">
 

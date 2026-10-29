@@ -97,8 +97,41 @@ night. ekip handles that itself, so you never have to chase it.
 - **Estimates are measured, not guessed.** The finish time comes from the real rate of progress; with
   no basis yet, ekip shows none instead of a made-up number.
 - **Background jobs run one copy at a time**, so two imports never fight over the same quota.
+- **A pool whose quota ran out leaves the rotation** until it resets, instead of failing every job sent
+  to it; `ekip agents` shows when it comes back.
+- **The panel tells the truth.** Updates that did not reach the hub are sent again, every finished
+  run brings its log, a long step stays "alive" while real work is measured, and the terminal pane
+  restarts itself when ekip is updated.
 - **Memory stays in your language.** A nightly sweep rewrites any memory a free model wrote in the
   wrong language, text, search index and vector together.
+
+## Reviews and skills that fit each project
+
+Every project has its own checks and its own traps. ekip learns them instead of applying one generic
+review to everything.
+
+- **`ekip review`** looks at what changed, picks the project's own check scripts that touch those
+  files (skipping anything that writes to live services), runs them, and asks two reviewers on
+  different pools to read the diff through the project's review profile: the rules from its
+  `CLAUDE.md`, its known gotchas and the checks behind them.
+- **Lessons stay.** When a worker fails and a later attempt works, the lead saves what made the
+  difference into the project's memory.
+- **Repeated work becomes a skill.** When the same kind of task comes up again and again, ekip drafts
+  a proper `SKILL.md` for that project from the real runs; you accept it with one command and every
+  agent can use it from then on.
+
+## Works against your environments (optional)
+
+Tests and migrations should never touch production. If you want ekip's workers to run against real
+data stores, give them an environment that is safe to break:
+
+- **Your own development environments.** If your company already has dev, test or UAT systems,
+  connect them the way you connect any tool to Claude Code: an MCP server for the database or
+  service, or connection settings in the project's environment. Workers use them; production stays
+  out of reach.
+- **Or let ekip host them.** `ekip dev` keeps one development Postgres and Redis on your own server,
+  gives every project an isolated database, and opens a local tunnel with a ready `.env.ekip-dev`.
+  It refuses anything that is not a development target.
 
 ## Agents that talk to each other
 
@@ -122,7 +155,9 @@ running while your Mac is off, connect a VPS: [docs/install.md](docs/install.md)
 What it does not do: it does not make free models as good as Claude. They are slower, time out under
 load and cool down at their limits. ekip routes around that and keeps Claude for decisions.
 
-## Coming in v2: shared memory
+## What is next
+
+### v2: one shared memory for a whole team
 
 <p align="center"><img src="docs/assets/team-memory.svg" alt="Several people, each with their own ekip, feed and read one shared memory with personal, project and team layers" width="100%"></p>
 
@@ -138,6 +173,24 @@ shared memory**.
 
 The foundation is already here: memory is isolated per project and per agent inside one store. v2 opens
 it to several people with roles and privacy rules. Watch the repo to follow along.
+
+### v3: integrations, wired in for you
+
+Projects need more than code: error tracking, uptime checks, analytics, metrics, logs. Many teams
+already run these tools, often on the same server as their apps. v3 lets ekip find them, set them up
+when they are missing, and wire them into every project.
+
+```bash
+ekip integrate my-app errors     # error tracking: self-hosted GlitchTip or a Sentry account
+ekip integrate my-app uptime     # a check for every public URL of the project
+ekip integrate --all errors --dry-run
+```
+
+Each integration follows the same five steps: **detect** what is already running, **provision** it
+on your server only if you say yes, **connect** a project inside the tool, **wire** the SDK into the
+code through a reviewed change, and **verify** that a test event arrives. Then the loop closes: new
+errors and failed checks become ekip tasks with the stack trace attached, and fixes for recurring
+errors become lessons and skills. See the [roadmap](docs/roadmap.md).
 
 ## Learn more
 
@@ -163,7 +216,3 @@ and the agent CLIs of Antigravity, Codex, Copilot, Qwen Code, OpenCode and grok-
 MIT licensed. The projects it builds on keep their own licenses.
 
 See [Contributing](CONTRIBUTING.md) before opening a pull request.
-
-## Development databases
-
-Use `ekip dev add PROJECT` to map a project to an isolated `_dev` database, then `ekip dev up PROJECT` to create `.env.ekip-dev` and open the local tunnel. Workers should source that file; never use production database URLs for tests or migrations. Reset only development data with `ekip dev reset PROJECT --yes`, then close the tunnel with `ekip dev down`.
