@@ -68,6 +68,15 @@ const key = () => { const k = adminKey(); if (!k) throw new Error("no TDAI admin
 const coreData = (p, body, t) => post(`${CORE}/v3${p}`, body, { Authorization: `Bearer ${SETTINGS.tdaiGatewayKey || "ekip"}` }, t);
 const coreMeta = (p, body) => post(`${CORE}/v3/meta${p}`, body, { "x-tdai-user-key": key() });
 const panel = (p, body, t) => post(`${PANEL}${p}`, body, { "x-tdai-user-key": key() }, t);
+/** Deletes a project's wiki and code graphs on the memory server (its memories stay with its agent). */
+export async function forgetKnowledge({ wikiId, codeGraphs = [] } = {}) {
+  const ids = codeGraphs.map((g) => g.id ?? g).filter(Boolean);
+  const errors = [];
+  if (wikiId) await panel("/knowledge/wiki/delete", { wiki_ids: [wikiId] }).catch((e) => errors.push(`wiki: ${e.message}`));
+  if (ids.length) await panel("/knowledge/code-graph/delete", { code_graph_ids: ids }).catch((e) => errors.push(`code graph: ${e.message}`));
+  return { wiki: wikiId ?? null, codeGraphs: ids.length, errors };
+}
+
 export const knowledgeTool = (knowledgeId, tool, params = {}) =>
   post(`${KNOWLEDGE}/tools/call`, { knowledge_id: knowledgeId, tool_name: tool, params });
 

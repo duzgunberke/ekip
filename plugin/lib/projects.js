@@ -246,6 +246,16 @@ export async function main(argv) {
     const todo = c.filter((x) => !x.registered);
     if (!yes) { console.log(`\n${todo.length} unregistered (* = registered). Add all with: ekip project scan --days ${days} --yes`); return; }
     await pool(todo, 4, (x) => addProject(x.path).catch((e) => console.error(`${x.name}: ${e.message}`)));
+  } else if (sub === "remove" || sub === "rm") {
+    // For a project you deleted or no longer work on: registry entry, card and server-side wiki and
+    // code graphs go; the project folder itself is never touched.
+    const name = args[0];
+    const p = name && !name.startsWith("-") ? getProject(name) : null;
+    if (!p) die("kullanım: ekip project remove <ad>  (kayıtlı projeler: ekip project ls)");
+    const r = await mem.forgetKnowledge({ wikiId: p.tdai?.wikiId, codeGraphs: p.tdai?.codeGraphs ?? [] }).catch((e) => ({ error: e.message }));
+    if (p.card) fs.rmSync(p.card, { force: true });
+    save(listProjects().filter((x) => x.name !== p.name));
+    console.log(`${p.name}: kayıttan çıkarıldı · kart silindi · sunucu: ${r.error ? `atlandı (${r.error})` : r.errors?.length ? `hata: ${r.errors.join("; ")}` : `wiki ${r.wiki ? "silindi" : "yok"}, ${r.codeGraphs} kod grafiği silindi`}`);
   } else if (sub === "ls" || !sub) {
     const list = listProjects();
     if (!list.length) { console.log("no projects yet — ekip project add <path> or ekip project scan"); return; }

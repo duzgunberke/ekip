@@ -27,7 +27,7 @@ Development environment
   ekip dev init --postgres <uuid> [--superuser NAME] [--secrets FILE] [--redis <uuid>] | ls|add|up|env|down|reset|sql|psql
 
 Projects and memory
-  ekip project add|scan|ls|show|sync|card
+  ekip project add|remove|scan|ls|show|sync|card
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
   ekip skill ls|search|show <project> [query|name]
 
