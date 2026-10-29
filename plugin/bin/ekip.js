@@ -995,7 +995,10 @@ async function init({ skipKeys = false } = {}) {
   const need = ["git", "claude", "sqlite3", "tmux", "docker"];
   const missing = need.filter((b) => !has(b));
   if (missing.length) die(`missing: ${missing.join(", ")}. On macOS: brew install ${missing.filter((b) => b !== "claude" && b !== "docker").join(" ")}; Claude Code from claude.com/claude-code; Docker Desktop or OrbStack`);
-  if (spawnSync("docker", ["info"], { stdio: "ignore" }).status !== 0) die("docker is installed but not running; start Docker Desktop / OrbStack and run ekip init again");
+  const di = spawnSync("docker", ["info"], { encoding: "utf8" });
+  if (di.status !== 0) die(/permission denied/i.test(di.stderr ?? "")
+    ? "docker is running but this user may not use it: run `sudo usermod -aG docker $USER`, log out and in (or `newgrp docker`), then ekip init again"
+    : "docker is installed but not running; start Docker Desktop / OrbStack (or `sudo systemctl start docker`) and run ekip init again");
   const oldNode = findOldNode();
   if (!oldNode) die("freellmapi needs Node 22-24 next to your default node: brew install node@24");
   saveSettings({ freellmapiNode: oldNode });
