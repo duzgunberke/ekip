@@ -61,21 +61,31 @@ async function main() {
   if (!hits.length) return;
   const mem = await import("./memory.js");
   const parts = await Promise.all(hits.map(async ({ p, by }) => {
-    const [memories, skills] = await Promise.all([
+    const [memories, skills, wiki] = await Promise.all([
       withTimeout(mem.recall(p, prompt, 6, { timeoutMs: BUDGET_MS - 800, factsOnly: true }).catch(() => []), BUDGET_MS - 300),
       withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300),
+      p.tdai?.wikiId ? withTimeout(mem.knowledgeTool(p.tdai.wikiId, "search", { query: prompt.slice(0, 300), limit: 3 }).catch(() => null), BUDGET_MS - 300) : null,
     ]);
+    const { projectSkills } = await import("./project-skills.js");
+    const local = projectSkills(p.path, prompt).slice(0, 4);
     const lines = [`## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
     if (p.summary) lines.push(clip(redact(p.summary.replace(/\s+/g, " ")), 300));
     const facts = (memories ?? []).filter((m) => m.layer === "L1").slice(0, 5);
     if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(redact(String(m.content).replace(/\s+/g, " ")), 260)}`));
-    if (skills?.length) lines.push("Project skills (read with the skill_get MCP tool):", ...skills.map((s) => `- ${s.name}: ${clip(redact(s.description ?? ""), 160)}`));
+    if (local.length) lines.push("Project process skills that fit this message (invoke or read their SKILL.md before planning):", ...local.map((k) => `- ${k.name}: ${clip(redact(k.description), 160)} (${k.file})`));
+    if (skills?.length) lines.push("Learned skills (read with the skill_get MCP tool):", ...skills.map((s) => `- ${s.name}: ${clip(redact(s.description ?? ""), 160)}`));
+    const pages = (Array.isArray(wiki) ? wiki : wiki?.results ?? wiki?.items ?? wiki?.data ?? []).slice(0, 3);
+    if (pages.length) lines.push("Wiki pages that match (wiki_read):", ...pages.map((w) => `- ${clip(redact(String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), 120)}`));
+    const graph = fs.existsSync(path.join(p.path, ".codegraph")) || (p.tdai?.codeGraphs ?? []).some((g) => g.id);
+    if (graph) lines.push(`Code: use codegraph_explore (projectPath ${p.path}) or the code_graph MCP tool before reading files one by one.`);
     if (p.card) lines.push(`Card: ${p.card}`);
     return lines.length > 1 ? lines.join("\n") : null;
   }));
   const body = parts.filter(Boolean).join("\n\n");
   if (!body) return;
-  const context = redact(`ekip project memory for this message (retrieved by relevance; verify before relying on it):\n\n${body}`);
+  // The rule comes with the context, so analysing first does not depend on anyone remembering it.
+  const rule = "Before you plan, answer, delegate or spend tokens on work in this project, analyse with what is below: read the process skills that fit, check the facts, search memory_search / wiki_search for anything missing, and explore code through the code graph. Pass what matters into every worker brief. Then do the work.";
+  const context = redact(`ekip project context for this message (retrieved by relevance; verify before relying on it).\n${rule}\n\n${body}`);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context.slice(0, 6000) } }));
 }
 
