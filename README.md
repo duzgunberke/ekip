@@ -16,11 +16,34 @@ re-reading the repo, so far fewer tokens go into reading.
 An always-on **hub** on your VPS keeps the memory, the free model pool and a job queue running when
 your Mac is closed, and serves a web panel that shows what every agent is doing right now.
 
+```mermaid
+flowchart LR
+  ask(["<b>You</b><br/>“make two promo videos,<br/>fix what's left in lumareef,<br/>add feature X to the Unity game”"])
+  lead{{"<b>Lead · Claude</b><br/>understands, splits,<br/>picks a pool for each part"}}
+  ask --> lead
+
+  lead --> t1["🎬 <b>Promo videos</b><br/>+ film skill"]
+  lead --> t2["🐠 <b>lumareef fixes</b><br/>+ lumareef memory, wiki, skills"]
+  lead --> t3["🎮 <b>Unity feature</b><br/>+ game card, code graph"]
+
+  t1 --> w1["Antigravity"]
+  t2 --> w2["Codex"]
+  t3 --> w3["Copilot"]
+
+  w1 & w2 & w3 --> review{{"<b>Lead reviews</b><br/>diffs, tests, renders"}}
+  review --> done(["<b>Report to you</b><br/>what shipped, what was verified,<br/>what is left"])
+
+  classDef you fill:#111827,stroke:#111827,color:#fff
+  classDef claude fill:#d97757,stroke:#b85c3c,color:#fff
+  classDef task fill:#f3f4f6,stroke:#d1d5db,color:#111827
+  classDef pool fill:#0f766e,stroke:#0f766e,color:#fff
+  class ask,done you
+  class lead,review claude
+  class t1,t2,t3 task
+  class w1,w2,w3 pool
 ```
-you: "make two promo videos, fix what's left in lumareef, add feature X to the Unity game"
-lead (Claude): splits it → 3 tasks → video to agy with the film skill, lumareef fix to codex with
-               lumareef's memory and skills, Unity feature to copilot → reviews the diffs → reports
-```
+
+<sub>Claude only plans and reviews (orange). The work runs on other quotas (green), each worker starting with the project's own context.</sub>
 
 On a real two-day stretch while building ekip itself, **58% of the work ran outside Claude**: memory
 extraction, wiki building, translation and two video films went to the free pool, Copilot and
