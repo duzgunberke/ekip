@@ -14,7 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core.js";
-import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, openPane, restartFree, ssh } from "../lib/core.js";
+import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit } from "../lib/ui.js";
 import { lang, t } from "../lib/i18n.js";
@@ -721,6 +721,8 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+- After workers change code in a registered project, run \`ekip review --project NAME\` before reporting.
+- Failed checks and HIGH findings confirmed by both reviewers are must-fix; re-dispatch fixes. For recurring bug classes in projects with check:* scripts, propose a new check script.
 - Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
   their cards (stack, commands, frequent tasks). The ekip MCP tools search each project's memory,
   wiki and code graph; codegraph MCP explores code. Save durable facts with memory_remember.
@@ -760,6 +762,9 @@ async function lead(args) {
     console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
     console.log("");
+    // Tasks, workers and their logs are visible under the lead from the start, not only after its
+    // first task ("taskPane": false in data/config.json turns this off).
+    ensureTaskPane();
   }
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
@@ -1119,6 +1124,8 @@ ${c.bold("Everyday")}
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "task"')}
+  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b]")} review changes
+  ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
@@ -1149,6 +1156,8 @@ ${c.bold("Günlük")}
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "iş"')}
+  ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b]")} ${t("değişiklikleri denetle")}
+  ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
@@ -1173,6 +1182,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
+  case "review": code = await (await import("../lib/review.js")).main(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
   case "skill": case "skills": {
@@ -1197,11 +1207,9 @@ switch (cmd) {
     const t = await import("../lib/tasks.js");
     try { t.reapStale(); } catch { /* never block a task command */ }
     if (cmd === "task" && rest[0] === "new") {
-      // The first task of a lead session opens the live task pane under the lead (iTerm2).
-      const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
-      const flag = lead && path.join(HOME, "panes", `${lead}-tasks`);
+      // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);
-      if (flag && !fs.existsSync(flag)) { fs.mkdirSync(path.dirname(flag), { recursive: true }); fs.writeFileSync(flag, "1"); openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true }); }
+      ensureTaskPane();
     } else await t.main(cmd === "tasks" && !rest.length ? ["ls"] : rest);
     break;
   }

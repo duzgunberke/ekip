@@ -6,34 +6,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AGENTS, autoOrder, poolScore } from "./agents.js";
+import { AGENTS, autoOrder, lastQuotaHit, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
 import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey } from "./core.js";
 import { c, dot, title, fit } from "./ui.js";
 import { t, lang } from "./i18n.js";
-
-// Quota messages worth surfacing, newest log first; "Resets in 140h45m18s" gives the reopen time.
-const QUOTA = [
-  /Individual quota reached[^\n"]*/, /You have no remaining credits[^\n"]*/, /exceeded your (?:current )?quota[^\n"]*/i,
-  /usage limit[^\n"]*reached[^\n"]*/i, /RESOURCE_EXHAUSTED[^\n"]*/,
-];
-
-function lastQuotaHit(via) {
-  let files = [];
-  try { files = fs.readdirSync(RUNS).filter((f) => f.endsWith(`-${via}.log`) || f.includes(`-${via}+`) || f.endsWith(`+${via}.log`)).sort().reverse().slice(0, 8); } catch { return null; }
-  for (const f of files) {
-    const file = path.join(RUNS, f);
-    const st = fs.statSync(file);
-    const tail = (() => { const fd = fs.openSync(file, "r"); const len = Math.min(st.size, 20000); const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return b.toString("utf8"); })();
-    const hit = QUOTA.map((re) => tail.match(re)?.[0]).find(Boolean);
-    if (!hit) { if (/\[exit 0\]/.test(tail)) return null; continue; } // a later success clears it
-    const m = tail.match(/Resets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
-    const resetAt = m ? st.mtimeMs + ((+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0)) * 1000 : null;
-    if (resetAt && resetAt < Date.now()) return null;
-    return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: resetAt ? new Date(resetAt).toISOString() : null };
-  }
-  return null;
-}
 
 const state = () => SETTINGS.agents ?? {};
 

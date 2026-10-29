@@ -67,7 +67,7 @@ Setup
 
 ## Shared tools
 
-Shared services and utilities live outside project repositories: freellmapi, TencentDB Agent Memory, hoptell, earshot, ACE-Step, and img2threejs. Their configured locations are stored in `data/config.json`; projects use the shared installations rather than maintaining copies.
+ekip's own services live outside project repositories: freellmapi (free pool), TencentDB Agent Memory (memory) and hoptell (team peers). `ekip init` clones each one once; their locations are stored in `data/config.json` (`freellmapiDir`, `tdaiDir`, `hoptellDir`), and every project uses the same installation.
 
 ---
 

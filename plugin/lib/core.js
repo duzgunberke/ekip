@@ -227,9 +227,39 @@ export function openPane(command, { below = false } = {}) {
   return id of n
 end tell`;
   const run = (anchor, how) => spawnSync("osascript", ["-e", script(anchor, how)], { encoding: "utf8" }).stdout.trim();
-  if (below) { if (!run(lead, "horizontally")) openTerminal(command); return; }
+  if (below) { const id = run(lead, "horizontally"); if (!id) openTerminal(command); return id || null; }
   const id = (prev && run(prev, "horizontally")) || run(lead, "vertically");
   if (id) fs.writeFileSync(stateFile, id); else openTerminal(command);
+  return id || null;
+}
+
+// Whether an iTerm2 session with this id is still open (the user may have closed the pane).
+export function paneAlive(id) {
+  if (!id || process.platform !== "darwin") return false;
+  const script = `tell application "iTerm2"
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if id of s is "${id}" then return "yes"
+      end repeat
+    end repeat
+  end repeat
+  return ""
+end tell`;
+  return spawnSync("osascript", ["-e", script], { encoding: "utf8" }).stdout.trim() === "yes";
+}
+
+// The live task pane under the lead (iTerm2): opened when the lead starts, and again on a new task
+// if the user closed it. The flag file keeps the pane's session id, so one lead gets one pane.
+export function ensureTaskPane() {
+  const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
+  if (!lead || process.env.TERM_PROGRAM !== "iTerm.app" || SETTINGS.taskPane === false) return;
+  const flag = path.join(HOME, "panes", `${lead}-tasks`);
+  const prev = fs.existsSync(flag) ? fs.readFileSync(flag, "utf8").trim() : "";
+  if (prev && paneAlive(prev)) return;
+  const id = openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true });
+  fs.mkdirSync(path.dirname(flag), { recursive: true });
+  fs.writeFileSync(flag, id ?? "");
 }
 
 export function openTerminal(command) {

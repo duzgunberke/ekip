@@ -48,6 +48,8 @@ Sıfırdan başlamazsınız. ekip bir projeyi kaydettiğinde o projeye ait **esk
 
 ## Mesajınızla birlikte gelen bellek
 
+`ekip review [--project NAME] [--base REF]` ilgili proje kontrollerini ve değişen dosyalar için iki salt okunur incelemeyi çalıştırır. Yalnızca kontroller için `--checks-only`, proje inceleme profilini yenilemek için `ekip review profile NAME --refresh` kullanın.
+
 Herhangi bir klasörde Claude'u açıp bir projeden söz edin, yazım hatası olsa bile ekip projeyi bulur, mesajınız için o projenin belleğinde arama yapar ve gerekli bilgileri yaklaşık bir saniyede ekler.
 
 <p align="center"><img src="docs/assets/memory-follows.svg" alt="ios-ap diye yazım hatasıyla yazıyorsun; ekip ios-app projesini buluyor, belleğinde yaklaşık bir saniyede arıyor ve ilgili bilgileri ve skill'leri Claude'un bağlamına ekliyor" width="100%"></p>

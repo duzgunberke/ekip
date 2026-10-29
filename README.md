@@ -57,6 +57,8 @@ everything you decided before.
 
 ## Memory that follows your message
 
+Run `ekip review [--project NAME] [--base REF]` to run relevant project checks and get two read-only reviews of changed files. Use `--checks-only` for checks alone, and `ekip review profile NAME --refresh` to regenerate the project's review lenses.
+
 Open Claude in any folder and mention a project, even with a typo. ekip finds it, searches that
 project's memory for your message and adds what matters, in about a second.
 

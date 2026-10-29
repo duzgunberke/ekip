@@ -182,6 +182,31 @@ function renderCompact(t) {
   return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
 }
 
+// The last worker runs (`ekip run`), so the pane shows what the lead handed out and where each log
+// is even when a worker is not linked to a task: running ones, and finished ones for 15 minutes.
+function recentRuns(limit = 4) {
+  const dir = path.join(HOME, "runs");
+  let files;
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".log")).map((f) => ({ f, st: fs.statSync(path.join(dir, f)) })); } catch { return []; }
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  return files.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs).slice(0, 12).flatMap(({ f, st }) => {
+    const file = path.join(dir, f);
+    let text;
+    try { text = fs.readFileSync(file, "utf8"); } catch { return []; }
+    const exit = text.match(/\n\[exit (\d+)\][^\n]*\s*$/);
+    const pid = Number(text.match(/^pid: (\d+)$/m)?.[1]);
+    const running = !exit && (!pid || alive(pid));
+    if (!running && Date.now() - st.mtimeMs > 15 * 60 * 1000) return [];
+    const label = text.match(/^label: (.*)$/m)?.[1];
+    const task = text.split("\ntask:\n")[1]?.split("\n")[0] ?? "";
+    const tail = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("[exit")).at(-1) ?? "";
+    const via = f.slice(0, -4).split("Z-")[1] ?? "?";
+    const state = running ? c.cyan("⚙") : exit[1] === "0" ? c.green("✓") : c.red("✗");
+    const head = fit(`  ${state} ${c.bold(via)} ${label && label !== "-" ? label : task.slice(0, 60)} ${c.gray(`· ${fmtDur(Date.now() - (running ? Date.parse(f.slice(0, 19).replace(/T(\d\d)-(\d\d)-(\d\d)/, "T$1:$2:$3") + "Z") : st.mtimeMs))}${running ? "" : lang === "en" ? " ago" : " önce"}`)}`);
+    return [`${head}\n${fit(`     ${c.gray(running ? tail : `log ${file}`)}`)}`];
+  }).slice(0, limit);
+}
+
 export async function main([sub = "ls", ...args]) {
   const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
   const rest = () => args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
@@ -213,7 +238,9 @@ export async function main([sub = "ls", ...args]) {
     do {
       const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 5 * 60 * 1000)
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
-      let out = `${mark()}  ${c.gray(tr("görevler"))}\n\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n`;
+      const runs = watching ? recentRuns() : [];
+      const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";
+      let out = `${mark()}  ${c.gray(tr("görevler"))}\n\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
       // too tall for the pane: every task in two lines, so none is cut off below the edge
       if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
         out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${list.map(renderCompact).join("\n")}\n`;
