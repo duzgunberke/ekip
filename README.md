@@ -30,7 +30,8 @@ session. ekip changes who does what:
   wiki built from its docs, a code graph and its own skills. Workers start from that instead of
   re-reading the repo.
 - **You see everything.** Each worker gets a terminal pane, each request becomes a task with live
-  steps, and a web panel shows runs, quotas and which model a new task would go to.
+  steps, and a web panel shows runs, quotas and which model a new task would go to. Without a server,
+  `ekip init` runs the panel on your own computer at http://localhost:7777.
 
 <p align="center"><img src="docs/assets/savings.svg" alt="Share of the work that ran outside Claude, measured with ekip savings: 58% during the two-day setup, 81% the next day" width="100%"></p>
 

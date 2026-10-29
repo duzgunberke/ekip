@@ -32,6 +32,15 @@ function latestRelease() {
   return tags.sort(compareVersions).at(-1)?.slice(1) ?? null;
 }
 
+// Updates go to the newest release tag, not to the tip of main: main gets merges before their
+// fresh-install test passes, a tag only after (scripts/ci/release.sh).
+function toRelease() {
+  const f = git("fetch", "--quiet", "--tags", "origin");
+  if (f.status !== 0) return f;
+  const tag = git("tag", "--list", "v*", "--sort=-v:refname").stdout.split("\n")[0]?.trim();
+  return tag ? git("merge", "--ff-only", "--quiet", `refs/tags/${tag}`) : git("pull", "--ff-only", "--quiet");
+}
+
 /**
  * { local, latest, behind }. The remote is asked at most every maxAgeH hours (cached), so the lead
  * start stays fast. With notify, one macOS notification is sent per new release.
@@ -75,7 +84,7 @@ export function autoUpdate() {
     return { skipped: "local changes or another branch" };
   }
   const before = git("rev-parse", "HEAD").stdout.trim();
-  const pull = git("pull", "--ff-only", "--tags", "--quiet");
+  const pull = toRelease();
   if (pull.status !== 0) { checkUpdate({ notify: true }); return { skipped: pull.stderr.trim().slice(0, 200) }; }
   const to = localVersion();
   writeState({ ...readState(), at: 0, notified: to });
@@ -101,14 +110,14 @@ export function updateContext() {
     : `## ekip güncellemesi\nekip ${u.latest} çıktı; bu kurulum ${u.local}. Kullanıcıya bir kez, tek kısa cümleyle sor ("Yeni ekip sürümü çıktı, güncelleyeyim mi?"). Kabul ederse \`ekip update\` çalıştır ve neyin değiştiğini söyle (değişiklik listesini yazdırır). Hayır derse tekrar sorma.`;
 }
 
-/** ekip update: fast-forward the checkout to origin and show what changed. */
+/** ekip update: fast-forward the checkout to the newest release and show what changed. */
 export function update() {
   const dirty = git("status", "--porcelain", "--untracked-files=no").stdout.trim();
   if (dirty) die(lang === "en" ? `local changes in ${ROOT}; commit or stash them first:\n${dirty}` : `${ROOT} içinde yerel değişiklik var; önce commit edin ya da kenara alın:\n${dirty}`);
   const before = git("rev-parse", "HEAD").stdout.trim();
   const from = localVersion();
-  const pull = git("pull", "--ff-only", "--tags", "origin", git("rev-parse", "--abbrev-ref", "HEAD").stdout.trim() || "main");
-  if (pull.status !== 0) die(`git pull: ${pull.stderr.trim()}`);
+  const pull = toRelease();
+  if (pull.status !== 0) die(`git: ${pull.stderr.trim()}`);
   const after = git("rev-parse", "HEAD").stdout.trim();
   const to = localVersion();
   writeState({ ...readState(), at: 0 });

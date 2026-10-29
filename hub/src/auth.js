@@ -46,7 +46,8 @@ export class Auth {
   }
 
   cookie(value, maxAgeSec) {
-    return `${COOKIE}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAgeSec}`;
+    // a panel on this computer (ekip hub local) is plain http on loopback, where Safari drops Secure cookies
+    return `${COOKIE}=${value}; Path=/; HttpOnly;${process.env.EKIP_LOCAL_PANEL === "1" ? "" : " Secure;"} SameSite=Strict; Max-Age=${maxAgeSec}`;
   }
 
   // Login throttle: 5 failures per IP within 15 min lock that IP for 15 min; a global cap of 30

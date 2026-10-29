@@ -12,7 +12,7 @@ cleanup() { docker rm -fv "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 result() { # status, step
-  local sha; sha=$(git ls-remote "$repo" "$ref" 2>/dev/null | head -1 | cut -c1-7)
+  local sha; if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then sha=${ref:0:7}; else sha=$(git ls-remote "$repo" "$ref" 2>/dev/null | head -1 | cut -c1-7); fi
   python3 - "$out" "$1" "$2" "$sha" "$ref" "$started" "$log" <<'PY'
 import json, sys, datetime
 out, status, step, sha, ref, started, log = sys.argv[1:]
