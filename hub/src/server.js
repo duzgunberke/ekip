@@ -566,6 +566,11 @@ async function api(req, res, url) {
     return task ? send(res, 200, task) : send(res, 404, { error: "no such task" });
   }
 
+  // ekip's own CI (scripts/ci on this server): the last fresh-install result, log tail included
+  if (p === "/api/ci" && m === "GET") {
+    try { return send(res, 200, JSON.parse(fs.readFileSync(path.join(DATA, "ci", "result.json"), "utf8"))); }
+    catch { return send(res, 200, { status: "none" }); }
+  }
   if (p === "/api/heartbeat" && m === "POST") {
     const b = await readJson(req, 200_000);
     const client = str(b.client, 100, "client", { required: true });

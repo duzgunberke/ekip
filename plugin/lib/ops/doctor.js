@@ -128,6 +128,18 @@ export async function main(args = []) {
     }
   }
   console.log(`\n  ${problems ? c.yellow(`${problems} ${t("sorunlar")}${fix ? ` · ${t("onarılabilenler başlatıldı, birkaç dakika sonra tekrar bak")}` : ` · ${t("onarmak için: ekip doctor --fix")}`}`) : c.green(t("her şey yolunda"))}\n`);
+  // ekip's own CI on the hub: a failed fresh install of the latest main is reported once per commit
+  if (SETTINGS.hubUrl && SETTINGS.hubToken) {
+    try {
+      const ci = await (await fetch(`${SETTINGS.hubUrl}/api/ci`, { headers: { authorization: `Bearer ${SETTINGS.hubToken}` }, signal: AbortSignal.timeout(5000) })).json();
+      if (ci.status && ci.status !== "none") {
+        line(ci.status === "pass" ? "ok" : "bad", "CI", `${ci.status === "pass" ? t("sıfırdan kurulum geçti") : `${t("sıfırdan kurulum başarısız")}: ${ci.step}`} · ${ci.sha ?? ""}`);
+        const seen = path.join(HOME, "ci-notified.json");
+        let last = null; try { last = JSON.parse(fs.readFileSync(seen, "utf8")).sha; } catch { /* first */ }
+        if (ci.status === "fail" && last !== ci.sha) { notify(t("Sıfırdan kurulum testi başarısız"), `${ci.step} · ${ci.sha}`, { subtitle: "⚠ CI · ekip", group: "ekip-ci", open: `${SETTINGS.hubUrl}/api/ci` }); fs.writeFileSync(seen, JSON.stringify({ sha: ci.sha })); }
+      }
+    } catch { /* hub unreachable: no CI line */ }
+  }
   // Say what was repaired without being asked, once per distinct set of repairs every 6 hours.
   if (fix && fixed.length) {
     const key = fixed.join("|"), stamp = path.join(HOME, "doctor-notified.json");
