@@ -502,17 +502,35 @@ function markLogsSynced(ids) {
   try { fs.writeFileSync(LOGS_SYNCED(), JSON.stringify([...s].slice(-2000))); } catch { /* best effort */ }
 }
 
+// Serialize sibling workers' count updates with an atomic directory lock.
+function reserveChildRun(parentId, limit) {
+  const dir = path.join(HOME, "run-children");
+  const safeId = parentId.replace(/[^A-Za-z0-9._-]/g, "_");
+  const file = path.join(dir, `${safeId}.count`), lock = `${file}.lock`;
+  fs.mkdirSync(dir, { recursive: true });
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  const until = Date.now() + 5000;
+  while (true) {
+    try { fs.mkdirSync(lock); break; }
+    catch (e) { if (e.code !== "EEXIST" || Date.now() >= until) throw new Error("çocuk işçi sayacı kilitlenemedi"); Atomics.wait(wait, 0, 0, 20); }
+  }
+  try {
+    let count = 0; try { count = Number(fs.readFileSync(file, "utf8")) || 0; } catch {}
+    if (count >= limit) return false;
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, String(count + 1)); fs.renameSync(tmp, file);
+    return true;
+  } finally { fs.rmdirSync(lock); }
+}
+
 async function run(args) {
   const allowNested = args.includes("--allow-nested");
   args = args.filter((a) => a !== "--allow-nested");
   const depth = Number(process.env.EKIP_RUN_DEPTH ?? 0);
   if (depth >= 2 && !allowNested) die("İç içe işçi sınırı: --allow-nested ile açıkça izin verin.");
   if (depth > 0 && !allowNested) {
-    const parent = process.env.EKIP_PARENT_RUN ?? "unknown"; const f = path.join(HOME, "run-children", `${parent}.count`);
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    let count = 0; try { count = Number(fs.readFileSync(f, "utf8")) || 0; } catch {}
-    if (count >= Number(SETTINGS.maxChildRuns ?? 6)) die("Bu üst işçi için çocuk çalıştırma sınırı doldu; testleri --dry-run veya mock ile yapın.");
-    fs.writeFileSync(f, String(count + 1));
+    const parent = process.env.EKIP_PARENT_RUN ?? "unknown";
+    if (!reserveChildRun(parent, Number(SETTINGS.maxChildRuns ?? 6))) die("Bu üst işçi için çocuk çalıştırma sınırı doldu; testleri --dry-run veya mock ile yapın.");
   }
   const o = parseRun(args);
   process.env.EKIP_RUN_DEPTH = String(depth + 1);
