@@ -32,7 +32,9 @@ const GENERIC = new Set(["web", "api", "app", "apps", "mobile", "backend", "fron
 function aliases(p) {
   // the product name people actually type (a folder "shop-backend" for the product "Acme") comes from the card summary's
   // bold name and from an optional `aliases` list in the project entry
-  const product = [...String(p.summary ?? "").matchAll(/\*\*([^*(]{3,40})/g)].map((m) => m[1].trim()).filter((n) => !/\s/.test(n) || n.split(/\s+/).length <= 2);
+  // only the project's own product, written as **Name (`domain`)**: a card that merely mentions other
+  // products in bold (a video studio for several apps) must not become those products
+  const product = [...String(p.summary ?? "").matchAll(/\*\*([^*(]{3,40}?)\s*\(`?[\w.-]+\.[a-z]{2,}`?\)\*\*/g)].map((m) => m[1].trim()).filter((n) => n.split(/\s+/).length <= 2);
   const out = new Set([p.name, ...(p.aliases ?? []), ...product, ...(p.repos ?? []).map((r) => path.basename(r.path ?? "")).filter((n) => !GENERIC.has(fold(n)))].filter(Boolean).map(fold));
   for (const a of [...out]) { out.add(a.replace(/[-_.]/g, "")); out.add(a.replace(/[-_.]/g, " ")); }
   return [...out].filter((a) => a.length >= 3);
@@ -139,7 +141,18 @@ export async function main() {
   if (!body) return;
   // The rule comes with the context, so analysing first does not depend on anyone remembering it.
   const rule = "Before you plan, answer, delegate or spend tokens on work in this project, analyse with what is below: read the process skills that fit, check the facts, search memory_search / wiki_search for anything missing, and explore code through the code graph. Pass what matters into every worker brief. Then do the work.";
-  const context = redact(`ekip project context for this message (retrieved by relevance; verify before relying on it).\n${rule}\n\n${body}`);
+  // Several projects (or the general space next to one) may be meant: let the user pick instead of guessing
+  const named = parts.map((x, i) => (x ? hits[i] : null)).filter(Boolean);
+  // projects not named but on topic: their card summary shares two or more real words with the message
+  const pw = words(prompt);
+  const stem = (w) => w.slice(0, 5);
+  const overlap = (text) => { const ws = [...words(text)]; return [...pw].filter((w) => ws.some((x) => x === w || (w.length >= 5 && x.length >= 5 && stem(x) === stem(w)))).length; };
+  const topical = projects.filter((x) => !hits.some((h) => h.p === x)).map((x) => ({ p: x, n: overlap(`${x.name} ${x.summary ?? ""}`) })).filter((x) => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 3);
+  for (const t of topical) named.push({ p: t.p, by: "topic" });
+  const ask = named.length > 1
+    ? `\n\nThis message matches more than one project (${named.map((h) => `${h.p.name}${h.by === "topic" ? " (by topic, not named)" : ""}`).join(", ")}). Unless the request already makes the scope clear, ask the user once, before planning, with AskUserQuestion (multiSelect: true): one option per project above with its relevant skills in the description, plus related tool/skill groups you see fit (e.g. the VPS/dev environment skill). Then use only what they picked. Do not ask again for the same request.`
+    : "";
+  const context = redact(`ekip project context for this message (retrieved by relevance; verify before relying on it).\n${rule}${ask}\n\n${body}`);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context.slice(0, 6000) } }));
 }
 
