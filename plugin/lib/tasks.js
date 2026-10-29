@@ -107,7 +107,7 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     if (detail != null) s.detail = detail;
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
-    if (status === "failed") notify(t.title, s.title, { subtitle: `⚠ ${lang === "en" ? "Step stalled" : "Adım takıldı"}${t.project ? ` · ${t.project}` : ""}`, group: t.id });
+    if (status === "failed") notify(t.title, s.title, { subtitle: `⚠ ${lang === "en" ? "Step stalled" : "Adım takıldı"}${t.project ? ` · ${t.project}` : ""}`, group: t.id, open: SETTINGS.hubUrl ? `${SETTINGS.hubUrl}/tasks` : "" });
     autoClose(t);
   });
 }
@@ -134,7 +134,10 @@ export function finish(id, status = "done", note) {
     for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "running" ? "failed" : s.status, endedAt: now() });
     if (note) x.notes.push({ at: now(), text: note });
   });
-  notify(t.title, note ?? "", { subtitle: `${status === "done" ? `✓ ${cap(tr("bitti"))}` : `■ ${cap(tr("durdu"))}`}${t.project ? ` · ${t.project}` : ""}`, group: t.id });
+  // no note: say what happened in numbers rather than repeating the state
+  const doneSteps = t.steps.filter((x) => x.status === "done").length;
+  const summary = `${doneSteps}/${t.steps.length} ${lang === "en" ? "steps" : "adım"} · ${fmtDur(Date.now() - Date.parse(t.createdAt))}${t.workers.length ? ` · ${[...new Set(t.workers.map((w) => w.via).filter(Boolean))].join(", ")}` : ""}`;
+  notify(t.title, note || summary, { subtitle: `${status === "done" ? `✓ ${cap(tr("bitti"))}` : `■ ${cap(tr("durdu"))}`}${t.project ? ` · ${t.project}` : ""}`, group: t.id, open: SETTINGS.hubUrl ? `${SETTINGS.hubUrl}/tasks` : "" });
   return t;
 }
 
