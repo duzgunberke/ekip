@@ -334,8 +334,8 @@ async function runOne(o, via, id) {
 
 async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
-  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile });
-  fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\ntask:\n${o.task}\n\n`);
+  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile, pid: process.pid });
+  fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
   await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
@@ -402,11 +402,17 @@ function clean([short]) {
 async function watch([file]) {
   if (!file || !fs.existsSync(file)) die("usage: ekip watch <run log>");
   const name = path.basename(file, ".log");
-  process.stdout.write(`\x1b]0;ekip · ${name.slice(25) || name}\x07`);
-  const head = fs.readFileSync(file, "utf8").split("\n\n")[0].split("\n");
-  console.log(`${mark()}  ${c.bold(head.find((l) => l.startsWith("project:"))?.slice(9) ?? "")} ${c.gray(head[0]?.slice(5) ?? "")}`);
+  const head = fs.readFileSync(file, "utf8").split("\ntask:\n")[0].split("\n");
+  const field = (k) => { const v = head.find((l) => l.startsWith(`${k}: `))?.slice(k.length + 2); return v && v !== "-" ? v : null; };
+  const via = name.slice(25) || name, label = field("label"), project = field("project"), pid = Number(field("pid")) || null;
+  const started = Date.parse(name.slice(0, 24).replace(/^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "$1T$2:$3:$4.$5Z")) || Date.now();
+  const mins = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? "<1 dk" : m < 60 ? `${m} dk` : `${Math.floor(m / 60)} sa ${m % 60} dk`; };
+  // The pane title is what tells panes apart: the worker's label, else its project.
+  process.stdout.write(`\x1b]0;${label ?? project ?? "ekip"} · ${via}\x07`);
+  console.log(`${mark()}  ${c.bold(label ?? project ?? "")} ${c.gray(`${via}${label && project ? ` · ${project}` : ""} · ${field("cwd") ?? ""}`)}`);
   const color = (line) => (line.startsWith("▸ ") ? c.cyan(line) : line.startsWith("$ ") ? c.gray(line.slice(0, 160)) : /^\[exit 0\]/.test(line) ? c.green(line) : /^\[exit/.test(line) ? c.red(line) : line);
-  let pos = 0, pending = "", done = false;
+  const alive = () => { if (!pid) return true; try { process.kill(pid, 0); return true; } catch { return false; } };
+  let pos = 0, pending = "", done = false, lastOut = Date.now(), lastNote = 0, ended = "bitti";
   while (!done) {
     const size = fs.statSync(file).size;
     if (size > pos) {
@@ -415,16 +421,26 @@ async function watch([file]) {
       fs.readSync(fd, b, 0, b.length, pos);
       fs.closeSync(fd);
       pos = size;
+      lastOut = Date.now();
       pending += b.toString("utf8");
       const lines = pending.split("\n");
       pending = lines.pop();
       for (const l of lines) { process.stdout.write(`${color(l)}\n`); if (/^\[exit -?\d+\]/.test(l)) done = true; }
       if (pending && !pending.startsWith("▸") && !pending.startsWith("[")) { process.stdout.write(pending); pending = ""; }
     }
-    if (!done) await sleep(400);
+    if (done) break;
+    // A worker that was killed never writes [exit]; without this its pane stayed open forever.
+    if (!alive()) { ended = "durduruldu"; console.log(`\n${c.yellow("■ işçi durduruldu (çıkış kaydı yok)")}`); break; }
+    // While a worker thinks there is no output; a quiet line says it is still alive and for how long.
+    if (Date.now() - lastOut > 60_000 && Date.now() - lastNote > 60_000) {
+      lastNote = Date.now();
+      console.log(c.gray(`· çalışıyor · ${mins(Date.now() - started)} · ${mins(Date.now() - lastOut)}dır sessiz`));
+    }
+    await sleep(400);
   }
+  process.stdout.write(`\x1b]0;✓ ${label ?? project ?? "ekip"} · ${via}\x07`);
   // A finished worker's pane closes by itself after a while (Enter closes it now).
-  console.log(`\n${c.gray("bitti · bu bölme 90 sn sonra kapanır (Enter: hemen kapat)")}`);
+  console.log(`\n${c.gray(`${ended} · ${mins(Date.now() - started)} · bu bölme 90 sn sonra kapanır (Enter: hemen kapat)`)}`);
   if (process.stdin.isTTY) {
     process.stdin.setRawMode?.(true);
     await Promise.race([new Promise((r) => process.stdin.once("data", r)), sleep(90_000)]);

@@ -117,7 +117,9 @@ function render(t) {
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
     return `    ${icon} ${i + 1}. ${label}${extra}`;
   });
-  const workers = t.workers.filter((w) => w.status === "running").map((w) => {
+  // A worker killed from outside never reports its end; its pid tells.
+  const alive = (w) => { if (!w.pid) return true; try { process.kill(w.pid, 0); return true; } catch { return false; } };
+  const workers = t.workers.filter((w) => w.status === "running" && alive(w)).map((w) => {
     const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
     return `    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? " · 10 dk'dır çıktı yok" : ""}`)}`;
   });
@@ -146,10 +148,22 @@ export async function main([sub = "ls", ...args]) {
   } else if (sub === "ls" || sub === "--watch" || sub === "watch") {
     const watching = sub !== "ls" || args.includes("--watch");
     const all = args.includes("--all");
+    // Watching draws on the alternate screen and repaints in place: clearing with 2J pushed every
+    // frame into iTerm's scrollback, so the pane kept scrolling. Output is clipped to the pane height.
+    if (watching) {
+      process.stdout.write("\x1b[?1049h\x1b[?25l");
+      const restore = () => { process.stdout.write("\x1b[?25h\x1b[?1049l"); process.exit(0); };
+      process.on("SIGINT", restore); process.on("SIGTERM", restore);
+    }
     do {
-      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 30 * 60 * 1000).slice(-8);
+      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 5 * 60 * 1000)
+        .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
       const out = `${mark()}  ${c.gray("görevler")}\n\n${list.length ? list.map(render).join("\n\n") : c.gray("  aktif görev yok")}\n`;
-      if (watching) process.stdout.write(`\x1b[H\x1b[2J${out}`); else console.log(out);
+      if (watching) {
+        const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
+        const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));
+        process.stdout.write(`\x1b[H${lines.map((l) => `${l}\x1b[K`).join("\n")}\x1b[J`);
+      } else console.log(out);
       if (watching) await sleep(2000);
     } while (watching);
   } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--parallel] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
