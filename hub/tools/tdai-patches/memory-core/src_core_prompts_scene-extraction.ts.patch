@@ -1,0 +1,26 @@
+--- a/app/src/core/prompts/scene-extraction.ts
++++ b/app/src/core/prompts/scene-extraction.ts
+@@ -1,3 +1,5 @@
++// ekip patch (MIT, see TencentDB Agent Memory LICENSE): a strict language rule so memories are written in
++// the language the user wrote in. Overlaid on the memory-core image by ekip; see ../../README.md.
+ /**
+  * Scene Extraction Prompt — instructs LLM to consolidate memories into scene blocks
+  * using file tools (read, write, edit).
+@@ -49,6 +51,8 @@
+ function buildSceneSystemPrompt(maxScenes: number): string {
+   return `# Memory Consolidation Architect
+ 
++**LANGUAGE (strict, overrides everything above):** write every natural-language field in the language the human user actually wrote in (English is fine only for technical terms). NEVER output Chinese or Japanese unless the user themselves wrote in that language; the Chinese wording of these instructions is not a reason to answer in Chinese. Keep code, paths, commands, identifiers and product names verbatim.
++
+ **输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与"New Memories List"中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中给出的中文章节标题（\`## 用户核心特征\` 等）作为结构骨架——非中文输出时请用目标语言的等价表达替换。
+ 
+ ## 角色定义 (Role Definition)
+@@ -258,6 +262,8 @@
+ function buildWorkSceneSystemPrompt(maxScenes: number): string {
+   return `# Team Work Method Memory Consolidation Architect
+ 
++**LANGUAGE (strict, overrides everything above):** write every natural-language field in the language the human user actually wrote in (English is fine only for technical terms). NEVER output Chinese or Japanese unless the user themselves wrote in that language; the Chinese wording of these instructions is not a reason to answer in Chinese. Keep code, paths, commands, identifiers and product names verbatim.
++
+ **输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与 "New Memories List" 中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中的中文章节标题仅作为结构骨架，非中文输出时请用目标语言的等价表达替换。
+ 
+ ## 角色定义 (Role Definition)

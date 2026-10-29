@@ -1,0 +1,17 @@
+--- a/app/src/core/skill/prompts/skill-review-prompt.ts
++++ b/app/src/core/skill/prompts/skill-review-prompt.ts
+@@ -1,3 +1,5 @@
++// ekip patch (MIT, see TencentDB Agent Memory LICENSE): a strict language rule so memories are written in
++// the language the user wrote in. Overlaid on the memory-core image by ekip; see ../../README.md.
+ /**
+  * Skill Review Agent prompt — v2 (2026-08-10).
+  *
+@@ -91,7 +93,7 @@
+ ## Language (follow the past user, not this prompt)
+ The skill's human-readable text — the frontmatter \`description\`, the title, and all body prose — must be written in the SAME natural language the past user used in the transcript. Judge from the \`<<past-user>>\` turns as a whole, not from this prompt, and not from the language the past assistant replied in.
+ - Past user wrote in Chinese → write the \`description\` and body in Chinese.
+-- Past user wrote in any other language → use that language.
++- Past user wrote in any other language → use that language. Never switch to Chinese or Japanese because this prompt or its examples are in Chinese (the examples do not set the language).
+ - Keep verbatim, never translate: code, shell commands, SQL, file paths, URLs, identifiers, API / field / flag names, product names, and the frontmatter \`name\` (always lowercase ASCII letters, digits and hyphens, since it becomes the skill id / filename).
+ - A technical term with no natural native equivalent may stay in English inline; do not let that drag the surrounding prose into English.
+ - This system prompt is written in English only to instruct you. It is NOT a reason to write the skill in English.

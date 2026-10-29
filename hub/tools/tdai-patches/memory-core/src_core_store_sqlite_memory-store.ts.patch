@@ -1,0 +1,28 @@
+--- a/app/src/core/store/sqlite/memory-store.ts
++++ b/app/src/core/store/sqlite/memory-store.ts
+@@ -1733,6 +1733,13 @@
+           : " (no embedding — metadata-only write)"),
+       );
+ 
++      // ekip patch: l0_fts.record_id is UNINDEXED, so "DELETE FROM l0_fts WHERE record_id = ?" scans
++      // the whole FTS table on every write (O(n) per message, the import pegged the CPU). A new
++      // record has nothing to delete; check the indexed meta table first.
++      const l0Prev = this.db.prepare("SELECT message_text FROM l0_conversations WHERE record_id = ?").get(record.id) as { message_text?: string } | undefined;
++      const l0Existed = !!l0Prev;
++      // same record re-sent (an import retried after a timeout): the FTS row is already right
++      const l0FtsCurrent = l0Existed && l0Prev!.message_text === record.messageText;
+       this.db.exec("BEGIN");
+       try {
+         // Legacy callers may omit isolation fields; normalize them to the
+@@ -1764,9 +1771,9 @@
+         // Sync FTS5 (delete + re-insert to handle updates).
+         // user_id / agent_id mirrored into FTS so post-recall isolation
+         // filtering doesn't require a join.
+-        if (this.ftsAvailable) {
++        if (this.ftsAvailable && !l0FtsCurrent) {
+           try {
+-            this.stmtL0FtsDelete.run(record.id);
++            if (l0Existed) this.stmtL0FtsDelete.run(record.id);
+             this.stmtL0FtsInsert.run(
+               tokenizeForFts(record.messageText), // message_text — segmented for indexing
+               record.messageText,                 // message_text_original — raw for display

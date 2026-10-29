@@ -1108,15 +1108,34 @@ async function memoryUp() {
 // TencentDB's hub script passes a fixed list of env vars; private GitHub code graphs need the
 // "gongfeng" code source (https clone with a token), so add that variable to the list.
 export function patchTdaiScripts(dir) {
-  // ekip's fixes to TencentDB (hub/tools/tdai-patches): overlay the patched source files onto the
-  // memory-core image (strict language rule in the extraction prompts, fast L0 writes), and apply the
-  // importer patch to the clone (retries, essential-only mode, progress beacon). Idempotent.
+  // ekip's fixes to TencentDB (hub/tools/tdai-patches). The repo holds only small diffs: the original
+  // files come out of the pinned memory-core image, the diffs are applied, and the results go to
+  // data/tdai/patched, which start-memory-core.sh mounts over the image (strict language rule in the
+  // extraction prompts, fast L0 writes). The importer diff is applied to the clone. Idempotent.
   const patches = path.join(ROOT, "hub/tools/tdai-patches");
+  const overlay = path.join(HOME, "tdai/patched");
+  const image = JSON.parse(fs.readFileSync(path.join(patches, "images.json"), "utf8")).MEMORY_CORE_IMAGE;
+  for (const name of fs.existsSync(path.join(patches, "memory-core")) ? fs.readdirSync(path.join(patches, "memory-core")).filter((n) => n.endsWith(".patch")) : []) {
+    const diff = path.join(patches, "memory-core", name);
+    const target = fs.readFileSync(diff, "utf8").match(/^\+\+\+ b\/(\S+)/m)?.[1];
+    if (!target) continue;
+    const out = path.join(overlay, target);
+    if (fs.existsSync(out) && fs.statSync(out).mtimeMs > fs.statSync(diff).mtimeMs) continue;
+    const orig = spawnSync("docker", ["run", "--rm", "--entrypoint", "cat", image, `/${target}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    if (orig.status !== 0) { console.error(`ekip: could not read ${target} from ${image}; memory-core runs unpatched`); continue; }
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ekip-tdai-"));
+    fs.mkdirSync(path.join(tmp, path.dirname(target)), { recursive: true });
+    fs.writeFileSync(path.join(tmp, target), orig.stdout);
+    const r = spawnSync("patch", ["-s", "-p1", "-d", tmp, "-i", diff], { encoding: "utf8" });
+    if (r.status === 0) { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.copyFileSync(path.join(tmp, target), out); }
+    else console.error(`ekip: ${name} did not apply to ${image}: ${r.stdout.trim().split("\n")[0]}`);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
   const coreScript = path.join(dir, "start-memory-core.sh");
   const cs = fs.readFileSync(coreScript, "utf8");
   if (!cs.includes("EKIP_TDAI_PATCHES") && cs.includes('-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n')) {
     fs.writeFileSync(coreScript, cs.replace('-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n',
-      '-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n  $( P="${EKIP_TDAI_PATCHES:-' + patches + '}"; [ -d "$P/app" ] && cd "$P" && find app -type f -name "*.ts" | while read f; do printf -- "-v %s/%s:/%s:ro " "$P" "$f" "$f"; done ) \\\n'));
+      '-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n  $( P="${EKIP_TDAI_PATCHES:-' + overlay + '}"; [ -d "$P/app" ] && cd "$P" && find app -type f -name "*.ts" | while read f; do printf -- "-v %s/%s:/%s:ro " "$P" "$f" "$f"; done ) \\\n'));
   }
   const clone = path.dirname(path.dirname(dir));
   const ip = path.join(patches, "asset-import.patch");
