@@ -724,7 +724,7 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
   their cards (stack, commands, frequent tasks). The ekip MCP tools search each project's memory,
   wiki and code graph; codegraph MCP explores code. Save durable facts with memory_remember.
-- The hub on the user's VPS (if linked: `ekip hub status`) runs queued jobs even when this Mac is off:
+- The hub on the user's VPS (if linked: \`ekip hub status\`) runs queued jobs even when this Mac is off:
   \`ekip job "<task>" --project NAME\` queues one (it works on a branch and pushes it).
 - Long-lived peers: \`ekip team up --open\` starts ekip-agy/ekip-free as hoptell peers in their own
   terminal windows; message them with hoptell send_message.
