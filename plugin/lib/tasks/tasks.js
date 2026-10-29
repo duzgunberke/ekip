@@ -238,9 +238,27 @@ function recentRuns(limit = 4) {
   }).slice(0, limit);
 }
 
+// One line for the pane header: running/capacity of every ready pool ("havuzlar: codex 2/2 ·
+// copilot 1/2 · free 0/3"). Which pools are ready is re-read every 30 s (it spawns `command -v`),
+// the running counts on every repaint.
+let ready = { at: 0, pools: [] };
+async function poolLine() {
+  try {
+    const a = await import("../workers/agents.js");
+    if (Date.now() - ready.at > 30_000) {
+      // the pane outlives `ekip mesai on/off` and `ekip agents test`: pick up their settings
+      try { const cfg = JSON.parse(fs.readFileSync(path.join(HOME, "config.json"), "utf8")); for (const k of ["mesai", "mesaiClaude", "poolConcurrency", "agents", "autoOrder"]) SETTINGS[k] = cfg[k]; } catch { /* keep the old ones */ }
+      ready = { at: Date.now(), pools: [...a.readyPools(), ...(a.poolCapacity("claude") > 0 ? ["claude"] : []), "free"] };
+    }
+    const load = a.poolLoad();
+    const part = (n) => { const l = load[n] ?? { running: 0, capacity: a.poolCapacity(n) }; const s = `${n} ${l.running}/${l.capacity}`; return l.running >= l.capacity ? c.yellow(s) : l.running ? c.cyan(s) : c.gray(s); };
+    return fit(`  ${c.gray(`${tr("havuzlar")}${SETTINGS.mesai ? ` (${tr("mesai")})` : ""}:`)} ${ready.pools.map(part).join(c.gray(" · "))}`);
+  } catch { return ""; }
+}
+
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks/tasks.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
+const CODE = ["tasks/tasks.js", "workers/agents.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
@@ -286,10 +304,11 @@ export async function main([sub = "ls", ...args]) {
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
       const runs = watching ? recentRuns() : [];
       const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";
-      let out = `${mark()}  ${c.gray(tr("görevler"))}\n\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
+      const pools = watching ? await poolLine() : "";
+      let out = `${mark()}  ${c.gray(tr("görevler"))}\n${pools ? `${pools}\n` : ""}\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
       // too tall for the pane: every task in two lines, so none is cut off below the edge
       if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
-        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${list.map(renderCompact).join("\n")}\n`;
+        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${pools ? `${pools}\n` : ""}${list.map(renderCompact).join("\n")}\n`;
       if (watching) {
         const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
         const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));

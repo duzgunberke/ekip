@@ -12,7 +12,8 @@ run() {
   if grep -Eqi 'Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError' <<<"$out"; then return 1; fi
   return "$status"
 }
-for cmd in help version agents tasks; do echo "== $cmd =="; run plugin/bin/ekip.js "$cmd"; done
+echo '== pool capacity test =='; node plugin/lib/workers/agents.test.mjs
+for cmd in help version agents tasks 'mesai status'; do echo "== $cmd =="; run plugin/bin/ekip.js $cmd; done
 printf '%s\n' '== task lifecycle =='
 out=$(node plugin/bin/ekip.js task new smoke --steps 'a; b' 2>&1); printf '%s\n' "$out"; [[ ! "$out" =~ (Cannot\ find\ module|ERR_MODULE_NOT_FOUND|SyntaxError) ]]
 id=$(head -1 <<<"$out" | tr -d '\r')

@@ -15,7 +15,7 @@ import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core/core.js";
-import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/workers/agents.js";
+import { AGENTS, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
 import { main as vpsMain } from "../lib/hub/vps.js";
@@ -501,6 +501,8 @@ async function runOneInner(o, via, id) {
   let last = null;
   for (const v of order) {
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
+    // which pool this run is on, so other `--via auto` runs see it as busy
+    fs.appendFileSync(logFile, poolMark(v));
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
     if (!failed(last)) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
@@ -602,6 +604,17 @@ async function run(args) {
   }
   process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
   return results.some((r) => r.ok) ? 0 : 1;
+}
+
+// ekip mesai on|off|status (lib/workers/mesai.js); `ekip mesai all "task"` races the task on every
+// ready pool with a free slot, each in its own worktree like --via a,b,c.
+async function mesai(args) {
+  if (args[0] !== "all") return (await (await import("../lib/workers/mesai.js")).main(args)) ?? 0;
+  const { freePools } = await import("../lib/workers/agents.js");
+  const pools = freePools();
+  if (!pools.length) die(t("boş kapasiteli havuz yok (ekip mesai status)"));
+  say(`${t("mesai all:")} ${pools.map((x) => c.cyan(x, process.stderr)).join(", ")}`);
+  return run(["--via", pools.join(","), ...(pools.length === 1 ? ["--worktree"] : []), ...args.slice(1)]);
 }
 
 function clean([short]) {
@@ -912,6 +925,19 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
   terminal windows; message them with hoptell send_message.
 `;
 
+// Added to the lead's prompt while mesai modu is on (`ekip mesai on`).
+const MESAI_PROMPT = () => `
+## Mesai modu (work shift) is on
+The user wants every ready pool busy at once. \`ekip mesai status\` shows each pool's running/capacity.
+- Split each request into as many independent, well-scoped parts as the free capacity allows (no two
+  parts on the same files), and dispatch them all at once: \`ekip run --via auto\` in the background
+  (Bash run_in_background). auto skips pools that are full or out of quota, so parallel runs spread out.
+- Race uncertain or quality-critical parts (\`--via a,b\`), or run one task on every free pool with
+  \`ekip mesai all "<task>"\`; compare the branches and merge the best.
+- When a worker finishes, review it and dispatch the next part at once, so no pool sits idle.
+- Keep your own Claude for planning, integration and review only; do not do the parts yourself.${SETTINGS.mesaiClaude ? "\n- The headless claude pool is included as one more worker (capacity 1); use it like the others." : ""}
+`;
+
 const MEMBER_PROMPT = `# ekip team member
 You are a long-running worker in an ekip team. Other agents send you tasks over hoptell. When the
 inbox notice appears, read your inbox, do each task completely and autonomously, and reply to the
@@ -943,7 +969,7 @@ async function lead(args) {
   // otherwise ("subagentModel" in data/config.json; "inherit" keeps the lead's model).
   const sub = SETTINGS.subagentModel ?? "sonnet";
   if (!free && sub !== "inherit" && !env.CLAUDE_CODE_SUBAGENT_MODEL) env.CLAUDE_CODE_SUBAGENT_MODEL = sub;
-  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT, ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
+  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : ""), ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
@@ -1349,18 +1375,20 @@ async function status() {
   const free = await healthy();
   const counts = free ? keyCounts() : [];
   const mem = await tdaiUp();
-  console.log(title(t("Havuzlar")));
+  const load = poolLoad();
+  const busy = (n) => c.gray(` · ${load[n].running}/${load[n].capacity}`);
+  console.log(title(`${t("Havuzlar")}${SETTINGS.mesai ? c.gray(` · ${t("mesai modu açık")}`) : ""}`));
   console.log(rows([
-    [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} ${t("sağlayıcı")} ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}` : c.red(t("kapalı (ekip up)"))],
+    [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} ${t("sağlayıcı")} ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}${busy("free")}` : c.red(t("kapalı (ekip up)"))],
     ...Object.entries(AGENTS).filter(([, a]) => !a.hidden?.()).map(([n, a]) => {
       const st = SETTINGS.agents?.[n];
       const state = !has(a.bin) ? "off" : st?.ok ? "ok" : st ? "bad" : "warn";
       const label = !has(a.bin) ? c.gray(t("kurulu değil")) : st?.ok ? c.green(t("hazır")) : st ? c.red(a.login ? `${t("giriş gerekiyor")} → ekip agents login ${n}` : t("çalışmıyor → ekip agents test")) : c.yellow(t("denenmedi"));
-      return [`${dot(state)} ${n}`, `${label} ${c.gray(t(a.quota))}`];
+      return [`${dot(state)} ${n}`, `${label}${st?.ok && has(a.bin) ? busy(n) : ""} ${c.gray(t(a.quota))}`];
     }),
-    [`${dot("ok")} claude`, `${c.green(t("hazır"))} ${c.gray(t("aboneliğin (lead)"))}`],
+    [`${dot("ok")} claude`, `${c.green(t("hazır"))}${load.claude.capacity ? busy("claude") : ""} ${c.gray(t("aboneliğin (lead)"))}`],
   ]));
-  console.log(fit(`  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
+  console.log(fit(`  ${c.gray(t("auto sırası:"))} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
 
   console.log(title(t("Hafıza ve hub")));
   console.log(rows([
@@ -1400,6 +1428,7 @@ ${c.bold("Workers")}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} review changes
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
+  ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "task"')} work shift: keep every ready pool busy
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        open a live pane on any log
   ${c.cyan("ekip show")} ${c.gray("<log...>")}           open a live pane on any log
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
@@ -1439,6 +1468,7 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} ${t("değişiklikleri denetle")}
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
+  ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "iş"')} mesai modu: tüm hazır havuzlar aynı anda çalışsın
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        logları canlı izleyen panel aç
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
@@ -1501,6 +1531,7 @@ switch (cmd) {
   case "run": code = await run(rest); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
   case "review": code = await (await import("../lib/review/review.js")).main(rest); break;
   case "clean": clean(rest); break;
+  case "mesai": code = await mesai(rest); if (rest[0] === "all") await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
   case "watch": await watch(rest); break;
   case "update": code = (await import("../lib/ops/update.js")).update(); break;
   case "version": { const u = (await import("../lib/ops/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (yeni sürüm ${u.latest}: ekip update)` : u.latest ? "  (güncel)" : ""}`); break; }

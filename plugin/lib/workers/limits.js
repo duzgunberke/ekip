@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AGENTS, autoOrder, lastQuotaHit, poolScore } from "./agents.js";
+import { AGENTS, autoOrder, lastQuotaHit, poolLoad, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
 import { HOME, REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "../core/core.js";
 import { c, dot, title, fit } from "../core/ui.js";
@@ -16,13 +16,15 @@ const state = () => SETTINGS.agents ?? {};
 
 export function workerPools() {
   const st = state();
+  const load = poolLoad();
   return Object.entries(AGENTS).filter(([, a]) => !a.hidden?.()).map(([name, a]) => {
     const installed = has(a.bin);
     const s = st[name];
     const quota = installed ? lastQuotaHit(name) : null;
     const sc = poolScore(name);
     const status = !installed ? "off" : quota ? "limited" : s?.ok ? "ready" : s ? "login" : "untested";
-    return { name, quota: a.quota, status, limit: quota, runs: sc.runs, successRate: sc.runs ? Math.round(sc.rate * 100) : null, cooling: !!sc.cooling };
+    return { name, quota: a.quota, status, limit: quota, runs: sc.runs, successRate: sc.runs ? Math.round(sc.rate * 100) : null, cooling: !!sc.cooling,
+      running: load[name].running, capacity: load[name].capacity };
   });
 }
 
@@ -84,7 +86,9 @@ export async function snapshot() {
   const rs = routingState();
   const free = await freePool(rs).catch((e) => ({ error: e.message }));
   const route = routing(workers, rs);
-  return { at: new Date().toISOString(), host: os.hostname(), workers, free, route };
+  // running/capacity of the pools outside the worker list too (free pool, headless claude)
+  const load = poolLoad();
+  return { at: new Date().toISOString(), host: os.hostname(), workers, free, route, mesai: !!SETTINGS.mesai, load: { free: load.free, claude: load.claude } };
 }
 
 export async function push(s) {
@@ -101,7 +105,8 @@ export function render(s, args = []) {
     const tone = w.status === "ready" ? "ok" : w.status === "limited" ? "bad" : w.status === "off" ? "off" : "warn";
     const lim = w.limit ? c.gray(` · ${w.limit.resetAt ? `${t("resets in")} ${ago(w.limit.resetAt)}` : w.limit.message}`) : "";
     const perf = w.runs ? c.gray(` · ${w.runs} ${t("runs")}, ${w.successRate}% ${t("success rate")}`) : "";
-    console.log(fit(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status]}${lim}${perf}  ${c.gray(t(w.quota))}`));
+    const busy = w.capacity != null && w.status === "ready" ? c.gray(` · ${w.running}/${w.capacity} ${t("çalışıyor")}`) : "";
+    console.log(fit(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status]}${busy}${lim}${perf}  ${c.gray(t(w.quota))}`));
   }
   console.log(title(t("Ücretsiz havuz (freellmapi)")));
   if (s.free.error) console.log(`  ${dot("bad")} ${c.red(s.free.error)}`);
