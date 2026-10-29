@@ -89,11 +89,20 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
               <ul className='grid gap-1.5'>
                 {workers.map((w, i) => (
                   <li key={w.runId ?? i} className='flex items-center gap-2.5 rounded-lg bg-muted/35 px-2.5 py-2'>
-                    <ProviderLogo id={w.via ?? 'unknown'} modelId={w.model} className='size-4 shrink-0' />
+                    <ProviderLogo id={w.via ?? 'unknown'} className='size-4 shrink-0' />
                     <div className='min-w-0 flex-1'>
                       <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? translate('ajan')}</p>
-                      <p className='text-xs text-muted-foreground' title={w.model ?? undefined}>
-                        {[w.via && translate(w.via), w.model && `${translate('via')} · ${w.model}`, w.status && translate(WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
+                      {/* pool, then the model it ran with (its own logo), then the state */}
+                      <p className='flex min-w-0 items-center gap-1 text-xs text-muted-foreground' title={w.model ?? undefined}>
+                        {w.via && <span>{translate(w.via)}</span>}
+                        {w.model && (
+                          <>
+                            <span>·</span>
+                            <ProviderLogo id={w.via ?? 'unknown'} modelId={w.model} className='size-3 shrink-0' />
+                            <span className='truncate'>{w.model.split('/').pop()}</span>
+                          </>
+                        )}
+                        {w.status && <span className='shrink-0'>· {translate(WORKER_STATUS[w.status] ?? w.status)}</span>}
                       </p>
                     </div>
                     {w.runId && <RunLogButton id={w.runId} failed={w.status === 'failed'} />}
