@@ -84,8 +84,15 @@ export const knowledgeTool = (knowledgeId, tool, params = {}) =>
 // ---- identity: admin user and its team (discovered, cached per process) ------------------------
 
 let ident = null;
+// Hooks start a new process for every message; asking the server who we are each time cost two
+// round trips through the tunnel before any search. The answer is kept on disk for a day.
+const IDENT_FILE = path.join(STATE_DIR, "identity.json");
 export async function identity() {
   if (ident) return ident;
+  try {
+    const c = JSON.parse(fs.readFileSync(IDENT_FILE, "utf8"));
+    if (c.userId && c.teamId && Date.now() - c.at < 86400_000 && c.key === key().slice(-8)) return (ident = { userId: c.userId, teamId: c.teamId });
+  } catch { /* none yet */ }
   const v = await post(`${CORE}/v3/meta/auth/verify`, { user_key: key() });
   const userId = v?.user?.user_id ?? v?.user_id;
   if (!userId) throw new Error("auth/verify returned no user");
@@ -93,6 +100,7 @@ export async function identity() {
   const team = teams.find((t) => t.team_id === SETTINGS.tdaiTeamId) ?? teams.find((t) => t.name === "default-team") ?? teams[0];
   if (!team) throw new Error("admin user has no team");
   ident = { userId, teamId: team.team_id };
+  try { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.writeFileSync(IDENT_FILE, JSON.stringify({ ...ident, key: key().slice(-8), at: Date.now() })); } catch { /* cache only */ }
   return ident;
 }
 

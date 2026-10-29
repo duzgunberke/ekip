@@ -76,7 +76,9 @@ export async function main() {
   if (!hits.length) return;
   const parts = await Promise.all(hits.map(async ({ p, by }) => {
     const [memoriesT, skillsT, wikiT] = await Promise.all([
-      timed(withTimeout(mem.recall(p, prompt, 8, { timeoutMs: BUDGET_MS - 800, factsOnly: by !== "general" }).catch(() => []), BUDGET_MS - 300)),
+      // facts only: the raw conversation search scans tens of thousands of vectors and did not fit
+      // the per-message budget for the general space; workers and memory_search still use it
+      timed(withTimeout(mem.recall(p, prompt.slice(0, 1000), 8, { timeoutMs: BUDGET_MS - 800, factsOnly: true }).catch(() => []), BUDGET_MS - 300)),
       timed(withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300)),
       p.tdai?.wikiId ? timed(withTimeout(mem.knowledgeTool(p.tdai.wikiId, "search", { query: prompt.slice(0, 300), limit: 3 }).catch(() => null), BUDGET_MS - 300)) : null,
     ]);
