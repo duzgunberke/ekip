@@ -1,5 +1,5 @@
 // Project skill lifecycle: usage capture, run-history clustering and candidate management.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { HOME, REPO, RUNS, SETTINGS } from "./core.js";
@@ -63,11 +63,21 @@ function filenameAt(file, mtime) {
   return m ? new Date(m[1].replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z")).toISOString() : mtime.toISOString();
 }
 
+// The registered project a run belongs to. A run in a git worktree (often a sibling folder) counts
+// for the repo it was made from; a folder that is not a registered project is not learned from.
+// ekip's own housekeeping (project cards, review profiles and reviewers, this learner) runs as
+// workers too; it is not the user's work and must never become a project skill.
+const INTERNAL_LABEL = /^(skill-learn|review-profile|review-\d+)$/;
+const INTERNAL_BRIEF = /^(You classify repeated project work into Claude Code skills|Create a Markdown review profile|Read-only code review for |Write a concise PROJECT CARD)|final answer must be ONLY the card markdown/;
+const internal = (label, brief) => INTERNAL_LABEL.test(label ?? "") || INTERNAL_BRIEF.test(brief ?? "");
+
 function projectFor(cwd, named) {
-  if (named && named !== "-") return getProject(named) ?? { name: named, path: cwd };
+  if (named && named !== "-") return getProject(named) ?? null;
+  const inside = (abs) => listProjects().filter((p) => abs === p.path || abs.startsWith(`${p.path}${path.sep}`)).sort((a, b) => b.path.length - a.path.length)[0];
   const abs = path.resolve(cwd || ".");
-  return listProjects().filter((p) => abs === p.path || abs.startsWith(`${p.path}${path.sep}`)).sort((a, b) => b.path.length - a.path.length)[0]
-    ?? { name: path.basename(abs), path: abs };
+  if (inside(abs)) return inside(abs);
+  const common = spawnSync("git", ["-C", abs, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" }).stdout?.trim();
+  return common ? inside(path.dirname(common)) ?? null : null;
 }
 
 function readRunLogs() {
@@ -83,9 +93,10 @@ function readRunLogs() {
     const named = head.match(/^project: (.*)$/m)?.[1]?.trim();
     const task = head.match(/^task:\r?\n([\s\S]*?)(?=\r?\n\r?\n(?:\$ |▸ |\[exit)|$)/m)?.[1] ?? "";
     const label = head.match(/^label: (.*)$/m)?.[1]?.trim();
-    if (label?.startsWith("skill-learn") || task.startsWith("You classify repeated project work into Claude Code skills.")) continue;
+    if (internal(label, task)) continue;
     if (!task.trim()) continue;
     const project = projectFor(cwd, named);
+    if (!project) continue;
     const id = f.slice(0, -4);
     const at = filenameAt(file, fs.statSync(file).mtime);
     const report = text.slice(Math.max(0, text.length - 5000)).replace(/\n\[exit[\s\S]*$/, "").trim().slice(-1600);
@@ -100,12 +111,12 @@ function allRuns() {
   for (const line of safeRead(USAGE).split("\n")) {
     let item;
     try { item = JSON.parse(line); } catch { continue; }
-    if (item.kind !== "run" || !item.runId || item.label?.startsWith("skill-learn") || String(item.brief ?? "").startsWith("You classify repeated project work into Claude Code skills.")) continue;
+    if (item.kind !== "run" || !item.runId || internal(item.label, item.brief)) continue;
     const previous = byId.get(item.runId) ?? {};
     byId.set(item.runId, { ...previous, ...item, project: item.project ?? previous.project,
       projectPath: previous.projectPath ?? getProject(item.project)?.path ?? previous.cwd, report: previous.report ?? "", source: previous.source ?? "usage" });
   }
-  return [...byId.values()].filter((r) => r.project && r.brief).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  return [...byId.values()].filter((r) => r.project && getProject(r.project) && r.brief).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
 function clustersFor(runs) {
@@ -332,7 +343,8 @@ export async function learn(args = []) {
       catch { seeds = related; /* TencentDB is an optional seed source */ }
     }
     let worker = null;
-    if (project.path && fs.existsSync(project.path) && clusters.length) {
+    // the model only refines clusters that could reach the threshold; a dry run never calls it
+    if (!dryRun && projectRuns.length >= MIN_RUNS && project.path && fs.existsSync(project.path) && clusters.length) {
       worker = await askWorker(project, workerPrompt(project, clusters, { dryRun, seeds, local }));
     }
     const mapped = refineClusters(worker?.ok ? worker : null, clusters).map((cl) => {
