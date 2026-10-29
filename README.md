@@ -58,20 +58,9 @@ everything you decided before.
 ## Memory that follows your message
 
 Open Claude in any folder and mention a project, even with a typo. ekip finds it, searches that
-project's memory for your message and adds what matters, in about a second. A real example, with the
-project and details renamed:
+project's memory for your message and adds what matters, in about a second.
 
-```text
-you › the paywall on ios-ap still says "Free plan" twice for premium users
-
-ekip project memory for this message
-## ios-app (matched "ios-ap")
-Known facts and decisions:
-- On Android 14 the account screen shows "Free plan" twice while the user is premium; signing out and in fixes it.
-- Paywall state is read from the cached customer info before the purchase listener fires.
-- The A/B test serves two paywall variants from remote config; variant B hides the restore button.
-Project skills: paywall-ab-test-rollout, storekit-sandbox-validation, entitlement-cache-refresh
-```
+<p align="center"><img src="docs/assets/memory-follows.svg" alt="You write about ios-ap with a typo; ekip finds the ios-app project, searches its memory in about a second and adds the relevant facts and skills to Claude's context" width="100%"></p>
 
 How memory works and why vectors matter, in depth: [docs/memory.md](docs/memory.md) and the author's
 2023 article [Vektörel Database nedir, ne işe yarar?](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac) (in Turkish).

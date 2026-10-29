@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" role="img" aria-label="Memory that follows your message: you write about ios-ap with a typo; ekip matches the ios-app project, searches its memory in about a second, and adds the relevant facts and skills to Claude's context.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB45C"/><stop offset="1" stop-color="#F07B3F"/></linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 10 5 0 10z" fill="#5EEAD4"/></marker>
+  </defs>
+  <style>.t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.m{font-family:ui-monospace,'SF Mono',Menlo,monospace}.h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}.k{fill:#CCFBF1}</style>
+  <rect width="1200" height="560" rx="24" fill="url(#bg)"/>
+
+  <!-- 1. you -->
+  <g class="t">
+    <text x="48" y="58" class="s" font-size="13" letter-spacing="1.5">1 · YOU WRITE</text>
+    <rect x="48" y="74" width="1104" height="70" rx="16" fill="#1A1E27" stroke="#2A303B"/>
+    <path d="M74 98 84 109 74 120" fill="none" stroke="url(#lead)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="100" y="116" class="m" font-size="19" fill="#ECEEF2">the paywall on <tspan fill="#FFA95E" text-decoration="underline">ios-ap</tspan> still says "Free plan" twice for premium users</text>
+  </g>
+
+  <!-- 2. ekip -->
+  <g class="t">
+    <text x="48" y="192" class="s" font-size="13" letter-spacing="1.5">2 · EKIP, BEFORE CLAUDE SEES THE MESSAGE</text>
+    <g font-size="15">
+      <rect x="48" y="206" width="340" height="56" rx="12" fill="#10302B" stroke="#1F5D55"/>
+      <text x="70" y="240" class="k">finds the project: <tspan font-weight="700">ios-app</tspan></text>
+      <rect x="430" y="206" width="340" height="56" rx="12" fill="#10302B" stroke="#1F5D55"/>
+      <text x="452" y="240" class="k">searches its memory for this message</text>
+      <rect x="812" y="206" width="340" height="56" rx="12" fill="#10302B" stroke="#1F5D55"/>
+      <text x="834" y="240" class="k">in about <tspan font-weight="700">1 second</tspan>, from any folder</text>
+    </g>
+    <path d="M390 234 H426" stroke="#5EEAD4" stroke-width="2.5" marker-end="url(#arr)"/>
+    <path d="M772 234 H808" stroke="#5EEAD4" stroke-width="2.5" marker-end="url(#arr)"/>
+    <text x="70" y="282" class="s" font-size="13">typo-tolerant: names, repo names, else the folder's project</text>
+  </g>
+
+  <!-- 3. context -->
+  <g class="t">
+    <text x="48" y="324" class="s" font-size="13" letter-spacing="1.5">3 · ADDED TO CLAUDE'S CONTEXT</text>
+    <rect x="48" y="338" width="1104" height="190" rx="16" fill="#15181E" stroke="#2DD4BF" stroke-opacity=".55"/>
+    <text x="74" y="372" class="h" font-size="16">Known facts and decisions</text>
+    <g font-size="15" fill="#D6DAE1">
+      <circle cx="80" cy="398" r="3.5" fill="#5EEAD4"/><text x="94" y="403">On Android 14 the account screen shows "Free plan" twice while the user is premium; signing out and in fixes it.</text>
+      <circle cx="80" cy="426" r="3.5" fill="#5EEAD4"/><text x="94" y="431">Paywall state is read from the cached customer info before the purchase listener fires.</text>
+      <circle cx="80" cy="454" r="3.5" fill="#5EEAD4"/><text x="94" y="459">The A/B test serves two paywall variants from remote config; variant B hides the restore button.</text>
+    </g>
+    <text x="74" y="500" class="h" font-size="16">Skills</text>
+    <g class="m" font-size="13">
+      <rect x="132" y="482" width="210" height="28" rx="8" fill="#10302B"/><text x="237" y="501" text-anchor="middle" fill="#CCFBF1">paywall-ab-test-rollout</text>
+      <rect x="352" y="482" width="252" height="28" rx="8" fill="#10302B"/><text x="478" y="501" text-anchor="middle" fill="#CCFBF1">storekit-sandbox-validation</text>
+      <rect x="614" y="482" width="232" height="28" rx="8" fill="#10302B"/><text x="730" y="501" text-anchor="middle" fill="#CCFBF1">entitlement-cache-refresh</text>
+    </g>
+  </g>
+  <text x="1152" y="548" text-anchor="end" class="t s" font-size="12">a real example, project and details renamed</text>
+</svg>

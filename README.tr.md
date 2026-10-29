@@ -48,19 +48,9 @@ Sıfırdan başlamazsınız. ekip bir projeyi kaydettiğinde o projeye ait **esk
 
 ## Mesajınızla birlikte gelen bellek
 
-Herhangi bir klasörde Claude'u açıp bir projeden söz edin, yazım hatası olsa bile ekip projeyi bulur, mesajınız için o projenin belleğinde arama yapar ve gerekli bilgileri yaklaşık bir saniyede ekler. Proje ve ayrıntıların değiştirildiği gerçek bir örnek:
+Herhangi bir klasörde Claude'u açıp bir projeden söz edin, yazım hatası olsa bile ekip projeyi bulur, mesajınız için o projenin belleğinde arama yapar ve gerekli bilgileri yaklaşık bir saniyede ekler.
 
-```text
-sen › ios-ap'teki paywall, premium kullanıcılar için hâlâ iki kez "Free plan" gösteriyor
-
-ekip project memory for this message
-## ios-app (matched "ios-ap")
-Known facts and decisions:
-- On Android 14 the account screen shows "Free plan" twice while the user is premium; signing out and in fixes it.
-- Paywall state is read from the cached customer info before the purchase listener fires.
-- The A/B test serves two paywall variants from remote config; variant B hides the restore button.
-Project skills: paywall-ab-test-rollout, storekit-sandbox-validation, entitlement-cache-refresh
-```
+<p align="center"><img src="docs/assets/memory-follows.svg" alt="ios-ap diye yazım hatasıyla yazıyorsun; ekip ios-app projesini buluyor, belleğinde yaklaşık bir saniyede arıyor ve ilgili bilgileri ve skill'leri Claude'un bağlamına ekliyor" width="100%"></p>
 
 Belleğin nasıl çalıştığını ve vektörlerin neden önemli olduğunu ayrıntılı öğrenmek için: [docs/memory.md](docs/memory.md) ve yazarın 2023 tarihli [Vektörel Database nedir, ne işe yarar?](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac) yazısı.
 
