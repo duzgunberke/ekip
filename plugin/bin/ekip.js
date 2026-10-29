@@ -1067,6 +1067,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
   ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
   ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
+  ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
 
 ${c.bold("İşçiler")}
@@ -1108,7 +1109,10 @@ switch (cmd) {
     else die("usage: ekip skill ls|search|show <project> [query|name]");
     break;
   }
-  case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest); break;
+  case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest);
+    // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd)
+    await (await import("../lib/limits.js")).push().catch(() => {}); break;
+  case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
