@@ -1004,6 +1004,12 @@ async function init({ skipKeys = false } = {}) {
   saveSettings({ freellmapiNode: oldNode });
   console.log(`ok (freellmapi node: ${oldNode}; agy: ${has("agy") ? "found" : "not found, optional"})`);
 
+  // Global npm installs (worker CLIs, codegraph, hoptell) need a writable prefix. With a system node
+  // that is root-owned; point npm at ~/.local instead, whose bin/ is on PATH after the next step.
+  const prefix = spawnSync("npm", ["config", "get", "prefix"], { encoding: "utf8" }).stdout.trim();
+  try { fs.accessSync(path.join(prefix, "lib"), fs.constants.W_OK); }
+  catch { sh("npm", ["config", "set", "prefix", path.join(os.homedir(), ".local")]); console.log(`npm global installs go to ~/.local (${prefix} is not writable)`); }
+
   step(2, "ekip on PATH");
   const link = path.join(os.homedir(), ".local/bin/ekip");
   fs.mkdirSync(path.dirname(link), { recursive: true });
