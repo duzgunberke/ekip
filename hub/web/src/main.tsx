@@ -12,8 +12,7 @@ import { ApiError, errorMessage, isUnauthorized } from '@/lib/api'
 import { ThemeProvider } from './context/theme-provider'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
-// Styles (self-hosted font; sonner's CSS is shipped as a file, see vite.config.ts)
-import '@fontsource-variable/inter'
+// Sonner's CSS is shipped as a file, see vite.config.ts.
 import 'sonner/dist/styles.css'
 import './styles/index.css'
 

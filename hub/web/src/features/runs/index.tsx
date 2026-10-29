@@ -73,21 +73,21 @@ const columns: ColumnDef<Run>[] = [
   },
   {
     id: 'project',
-    accessorFn: (r) => r.project ?? '—',
+    accessorFn: (r) => r.project ?? 'Yok',
     header: ({ column }) => <DataTableColumnHeader column={column} title='Proje' />,
     filterFn: inList,
     meta: { className: 'hidden sm:table-cell' },
   },
   {
     id: 'via',
-    accessorFn: (r) => r.via ?? '—',
+    accessorFn: (r) => r.via ?? 'Yok',
     header: ({ column }) => <DataTableColumnHeader column={column} title='Yol' />,
     cell: ({ getValue }) => <span className='text-muted-foreground'>{getValue<string>()}</span>,
     meta: { className: 'hidden md:table-cell' },
   },
   {
     id: 'host',
-    accessorFn: (r) => r.host ?? '—',
+    accessorFn: (r) => r.host ?? 'Yok',
     header: ({ column }) => <DataTableColumnHeader column={column} title='Makine' />,
     cell: ({ getValue }) => <span className='font-mono text-xs text-muted-foreground'>{getValue<string>()}</span>,
     meta: { className: 'hidden lg:table-cell' },
@@ -118,7 +118,7 @@ export function Runs() {
   const data = useMemo(() => runs.data ?? [], [runs.data])
 
   const projectOptions = useMemo(
-    () => [...new Set(data.map((r) => r.project ?? '—'))].sort().map((p) => ({ label: p, value: p })),
+    () => [...new Set(data.map((r) => r.project ?? 'Yok'))].sort().map((p) => ({ label: p, value: p })),
     [data]
   )
 
@@ -198,23 +198,23 @@ function RunDetail({ run: r }: { run: Run }) {
     <div className='grid gap-4 px-4 py-4 sm:px-6 lg:grid-cols-5'>
       <section className='lg:col-span-2'>
         <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Görev</h3>
-        <pre className='max-h-80 overflow-auto rounded-md border bg-background p-3 font-sans text-sm whitespace-pre-wrap'>
-          {r.task || '—'}
+        <pre className='max-h-80 overflow-auto rounded-md bg-muted/40 p-3 font-sans text-sm whitespace-pre-wrap'>
+          {r.task || 'Yok'}
         </pre>
         <dl className='mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs'>
           <dt className='text-muted-foreground'>Proje</dt>
-          <dd>{r.project ?? '—'}</dd>
+          <dd>{r.project ?? 'Yok'}</dd>
           <dt className='text-muted-foreground'>Yol</dt>
-          <dd>{r.via ?? '—'}</dd>
+          <dd>{r.via ?? 'Yok'}</dd>
           <dt className='text-muted-foreground'>Makine</dt>
-          <dd className='font-mono'>{r.host ?? '—'}</dd>
+          <dd className='font-mono'>{r.host ?? 'Yok'}</dd>
           <dt className='text-muted-foreground'>Durum (ham)</dt>
-          <dd className='font-mono'>{r.status ?? '—'}</dd>
+          <dd className='font-mono'>{r.status ?? 'Yok'}</dd>
         </dl>
       </section>
       <section className='min-w-0 lg:col-span-3'>
         <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Rapor</h3>
-        <div className='max-h-[28rem] overflow-auto rounded-md border bg-background p-4'>
+        <div className='max-h-[28rem] overflow-auto rounded-md bg-muted/40 p-4'>
           {r.report?.trim() ? <Md>{r.report}</Md> : <p className='text-sm text-muted-foreground'>Rapor yok.</p>}
         </div>
       </section>

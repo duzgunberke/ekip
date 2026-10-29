@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-label="ekip: one terminal, one Claude, a whole team">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#151820"/>
+      <stop offset="1" stop-color="#0B0D11"/>
+    </linearGradient>
+    <radialGradient id="glowL" cx="0.22" cy="0.5" r="0.45">
+      <stop offset="0" stop-color="#F07B3F" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#F07B3F" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowR" cx="0.86" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2DD4BF" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB45C"/>
+      <stop offset="1" stop-color="#F07B3F"/>
+    </linearGradient>
+    <linearGradient id="team" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F07B3F" stop-opacity=".55"/>
+      <stop offset=".35" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#2DD4BF"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.1" fill="#ffffff" fill-opacity=".05"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="400" rx="28" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="28" fill="url(#dots)"/>
+  <rect width="1280" height="400" rx="28" fill="url(#glowL)"/>
+  <rect width="1280" height="400" rx="28" fill="url(#glowR)"/>
+  <rect x="1" y="1" width="1278" height="398" rx="27" fill="none" stroke="#fff" stroke-opacity=".07" stroke-width="2"/>
+
+  <!-- the idea, drawn large: one prompt fans out to a team -->
+  <g transform="translate(96 72)">
+    <path d="M0 40 L96 128 L0 216" fill="none" stroke="url(#lead)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="none" stroke="url(#team)" stroke-width="10" stroke-linecap="round">
+      <path d="M128 128 C200 128 214 34 300 34"/>
+      <path d="M128 128 C200 128 214 96 300 96"/>
+      <path d="M128 128 C200 128 214 160 300 160"/>
+      <path d="M128 128 C200 128 214 222 300 222"/>
+    </g>
+    <g fill="#5EEAD4">
+      <circle cx="318" cy="34" r="15"/>
+      <circle cx="318" cy="96" r="15"/>
+      <circle cx="318" cy="160" r="15"/>
+      <circle cx="318" cy="222" r="15"/>
+    </g>
+  </g>
+
+  <g font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="540" y="186" font-size="112" font-weight="800" letter-spacing="-5" fill="#F3F4F6">ekip</text>
+    <text x="544" y="246" font-size="34" font-weight="600" letter-spacing="-.6" fill="#E5E7EB">One terminal, one Claude, <tspan fill="#5EEAD4">a whole team.</tspan></text>
+    <text x="545" y="292" font-size="20" font-weight="500" fill="#8B93A3">Claude decides. Agents on other quotas do the work.</text>
+  </g>
+</svg>

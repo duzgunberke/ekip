@@ -13,7 +13,7 @@
   }
   html {
     @apply overflow-x-hidden;
-    font-feature-settings: 'cv11', 'ss01';
+    font-feature-settings: 'ss01';
     -webkit-font-smoothing: antialiased;
   }
   body {
@@ -31,6 +31,19 @@
     cursor: pointer;
   }
 
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  button:not(:disabled):active,
+  [role='button']:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
   /* Prevent focus zoom on mobile devices */
   @media screen and (max-width: 767px) {
     input,
@@ -38,6 +51,21 @@
     textarea {
       font-size: 16px !important;
     }
+  }
+}
+
+[data-slot='card'] {
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

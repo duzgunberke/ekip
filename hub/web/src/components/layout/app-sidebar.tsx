@@ -37,20 +37,18 @@ export function AppSidebar() {
   }))
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
+    <Sidebar collapsible={collapsible} variant={variant} className='border-sidebar-border/70'>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size='lg' asChild tooltip='ekip hub'>
+            <SidebarMenuButton size='lg' asChild tooltip='ekip'>
               <Link to='/' onClick={() => setOpenMobile(false)}>
-                <span className='flex size-8 shrink-0 items-center justify-center'>
-                  <Logo className='size-8! rounded-lg' />
+                <span className='flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary'>
+                  <Logo className='size-7' />
                 </span>
                 <div className='grid flex-1 text-start text-sm leading-tight'>
-                  <span className='truncate font-semibold'>ekip hub</span>
-                  <span className='truncate text-xs text-muted-foreground'>
-                    iş koşucu ve kontrol paneli
-                  </span>
+                  <span className='truncate text-base font-semibold tracking-tight'>ekip</span>
+                  <span className='truncate text-xs text-muted-foreground'>iş kontrol paneli</span>
                 </div>
               </Link>
             </SidebarMenuButton>

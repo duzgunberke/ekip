@@ -13,7 +13,7 @@ export function Main({ fixed, className, fluid, ...props }: MainProps) {
       tabIndex={-1}
       data-layout={fixed ? 'fixed' : 'auto'}
       className={cn(
-        'px-4 py-6 outline-none',
+        'min-w-0 px-4 pt-6 pb-10 outline-none sm:px-6 sm:pt-8 sm:pb-12',
 
         // If layout is fixed, make the main container flex and grow
         fixed && 'flex grow flex-col overflow-hidden',

@@ -262,7 +262,7 @@ function RepoNodeView({ data, id, onToggle }: NodeProps<Node<RepoData>> & { onTo
         <div className='flex items-center gap-3 text-xs text-muted-foreground'>
           <span className='flex min-w-0 items-center gap-1'>
             <GitBranch className='size-3 shrink-0' aria-hidden='true' />
-            <span className='truncate font-mono'>{r.defaultBranch ?? '—'}</span>
+            <span className='truncate font-mono'>{r.defaultBranch ?? 'Yok'}</span>
             {r.branchCount != null && r.branchCount > 1 && <span>+{r.branchCount - 1}</span>}
           </span>
           <span className='flex items-center gap-1' title='Açık PR'>

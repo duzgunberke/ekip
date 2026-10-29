@@ -2,27 +2,27 @@ import { format, formatDistanceToNowStrict } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
 export function ago(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'Yok'
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
+  if (Number.isNaN(d.getTime())) return 'Yok'
   if (Math.abs(Date.now() - d.getTime()) < 10_000) return 'şimdi'
   return formatDistanceToNowStrict(d, { addSuffix: true, locale: tr })
 }
 
 export function dateTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'Yok'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : format(d, 'd MMM yyyy HH:mm:ss', { locale: tr })
+  return Number.isNaN(d.getTime()) ? 'Yok' : format(d, 'd MMM yyyy HH:mm:ss', { locale: tr })
 }
 
 export function shortTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'Yok'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : format(d, 'd MMM HH:mm', { locale: tr })
+  return Number.isNaN(d.getTime()) ? 'Yok' : format(d, 'd MMM HH:mm', { locale: tr })
 }
 
 export function duration(from: string | null | undefined, to?: string | null): string {
-  if (!from) return '—'
+  if (!from) return 'Yok'
   const s = Math.max(
     0,
     Math.round(((to ? new Date(to).getTime() : Date.now()) - new Date(from).getTime()) / 1000)
@@ -86,7 +86,7 @@ export function span(ms: number): string {
 }
 
 export function clock(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'Yok'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : format(d, 'HH:mm', { locale: tr })
+  return Number.isNaN(d.getTime()) ? 'Yok' : format(d, 'HH:mm', { locale: tr })
 }

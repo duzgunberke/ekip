@@ -47,7 +47,7 @@ export function etaText(t: Task, now: number) {
 }
 
 export const elapsed = (from: string | null | undefined, to: string | null | undefined, now: number) =>
-  from ? span((to ? Date.parse(to) : now) - Date.parse(from)) : '—'
+  from ? span((to ? Date.parse(to) : now) - Date.parse(from)) : 'Yok'
 
 const STEP_ICON = {
   done: { icon: Check, cls: 'bg-status-done/15 text-status-done', label: 'tamamlandı' },

@@ -190,7 +190,7 @@ export function JobDetail() {
                         )}
                       </Row>
                       <Row k='Havuz'>
-                        {j.pool ? (j.pool === 'tdai' ? 'TDAI proxy (hafızalı)' : 'freellmapi (doğrudan)') : '—'}
+                        {j.pool ? (j.pool === 'tdai' ? 'TDAI proxy (hafızalı)' : 'freellmapi (doğrudan)') : 'Yok'}
                       </Row>
                       {j.model && <Row k='Model'><span className='font-mono text-xs'>{j.model}</span></Row>}
                       <Row k='Dal'>
@@ -200,7 +200,7 @@ export function JobDetail() {
                             {j.baseBranch && <span className='text-muted-foreground'>← {j.baseBranch}</span>}
                           </span>
                         ) : (
-                          '—'
+                          'Yok'
                         )}
                       </Row>
                       <Row k='Push'>

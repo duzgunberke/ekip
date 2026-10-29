@@ -375,7 +375,7 @@ function DirDetail({ repo, dir, branch, onSelect }: { repo: RepoMeta; dir: DirNo
       <div className='grid grid-cols-3 gap-2 px-4 pb-4 text-center'>
         <Stat label='dosya' value={dir.count} />
         <Stat label='klasör' value={dir.dirs.length} />
-        <Stat label='sembol' value={dir.symbols || '—'} />
+        <Stat label='sembol' value={dir.symbols || 'Yok'} />
       </div>
       <Section title='Diller'>
         <LangBar items={topLangs(dir.langs, 6)} />

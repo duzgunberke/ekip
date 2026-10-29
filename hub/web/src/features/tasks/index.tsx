@@ -53,13 +53,13 @@ export function Tasks() {
             description="Mac'teki ekip bir isteği işlemeye başladığında ilerlemesi burada canlı görünür."
           />
         ) : (
-          <div className='grid grid-cols-[minmax(0,1fr)] gap-8'>
+          <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8'>
             <section aria-labelledby='active-h' aria-live='polite'>
               <h2 id='active-h' className='sr-only'>
                 Aktif görevler
               </h2>
               {active.length === 0 ? (
-                <div className='rounded-xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground'>
+                <div className='rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-8 text-center text-sm text-muted-foreground'>
                   Şu an çalışan görev yok.
                 </div>
               ) : (

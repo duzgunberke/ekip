@@ -88,7 +88,7 @@ const columns: ColumnDef<Job>[] = [
           <span className='truncate'>{row.original.branch}</span>
         </span>
       ) : (
-        <span className='text-muted-foreground'>—</span>
+        <span className='text-muted-foreground'>Yok</span>
       ),
     meta: { className: 'hidden xl:table-cell' },
   },
@@ -105,7 +105,7 @@ const columns: ColumnDef<Job>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title='Süre' />,
     cell: ({ row }) => (
       <span className='whitespace-nowrap text-muted-foreground tabular-nums'>
-        {row.original.startedAt ? duration(row.original.startedAt, row.original.finishedAt) : '—'}
+        {row.original.startedAt ? duration(row.original.startedAt, row.original.finishedAt) : 'Yok'}
       </span>
     ),
     meta: { className: 'hidden md:table-cell' },

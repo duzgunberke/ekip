@@ -30,8 +30,8 @@ export function DataTableToolbar<TData>({
     table.getState().columnFilters.length > 0 || table.getState().globalFilter
 
   return (
-    <div className='flex items-center justify-between'>
-      <div className='flex flex-1 flex-col-reverse items-stretch gap-y-2 sm:flex-row sm:items-center sm:space-x-2'>
+    <div className='flex min-w-0 flex-wrap items-center justify-between gap-2'>
+      <div className='flex min-w-0 flex-1 flex-col-reverse items-stretch gap-y-2 sm:flex-row sm:items-center sm:space-x-2'>
         {searchKey ? (
           <Input
             placeholder={searchPlaceholder}
@@ -51,7 +51,7 @@ export function DataTableToolbar<TData>({
             className='h-8 w-full sm:w-50 lg:w-62.5'
           />
         )}
-        <div className='flex gap-x-2'>
+        <div className='flex flex-wrap gap-2'>
           {filters.map((filter) => {
             const column = table.getColumn(filter.columnId)
             if (!column) return null

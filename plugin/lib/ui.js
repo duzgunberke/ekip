@@ -1,52 +1,56 @@
-// Terminal styling for ekip's own output: colors only on a TTY, never with NO_COLOR, and never on
-// stdout that a lead agent parses (worker reports stay plain).
-const on = (stream) => stream.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
-const wrap = (open, close) => (s, stream = process.stdout) => (on(stream) ? `\x1b[${open}m${s}\x1b[${close}m` : String(s));
-
-export const c = {
-  bold: wrap(1, 22), dim: wrap(2, 22), italic: wrap(3, 23), under: wrap(4, 24),
-  red: wrap(31, 39), green: wrap(32, 39), yellow: wrap(33, 39), blue: wrap(34, 39), magenta: wrap(35, 39), cyan: wrap(36, 39), gray: wrap(90, 39),
+// Shared terminal language for ekip's own screens. Never color piped output or NO_COLOR.
+const on = (stream = process.stdout) => !!stream.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+const mode = () => process.env.COLORTERM?.match(/truecolor|24bit/i) ? "rgb" : process.env.TERM?.includes("256color") ? "256" : "16";
+const ansi = (open, close) => (s, stream = process.stdout) => on(stream) ? `\x1b[${open}m${s}\x1b[${close}m` : String(s);
+const rgbColor = ([r, g, b], s, stream = process.stdout) => {
+  if (!on(stream)) return String(s);
+  if (mode() === "rgb") return `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`;
+  if (mode() === "256") return `\x1b[38;5;${16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51)}m${s}\x1b[39m`;
+  const index = [r, g, b].indexOf(Math.max(r, g, b));
+  return `\x1b[${index === 0 ? (g > 100 ? 33 : 31) : index === 1 ? (r > 100 ? 33 : 32) : (r > 100 ? 35 : 34)}m${s}\x1b[39m`;
 };
 
-export const sym = { ok: "●", warn: "●", bad: "●", off: "○", arrow: "→", dot: "·", check: "✓", cross: "✗" };
-
-/** A colored status dot: ok / warn / bad / off. */
+export const c = {
+  bold: ansi(1, 22), dim: ansi(2, 22), italic: ansi(3, 23), under: ansi(4, 24),
+  red: ansi(31, 39), green: ansi(32, 39), yellow: ansi(33, 39), blue: ansi(34, 39), magenta: ansi(35, 39), cyan: ansi(36, 39), gray: ansi(90, 39),
+  rgb: rgbColor,
+};
+export const sym = { ok: "●", warn: "●", bad: "●", off: "○", arrow: "›", dot: "·", check: "✓", cross: "✗" };
 export const dot = (state, stream) => ({ ok: c.green, warn: c.yellow, bad: c.red, off: c.gray }[state] ?? c.gray)(state === "off" ? sym.off : sym.ok, stream);
-
-/** "label   value" rows with the labels padded to one column. */
-export function rows(pairs, { pad } = {}) {
-  const w = pad ?? Math.max(...pairs.map(([k]) => strip(k).length));
-  return pairs.map(([k, v]) => `  ${k}${" ".repeat(Math.max(1, w - strip(k).length + 2))}${v}`).join("\n");
+export const strip = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
+export const width = (stream = process.stdout, fallback = 80) => Math.max(24, stream.columns || Number(process.env.COLUMNS) || fallback);
+export function fit(s, max = width()) {
+  s = String(s);
+  if (strip(s).length <= max) return s;
+  let out = "", n = 0;
+  for (const part of s.split(/(\x1b\[[0-9;]*m)/g)) {
+    if (part.startsWith("\x1b[")) { out += part; continue; }
+    for (const ch of part) { if (n >= Math.max(0, max - 1)) return `${out}…${on() ? "\x1b[0m" : ""}`; out += ch; n++; }
+  }
+  return out;
 }
-
-/** A section title: a colored bar and the name. */
-export const title = (s, stream) => `\n${c.magenta("▍", stream)}${c.bold(s, stream)}`;
-
-/** Messages ekip prints about itself go to stderr, prefixed and colored. */
-export const say = (s) => process.stderr.write(`${c.magenta("ekip", process.stderr)} ${c.gray(sym.arrow, process.stderr)} ${s}\n`);
+export function rows(pairs, { pad } = {}) {
+  const w = pad ?? Math.max(0, ...pairs.map(([k]) => strip(k).length));
+  return pairs.map(([k, v]) => fit(`  ${k}${" ".repeat(Math.max(1, w - strip(k).length + 2))}${v}`)).join("\n");
+}
+export const title = (s, stream) => `\n${c.cyan("›", stream)} ${c.bold(s, stream)}`;
+export function progress(pct, cells = 16, stream) {
+  const value = Math.max(0, Math.min(100, Number(pct) || 0)) / 100 * cells;
+  const full = Math.floor(value), eighth = Math.floor((value - full) * 8);
+  const chars = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+  return `${c.cyan("█".repeat(full) + (full < cells ? chars[eighth] : ""), stream)}${c.gray("░".repeat(Math.max(0, cells - full - (eighth ? 1 : 0))), stream)}`;
+}
+export const say = (s) => process.stderr.write(`${c.cyan("ekip", process.stderr)} ${c.gray(sym.arrow, process.stderr)} ${s}\n`);
 export const warn = (s) => process.stderr.write(`${c.yellow("ekip", process.stderr)} ${c.yellow("!", process.stderr)} ${s}\n`);
 
-export const strip = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
-
-const LOGO = [
-  "███████╗██╗  ██╗██╗██████╗ ",
-  "██╔════╝██║ ██╔╝██║██╔══██╗",
-  "█████╗  █████╔╝ ██║██████╔╝",
-  "██╔══╝  ██╔═██╗ ██║██╔═══╝ ",
-  "███████╗██║  ██╗██║██║     ",
-  "╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ",
-];
-// Violet → cyan, one color per row; truecolor when the terminal says so, else the 256-color cube.
-const GRADIENT = [[167, 139, 250], [139, 151, 248], [111, 163, 246], [83, 175, 244], [56, 189, 238], [34, 211, 238]];
-const rgb = ([r, g, b], s) => (process.env.COLORTERM?.match(/truecolor|24bit/)
-  ? `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`
-  : `\x1b[38;5;${16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51)}m${s}\x1b[39m`);
-
-/** The big logo with a tagline beside its lower half (status, help, init). */
+// The logo in the terminal: the prompt (the lead, amber) fanning out to the team (teal).
+const LEAD = [[255, 180, 92], [247, 150, 74], [240, 123, 63], [240, 123, 63]];
+const TEAM = [45, 212, 191];
+const CHEVRON = ["  ▜█▄    ", "    ▜█▄  ", "    ▟█▀  ", "  ▟█▀    "];
+const FAN = ["     ╭──●", "─────┼──●", "     ╰──●", ""];
 export function banner(stream = process.stdout) {
-  const tag = ["", "", "", c.bold("tek terminal, tek Claude, koca bir ekip", stream), c.gray("işler başka kotalara · her proje kendi hafızasıyla", stream), ""];
-  return `\n${LOGO.map((l, i) => `  ${on(stream) ? rgb(GRADIENT[i], l) : l}   ${tag[i]}`.trimEnd()).join("\n")}`;
+  const text = [c.bold("ekip", stream), c.gray("tek terminal, tek Claude, koca bir ekip", stream), "", ""];
+  const lines = CHEVRON.map((ch, i) => `${c.rgb(LEAD[i], ch, stream)}${c.rgb(TEAM, FAN[i].padEnd(9), stream)}   ${text[i]}`.trimEnd());
+  return `\n${lines.join("\n")}\n`;
 }
-
-/** One line for the top of a lead session. */
-export const mark = (stream = process.stdout) => (on(stream) ? `${rgb(GRADIENT[0], "◆")} ${c.bold(rgb(GRADIENT[2], "ekip"), stream)}` : "◆ ekip");
+export const mark = (stream = process.stdout) => `${c.rgb(LEAD[2], "❯", stream)} ${c.bold(c.rgb(TEAM, "ekip", stream), stream)}`;

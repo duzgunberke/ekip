@@ -103,14 +103,14 @@ export function Pools() {
               {!route ? (
                 <EmptyState icon={ServerCog} title='Yönlendirme bilgisi yok' description='Henüz limit anlık görüntüsü alınmadı.' className='py-6' />
               ) : (
-                <div className='grid gap-4'>
+                <div className='grid min-w-0 gap-4'>
                   <div>
                     <p className='text-xs text-muted-foreground'>İşçi</p>
                     <p className='text-2xl font-semibold'>{route.worker || 'Yok'}</p>
                   </div>
                   <div>
                     <p className='mb-2 text-sm font-medium'>Sıra</p>
-                    <ol className='flex flex-wrap gap-x-2 gap-y-1'>
+                    <ol className='flex min-w-0 flex-wrap gap-x-2 gap-y-1'>
                       {route.order.map((name, i) => {
                         const limited = workers.some((worker) => worker.name === name && worker.status === 'limited')
                         const skipped = route.skipped.includes(name)

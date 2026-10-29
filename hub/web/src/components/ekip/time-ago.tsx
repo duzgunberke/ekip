@@ -8,7 +8,7 @@ export function TimeAgo({ iso, className }: { iso: string | null | undefined; cl
     const t = setInterval(() => tick((n) => n + 1), 30_000)
     return () => clearInterval(t)
   }, [])
-  if (!iso) return <span className={className}>—</span>
+  if (!iso) return <span className={className}>Yok</span>
   return (
     <time dateTime={iso} title={dateTime(iso)} className={className}>
       {ago(iso)}

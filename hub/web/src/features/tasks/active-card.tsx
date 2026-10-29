@@ -84,7 +84,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
             ) : (
               <ul className='grid gap-1.5'>
                 {workers.map((w, i) => (
-                  <li key={w.runId ?? i} className='flex items-center gap-2.5 rounded-lg border px-2.5 py-2'>
+                  <li key={w.runId ?? i} className='flex items-center gap-2.5 rounded-lg bg-muted/35 px-2.5 py-2'>
                     <Bot className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
                     <div className='min-w-0 flex-1'>
                       <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? 'ajan'}</p>
@@ -101,7 +101,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
           {note && (
             <section aria-label='Son not'>
               <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Son not</h3>
-              <div className='flex gap-2.5 rounded-lg border bg-muted/30 px-3 py-2.5'>
+              <div className='flex gap-2.5 rounded-lg bg-muted/45 px-3 py-2.5'>
                 <MessageSquareText className='mt-0.5 size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
                 <div className='min-w-0'>
                   <p className='text-sm break-words whitespace-pre-line'>{note.text}</p>

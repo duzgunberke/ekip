@@ -69,7 +69,7 @@ export function Overview() {
           <QueryError className='mb-4' error={limits.error} onRetry={() => limits.refetch()} />
         )}
 
-        <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+        <div className='grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
           <Kpi
             title='Kayıtlı proje'
             icon={FolderGit2}
@@ -132,7 +132,7 @@ export function Overview() {
           />
         </div>
 
-        <div className='mt-4 grid gap-4 lg:grid-cols-7'>
+        <div className='mt-5 grid min-w-0 gap-4 lg:grid-cols-7'>
           <Card className='lg:col-span-4'>
             <CardHeader>
               <CardTitle>Günlük işler</CardTitle>
@@ -213,7 +213,7 @@ export function Overview() {
           </Card>
         </div>
 
-        <div className='mt-4 grid gap-4 lg:grid-cols-7'>
+        <div className='mt-5 grid min-w-0 gap-4 lg:grid-cols-7'>
           <RecentJobs className='lg:col-span-4' />
           <Card className='lg:col-span-3'>
             <CardHeader>
@@ -260,8 +260,8 @@ function Kpi({
   const body = (
     <Card
       className={cn(
-        'h-full gap-2 py-5 transition-colors',
-        to && 'group-hover:border-foreground/20 group-focus-visible:border-ring'
+        'h-full gap-2 py-5 transition-colors duration-200',
+        to && 'group-hover:border-primary/40 group-focus-visible:border-ring'
       )}
     >
       <CardHeader className='flex flex-row items-center justify-between gap-2 px-5'>
@@ -298,9 +298,9 @@ function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null;
   const jobs = useJobs()
   const job = jobId ? jobs.data?.find((j) => j.id === jobId) : undefined
   return (
-    <li className='flex items-center gap-3 rounded-lg border px-3 py-2.5'>
-      <div className='flex size-8 shrink-0 items-center justify-center rounded-md bg-muted'>
-        <Cpu className='size-4 text-muted-foreground' aria-hidden='true' />
+    <li className='flex min-w-0 items-center gap-3 rounded-lg bg-muted/35 px-3 py-2.5'>
+      <div className='flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-primary'>
+        <Cpu className='size-4' aria-hidden='true' />
       </div>
       <div className='min-w-0 flex-1'>
         <p className='text-sm font-medium'>Slot #{slot}</p>
@@ -370,7 +370,7 @@ function RecentJobs({ className }: { className?: string }) {
                 <button
                   type='button'
                   onClick={() => navigate({ to: '/isler/$id', params: { id: j.id } })}
-                  className='flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-start hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none'
+                  className='flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-start transition-colors duration-150 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none'
                 >
                   <div className='min-w-0 flex-1'>
                     <p className='truncate text-sm font-medium'>{firstLine(j.task) || j.id}</p>
