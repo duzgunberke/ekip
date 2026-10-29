@@ -126,17 +126,32 @@ function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => v
   const shown = repos.slice(0, 3)
   const memory = !!p.tdai?.teamId
   return (
-    <Card className='group relative gap-3 transition-colors hover:border-foreground/20 has-focus-visible:border-ring'>
+    <Card
+      role='button'
+      tabIndex={0}
+      aria-label={t('{name} projesini aç', { name: p.name })}
+      onClick={(event) => {
+        if (event.target instanceof Element) {
+          const interactiveTarget = event.target.closest(
+            'a, button, input, select, textarea, [role="button"]'
+          )
+          if (interactiveTarget && interactiveTarget !== event.currentTarget) return
+        }
+        onOpen()
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className='group relative cursor-pointer gap-3 outline-none transition-[transform,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/40 active:translate-y-0 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40'
+    >
       <CardHeader>
         <div className='flex items-start justify-between gap-2'>
           <CardTitle className='text-base'>
-            <button
-              type='button'
-              onClick={onOpen}
-              className='text-start outline-none after:absolute after:inset-0 after:rounded-xl'
-            >
-              {p.name}
-            </button>
+            {p.name}
           </CardTitle>
           {memory && (
             <Badge variant='outline' className='border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300'>
