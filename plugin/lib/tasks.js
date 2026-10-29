@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { HOME, SETTINGS, die, sleep } from "./core.js";
-import { c, dot, mark } from "./ui.js";
+import { c, dot, mark, progress, fit } from "./ui.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -102,10 +102,7 @@ export function active() { return read().filter((t) => t.status === "running"); 
 
 // ---- rendering ---------------------------------------------------------------------------------
 
-function bar(p, width = 24) {
-  const full = Math.round((p / 100) * width);
-  return `${c.cyan("█".repeat(full))}${c.gray("░".repeat(width - full))}`;
-}
+function bar(p, cells = 20) { return progress(p, cells); }
 
 // a running step whose pct/detail has not moved for 15 min is stalled, whatever its label says
 const STALL_MS = 15 * 60 * 1000;
@@ -116,25 +113,25 @@ function render(t) {
   const e = eta(t);
   const elapsed = Date.now() - Date.parse(t.createdAt);
   const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : c.yellow("sürüyor");
-  const head = `${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`;
-  const line = `  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(`geçen ${fmtDur(elapsed)}`)}${e ? c.gray(` · tahmini bitiş ${new Date(e).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} (${fmtDur(Date.parse(e) - Date.now())} kaldı)`) : ""}`;
+  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
+  const line = fit(`  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(`geçen ${fmtDur(elapsed)}`)}${e ? c.gray(` · tahmini bitiş ${new Date(e).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} (${fmtDur(Date.parse(e) - Date.now())} kaldı)`) : ""}`);
   const steps = t.steps.map((s, i) => {
     const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
     const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
     const stall = stalledFor(s);
     const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)}dır ilerleme yok`)}` : "";
-    const det = s.status === "running" && s.detail ? `\n       ${c.gray(s.detail)}` : "";
-    return `    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`;
+    const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
+    return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`);
   });
   // A worker killed from outside never reports its end; its pid tells.
   const alive = (w) => { if (!w.pid) return true; try { process.kill(w.pid, 0); return true; } catch { return false; } };
   const workers = t.workers.filter((w) => w.status === "running" && alive(w)).map((w) => {
     const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
-    return `    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? " · 10 dk'dır çıktı yok" : ""}`)}`;
+    return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? " · 10 dk'dır çıktı yok" : ""}`)}`);
   });
   const last = t.notes.at(-1);
-  return [head, line, ...steps, ...workers, ...(last ? [`    ${c.gray(`↳ ${last.text}`)}`] : [])].join("\n");
+  return [head, line, ...steps, ...workers, ...(last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [])].join("\n");
 }
 
 // Two lines per task for a short pane: title + bar, then "n/m bitti" and what runs now. Finished
@@ -147,9 +144,9 @@ function renderCompact(t) {
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
   const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} kaldı`) : "";
-  const head = `${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 12)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`;
-  const now = [...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? `sırada: ${t.steps.find((s) => s.status === "pending").title}` : "");
-  return `${head}\n    ${c.gray(`${done}/${t.steps.length} bitti`)}${now ? `  ${now}` : ""}`;
+  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
+  const now = fit([...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? `sırada: ${t.steps.find((s) => s.status === "pending").title}` : ""));
+  return `${head}\n${fit(`    ${c.gray(`${done}/${t.steps.length} bitti`)}${now ? `  ${now}` : ""}`)}`;
 }
 
 export async function main([sub = "ls", ...args]) {

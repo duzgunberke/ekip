@@ -9,7 +9,7 @@ import path from "node:path";
 import { AGENTS, autoOrder, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
 import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey } from "./core.js";
-import { c, dot, title } from "./ui.js";
+import { c, dot, title, fit } from "./ui.js";
 
 // Quota messages worth surfacing, newest log first; "Resets in 140h45m18s" gives the reopen time.
 const QUOTA = [
@@ -114,7 +114,7 @@ export async function main(args = []) {
     const tone = w.status === "ready" ? "ok" : w.status === "limited" ? "bad" : w.status === "off" ? "off" : "warn";
     const lim = w.limit ? c.gray(` · ${w.limit.resetAt ? `${ago(w.limit.resetAt)} sonra açılır` : w.limit.message}`) : "";
     const perf = w.runs ? c.gray(` · ${w.runs} iş, %${w.successRate} başarı`) : "";
-    console.log(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status].padEnd(18)}${lim}${perf}  ${c.gray(w.quota)}`);
+    console.log(fit(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status]}${lim}${perf}  ${c.gray(w.quota)}`));
   }
   console.log(title("Ücretsiz havuz (freellmapi)"));
   if (s.free.error) console.log(`  ${dot("bad")} ${c.red(s.free.error)}`);
@@ -123,13 +123,13 @@ export async function main(args = []) {
     const st = p.status === "healthy" ? c.green("sağlıklı") : p.status === "rate_limited" ? c.yellow(`limitte${p.resumeAt ? ` · ${ago(p.resumeAt)} sonra` : ""}`) : p.status === "no_models" ? c.red("kullanılacak model yok") : c.red(p.status);
     const day = p.ok24 + p.fail24 ? c.gray(` · 24 sa: ${p.ok24} başarılı, ${p.fail24} hata`) : "";
     const models = p.models ? c.gray(`${p.models - p.cooling}/${p.models} model açık`) : "";
-    console.log(`  ${dot(tone)} ${p.name.padEnd(22)} ${st}  ${models}${day}`);
+    console.log(fit(`  ${dot(tone)} ${p.name.padEnd(18)} ${st}  ${models}${day}`));
   }
   console.log(title("Şimdi bir iş gelse"));
-  console.log(`  ${c.gray("işçi (--via auto):")} ${c.bold(c.cyan(s.route.worker))}${s.route.skipped.length ? c.gray(`  (limitte, atlanır: ${s.route.skipped.join(", ")})`) : ""}`);
-  console.log(`  ${c.gray("sıra:")} ${s.route.order.map((n) => (s.route.skipped.includes(n) ? c.gray(n) : c.cyan(n))).join(c.gray(" → "))}`);
+  console.log(fit(`  ${c.gray("işçi (--via auto):")} ${c.bold(c.cyan(s.route.worker))}${s.route.skipped.length ? c.gray(`  (limitte, atlanır: ${s.route.skipped.join(", ")})`) : ""}`));
+  console.log(fit(`  ${c.gray("sıra:")} ${s.route.order.map((n) => (s.route.skipped.includes(n) ? c.gray(n) : c.cyan(n))).join(c.gray(" → "))}`));
   for (const [prof, r] of Object.entries(s.route.profiles ?? {}))
-    console.log(`  ${c.gray(`${prof.padEnd(15)}→`)} ${r.next[0] ?? c.red("açık model yok")}${r.next.length > 1 ? c.gray(`, sonra ${r.next.slice(1).join(", ")}`) : ""}${r.cooling ? c.gray(`  (${r.cooling}/${r.models} soğumada)`) : ""}`);
+    console.log(fit(`  ${c.gray(`${prof.padEnd(15)}›`)} ${r.next[0] ?? c.red("açık model yok")}${r.next.length > 1 ? c.gray(`, sonra ${r.next.slice(1).join(", ")}`) : ""}${r.cooling ? c.gray(`  (${r.cooling}/${r.models} soğumada)`) : ""}`));
   // hub copy for the web panel
   if (!args.includes("--local")) await push(s);
   console.log("");

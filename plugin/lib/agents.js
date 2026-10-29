@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
-import { c, dot } from "./ui.js";
+import { c, dot, fit } from "./ui.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
 const qwenOAuth = () => fs.existsSync(path.join(os.homedir(), ".qwen/oauth_creds.json"));
@@ -101,12 +101,13 @@ export async function main([sub = "ls", ...names]) {
     for (const [n, a] of Object.entries(AGENTS).filter(([, a]) => !a.hidden?.())) {
       const s = state()[n];
       const st = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
-      const label = !has(a.bin) ? c.gray("kurulu değil     ") : s?.ok ? c.green("hazır            ") : s ? c.red(a.login ? `giriş gerekiyor → ekip agents login ${n}` : "çalışmıyor") : c.yellow("denenmedi        ");
+      const label = !has(a.bin) ? c.gray("kurulu değil") : s?.ok ? c.green("hazır") : s ? c.red(a.login ? `giriş gerekiyor` : "çalışmıyor") : c.yellow("denenmedi");
       const sc = poolScore(n);
       const perf = sc.runs ? c.gray(` · ${sc.runs} iş, %${Math.round(sc.rate * 100)} başarı${sc.avgMin != null ? `, ort. ${sc.avgMin} dk` : ""}${sc.cooling ? ", şu an geri planda" : ""}`) : "";
-      console.log(`  ${dot(st)} ${n.padEnd(9)} ${label}  ${c.gray(a.quota)}${perf}`);
+      const labelText = !has(a.bin) ? "kurulu değil" : s?.ok ? "hazır" : s ? (a.login ? "giriş gerekiyor" : "çalışmıyor") : "denenmedi";
+      console.log(fit(`  ${dot(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(a.quota)}${perf}`));
     }
-    console.log(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
+    console.log(fit(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
   } else if (sub === "install") {
     const pkgs = pick.filter((n) => AGENTS[n].pkg && !has(AGENTS[n].bin)).map((n) => AGENTS[n].pkg);
     if (pkgs.length) spawnSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });

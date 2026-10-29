@@ -5,9 +5,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, sleep, tdaiUp } from "./core.js";
-import { c, dot, mark, title } from "./ui.js";
+import { c, dot, mark, title, fit } from "./ui.js";
 
-const line = (state, label, detail = "") => console.log(`  ${dot(state)} ${label.padEnd(26)} ${detail}`);
+const line = (state, label, detail = "") => console.log(fit(`  ${dot(state)} ${label.padEnd(20)} ${detail}`));
 
 const LABEL = "io.ekip.doctor";
 

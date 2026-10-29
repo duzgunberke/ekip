@@ -16,7 +16,7 @@ import {
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, openPane, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
-import { banner, c, dot, mark, rows, say, title, warn } from "../lib/ui.js";
+import { banner, c, dot, mark, rows, say, title, warn, fit } from "../lib/ui.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -1040,7 +1040,7 @@ async function status() {
     }),
     [`${dot("ok")} claude`, `${c.green("hazır")} ${c.gray("aboneliğin (lead)")}`],
   ]));
-  console.log(`  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`);
+  console.log(fit(`  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
 
   console.log(title("Hafıza ve hub"));
   console.log(rows([
@@ -1055,7 +1055,7 @@ async function status() {
   const recent = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")).sort().slice(-5).reverse();
   if (recent.length) {
     console.log(title("Son çalıştırmalar"));
-    console.log(recent.map((f) => `  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`).join("\n"));
+    console.log(recent.map((f) => fit(`  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`)).join("\n"));
   }
   console.log("");
 }
@@ -1090,7 +1090,7 @@ ${c.bold("Kurulum")}
   ${c.cyan("ekip init")}                     tek seferlik kurulum
   ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         ücretsiz sağlayıcı anahtarları (sayfaları açar)
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
-`;
+`.split("\n").map((line) => fit(line)).join("\n");
 
 const [cmd, ...rest] = process.argv.slice(2);
 let code = 0;
