@@ -96,7 +96,7 @@ export async function identity() {
   return ident;
 }
 
-const resolve = (p) => (typeof p === "string" ? (getProject(p) ?? die(`unknown project: ${p} (ekip project ls)`)) : p);
+const resolve = (p) => (typeof p === "string" ? (getProject(p) ?? (p === "genel" || p === "general" ? generalProject() : die(`unknown project: ${p} (ekip project ls)`))) : p);
 
 // ---- git remotes ------------------------------------------------------------------------------
 

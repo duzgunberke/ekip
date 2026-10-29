@@ -9,7 +9,7 @@ import { redact } from "../core/redact.js";
 const PROTOCOL = "2025-06-18";
 const log = (...a) => process.stderr.write(`ekip-mcp: ${a.join(" ")}\n`);
 
-const P = { type: "string", description: "Project name (ekip project ls). Optional: defaults to the project containing the server's cwd." };
+const P = { type: "string", description: "Project name (ekip project ls), or \"genel\" for work outside registered projects (one-off asks, unregistered repos). Optional: defaults to the project containing the server's cwd, else genel." };
 export const TOOLS = [
   { name: "projects_list", description: "List the registered projects (name, path, one-line summary, which knowledge exists).",
     inputSchema: { type: "object", properties: {} } },
@@ -34,14 +34,14 @@ export const TOOLS = [
 ];
 
 function project(name) {
+  if (name === "genel" || name === "general") return mem.generalProject();
   if (name) {
     const p = getProject(name);
     if (!p) throw new Error(`unknown project "${name}"; known: ${listProjects().map((x) => x.name).join(", ")}`);
     return p;
   }
-  const p = findProject(process.cwd());
-  if (!p) throw new Error(`no project given and ${process.cwd()} is not inside a registered project; call projects_list`);
-  return p;
+  // outside any registered project: the general space (one-off work, unregistered repos)
+  return findProject(process.cwd()) ?? mem.generalProject();
 }
 
 function pickGraph(p, repo) {

@@ -7,7 +7,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { redact } from "../core/redact.js";
 
-const BUDGET_MS = 4000;
+// knowledge over speed: a busy memory server (an import writing) answers in 4-7 s, and dropping the
+// context then means the message is handled without it
+const BUDGET_MS = 7000;
 const fold = (s) => s.toLocaleLowerCase("tr").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
 
 function distance(a, b) {
@@ -64,23 +66,29 @@ export async function main() {
   const projects = listProjects().filter((p) => p.tdai?.agentId);
   let hits = mentioned(prompt, projects).slice(0, 2);
   if (!hits.length) { const here = findProject(input.cwd || process.cwd()); if (here?.tdai?.agentId) hits = [{ p: here, by: "folder" }]; }
-  if (!hits.length) return;
   const mem = await import("./memory.js");
+  // Work outside any project (a one-off ask, a repo that is not registered) is remembered in the
+  // general space; it is searched for every such message, so nothing done there is lost.
+  if (!hits.length) { const g = mem.generalProject(); if (g.tdai?.agentId) hits = [{ p: g, by: "general" }]; }
+  if (!hits.length) return;
   const parts = await Promise.all(hits.map(async ({ p, by }) => {
     const [memoriesT, skillsT, wikiT] = await Promise.all([
-      timed(withTimeout(mem.recall(p, prompt, 6, { timeoutMs: BUDGET_MS - 800, factsOnly: true }).catch(() => []), BUDGET_MS - 300)),
+      timed(withTimeout(mem.recall(p, prompt, 8, { timeoutMs: BUDGET_MS - 800, factsOnly: by !== "general" }).catch(() => []), BUDGET_MS - 300)),
       timed(withTimeout(mem.skillSearch(p, prompt, 3).catch(() => []), BUDGET_MS - 300)),
       p.tdai?.wikiId ? timed(withTimeout(mem.knowledgeTool(p.tdai.wikiId, "search", { query: prompt.slice(0, 300), limit: 3 }).catch(() => null), BUDGET_MS - 300)) : null,
     ]);
     const [memories, skills, wiki] = [memoriesT.value, skillsT.value, wikiT?.value ?? null];
     const { projectSkills } = await import("../projects/project-skills.js");
     const local = projectSkills(p.path, prompt).slice(0, 4);
-    const lines = [`## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
+    const lines = [by === "general" ? "## genel (work outside registered projects)" : `## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
     if (p.summary) lines.push(clip(redact(p.summary.replace(/\s+/g, " ")), 300));
     const projectRules = (await import("../projects/project-config.js")).rules(p, 900);
     if (projectRules) lines.push("Project rules (.ekip/rules.md):", redact(projectRules));
     const facts = (memories ?? []).filter((m) => m.layer === "L1").slice(0, 5);
     if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(redact(String(m.content).replace(/\s+/g, " ")), 260)}`));
+    // the general space has few extracted facts yet: earlier exchanges on the same subject help too
+    const snippets = by === "general" ? (memories ?? []).filter((m) => m.layer !== "L1").slice(0, 3) : [];
+    if (snippets.length) lines.push("Earlier exchanges on this:", ...snippets.map((m) => `- ${m.role ? `${m.role}: ` : ""}${clip(redact(String(m.content).replace(/\s+/g, " ")), 300)}`));
     if (local.length) lines.push("Project process skills that fit this message (invoke or read their SKILL.md before planning):", ...local.map((k) => `- ${k.name}: ${clip(redact(k.description), 160)} (${k.file})`));
     if (skills?.length) lines.push("Learned skills (read with the skill_get MCP tool):", ...skills.map((s) => `- ${s.name}: ${clip(redact(s.description ?? ""), 160)}`));
     const pages = (Array.isArray(wiki) ? wiki : wiki?.results ?? wiki?.items ?? wiki?.data ?? []).slice(0, 3);
@@ -97,6 +105,7 @@ export async function main() {
       if (wikiT) recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
       recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
     } catch { /* usage logging must never affect the hook */ }
+    if (by === "general" && !facts.length && !snippets.length && !skills?.length) return null;
     return lines.length > 1 ? lines.join("\n") : null;
   }));
   const body = parts.filter(Boolean).join("\n\n");
