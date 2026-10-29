@@ -830,7 +830,14 @@ async function importHistory() {
   const stateFile = path.join(HOME, "memory-state/asset-import.json");
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   const plan = [];
+  // Some project dirs are symlinks to others (-Volumes-SSD-Projects-x -> -Users-…-Projects-x); the
+  // importer keys sessions by path, so importing both would store every session twice.
+  const seen = new Set();
   for (const dir of fs.readdirSync(base)) {
+    let real;
+    try { real = fs.realpathSync(path.join(base, dir)); } catch { continue; }
+    if (seen.has(real)) continue;
+    seen.add(real);
     const owner = projects.filter((p) => dir.endsWith(`-Projects-${p.name}`) || dir.includes(`-Projects-${p.name}-`)).sort((a, b) => b.name.length - a.name.length)[0];
     plan.push({ dir, agentId: owner?.tdai?.agentId ?? SETTINGS.tdaiDefaultAgent ?? die("set tdaiDefaultAgent in data/config.json (the default agent id)"), teamId: owner?.tdai?.teamId ?? me.teamId, project: owner?.name ?? "(default)" });
   }
