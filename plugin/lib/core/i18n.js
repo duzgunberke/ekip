@@ -32,6 +32,11 @@ const en = {
   "changed file(s)": "changed file(s)", "No changed files found.": "No changed files found.",
   results: "RESULTS", check: "CHECK", result: "RESULT", time: "TIME", ok: "ok", failed: "failed",
   "failure (last 40 lines)": "failure (last 40 lines)", "saved report: {file}": "saved report: {file}",
+  "Ortam": "Environment", "kimlik tanımlı": "identity set", "oturum açık": "signed in", "anahtar kelimeye düşer": "falls back to keywords", "vektörler açık": "vectors enabled", "vektör sağlayıcı": "embeddings", 
+  "Git kimliği tanımlı değil": "Git identity is not set", "işçiler commit atamaz; user.name ve user.email boş": "workers cannot commit; user.name and user.email are empty",
+  "GitHub CLI (gh) kurulu değil": "GitHub CLI (gh) is not installed", "gh oturumu açık değil": "gh is not signed in", "hub işleri ve özel depoların kod grafiği GitHub girişi ister": "hub jobs and code graphs of private repos need a GitHub login",
+  "Hafıza vektörü sağlayıcısı yok, arama anahtar kelimeye düşer": "No embedding provider for memory vectors, search falls back to keywords", "ücretsiz bir NVIDIA NIM anahtarı (build.nvidia.com) vektörleri açar; OpenAI uyumlu herhangi bir embedding uç noktası MEMORY_EMBEDDING_BASE_URL / MEMORY_EMBEDDING_MODEL ile verilebilir; ek vektör veritabanı (Qdrant, Pinecone) gerekmez": "a free NVIDIA NIM key (build.nvidia.com) enables vectors; any OpenAI-compatible embeddings endpoint can be set with MEMORY_EMBEDDING_BASE_URL / MEMORY_EMBEDDING_MODEL; no extra vector database (Qdrant, Pinecone) is needed",
+  "Ücretsiz anahtar ve ikinci işçi havuzu yok: Claude işin hepsini kendisi yapar": "No free keys and no second worker pool: Claude does all the work itself", "tasarruf olmaz; en hızlı kazanç: ekip keys (Google AI Studio, Groq, NVIDIA ücretsiz anahtarları) ve ekip agents login (Copilot ücretsiz katman, Codex)": "no savings; fastest wins: ekip keys (Google AI Studio, Groq, NVIDIA free keys) and ekip agents login (Copilot free tier, Codex)",
 };
 const tr = Object.assign(Object.fromEntries(Object.keys(en).map((key) => [key, key])), {
   limited: "limitte", later: "sonra", "resets in": "sonra açılır", runs: "iş", "success rate": "başarı oranı",

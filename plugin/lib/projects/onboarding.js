@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { HOME, SETTINGS, healthy, keyCounts, tdaiUp } from "../core/core.js";
 import { findProject } from "./projects.js";
 import { t } from "../core/i18n.js";
@@ -9,6 +10,15 @@ import { t } from "../core/i18n.js";
 const CACHE = path.join(HOME, "onboarding-cache.json");
 const TTL = 10 * 60_000;
 const gap = (id, title, why, command, severity = "warn") => ({ id, title: t(title), why: t(why), command, severity });
+
+const run = (cmd, args, timeout = 1000) => spawnSync(cmd, args, { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+
+// Machine checks the workers depend on; each is local and bounded (gh: one second).
+export function envChecks() {
+  const git = (k) => (run("git", ["config", "--global", "--get", k], 500).stdout ?? "").trim();
+  const gh = run("gh", ["auth", "status"]);
+  return { gitIdentity: !!(git("user.name") && git("user.email")), ghInstalled: !gh.error || gh.error.code !== "ENOENT", ghAuth: gh.status === 0 };
+}
 
 export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   let real = path.resolve(cwd);
@@ -54,10 +64,19 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   ]);
   if (!memUp) gaps.push(gap("memory", "Hafıza servisi çalışmıyor", "proje hafızası ve wiki şu an kullanılamıyor", "ekip memory up"));
   const logged = Object.values(SETTINGS.agents ?? {}).filter((a) => a?.ok).length;
-  if (logged < 2) gaps.push(gap("agents", "İki işçi havuzu henüz giriş yapmamış", "işler Claude kotan dışındaki havuzlara dağıtılamıyor", "ekip agents login"));
   let keys = [];
   try { keys = keyCounts({ timeout: 500 }); } catch { /* service or database is unavailable */ }
-  if (!keys.length) gaps.push(gap("keys", "Ücretsiz havuz anahtarı yok", "ücretsiz model havuzu ek işler alamıyor", "ekip keys"));
+  // No free keys and under two pools: one combined gap, since Claude would do everything itself.
+  if (!keys.length && logged < 2) gaps.push(gap("no-workers", "Ücretsiz anahtar ve ikinci işçi havuzu yok: Claude işin hepsini kendisi yapar", "tasarruf olmaz; en hızlı kazanç: ekip keys (Google AI Studio, Groq, NVIDIA ücretsiz anahtarları) ve ekip agents login (Copilot ücretsiz katman, Codex)", "ekip keys"));
+  else {
+    if (logged < 2) gaps.push(gap("agents", "İki işçi havuzu henüz giriş yapmamış", "işler Claude kotan dışındaki havuzlara dağıtılamıyor", "ekip agents login"));
+    if (!keys.length) gaps.push(gap("keys", "Ücretsiz havuz anahtarı yok", "ücretsiz model havuzu ek işler alamıyor", "ekip keys"));
+  }
+  if (!process.env.MEMORY_EMBEDDING_BASE_URL && !keys.some(([p]) => p === "nvidia")) gaps.push(gap("embeddings", "Hafıza vektörü sağlayıcısı yok, arama anahtar kelimeye düşer", "ücretsiz bir NVIDIA NIM anahtarı (build.nvidia.com) vektörleri açar; OpenAI uyumlu herhangi bir embedding uç noktası MEMORY_EMBEDDING_BASE_URL / MEMORY_EMBEDDING_MODEL ile verilebilir; ek vektör veritabanı (Qdrant, Pinecone) gerekmez", "ekip keys"));
+  const env = envChecks();
+  if (!env.gitIdentity) gaps.push(gap("git-identity", "Git kimliği tanımlı değil", "işçiler commit atamaz; user.name ve user.email boş", 'git config --global user.name "Ad Soyad" && git config --global user.email you@example.com'));
+  if (!env.ghInstalled) gaps.push(gap("gh", "GitHub CLI (gh) kurulu değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "brew install gh && gh auth login", "info"));
+  else if (!env.ghAuth) gaps.push(gap("gh-auth", "gh oturumu açık değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "gh auth login"));
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) gaps.push(gap("hub", "Hub bağlı değil", "web paneli ve Mac kapalıyken çalışan iş kuyruğu kullanılamıyor", "ekip hub link", "info"));
   if (process.platform === "darwin" && process.env.TERM_PROGRAM !== "iTerm.app") gaps.push(gap("pane", "Görev bölmesi bu terminalde açılamıyor", "görevleri terminalin altında canlı izleyemezsiniz", "ekip status", "info"));
   try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(CACHE, JSON.stringify({ at: Date.now(), cwd: real, gaps })); } catch { /* cache is best effort */ }

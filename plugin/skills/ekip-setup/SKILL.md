@@ -38,3 +38,21 @@ description: Use when someone has cloned ekip and wants first-time setup, needs 
 15. “Done” means `ekip doctor` has no unresolved required setup gaps, at least
    one usable worker pool is connected when delegation is wanted, and
    registered projects show their context.
+
+## Machine and quota gaps
+
+`ekip doctor` and the lead start list these in addition to the project gaps:
+
+- **Git identity** (`git-identity`): global `user.name`/`user.email` empty, so
+  workers cannot commit. Offer `git config --global user.name "Ad Soyad"` and
+  `git config --global user.email you@example.com` (ask the user for the values).
+- **GitHub CLI** (`gh` info, `gh-auth` warn): hub jobs and code graphs of private
+  repos need it. Fix with `gh auth login` (interactive; the user runs it with `!`).
+- **Embeddings** (`embeddings`): without a free NVIDIA NIM key (build.nvidia.com,
+  added via `ekip keys`) memory search falls back to keywords. Any
+  OpenAI-compatible embeddings endpoint works through `MEMORY_EMBEDDING_BASE_URL`
+  and `MEMORY_EMBEDDING_MODEL`. No extra vector database (Qdrant, Pinecone) is needed.
+- **No workers** (`no-workers`): no free-pool keys and fewer than two worker pools
+  logged in means Claude does all the work itself and nothing is saved. Fastest wins:
+  `ekip keys` (Google AI Studio, Groq, NVIDIA) and `ekip agents login` (Copilot
+  free tier, Codex).
