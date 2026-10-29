@@ -67,7 +67,7 @@ function filenameAt(file, mtime) {
 // for the repo it was made from; a folder that is not a registered project is not learned from.
 // ekip's own housekeeping (project cards, review profiles and reviewers, this learner) runs as
 // workers too; it is not the user's work and must never become a project skill.
-const INTERNAL_LABEL = /^(skill-learn|review-profile|review-\d+)$/;
+const INTERNAL_LABEL = /^(skill-learn|review-profile|review-\d+|proje kartı: .*)$/;
 const INTERNAL_BRIEF = /^(You classify repeated project work into Claude Code skills|Create a Markdown review profile|Read-only code review for |Write a concise PROJECT CARD)|final answer must be ONLY the card markdown/;
 const internal = (label, brief) => INTERNAL_LABEL.test(label ?? "") || INTERNAL_BRIEF.test(brief ?? "");
 
