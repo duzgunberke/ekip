@@ -93,7 +93,7 @@ ekip                             # lideri başlatın; ne isterseniz sorun
 
 Yapmadığı şey: ücretsiz modelleri Claude kadar iyi hâle getirmez. Daha yavaştırlar, yoğunlukta zaman aşımına uğrar ve limitlerine ulaşınca beklemeye geçerler. ekip bunları hesaba katar ve kararlar için Claude'u kullanır.
 
-## v2'de geliyor: ekipler için ekip
+## v2'de geliyor: ortak bellek
 
 <p align="center"><img src="docs/assets/team-memory.svg" alt="Kendi ekip'ine sahip birkaç kişi, kişisel, proje ve ekip katmanları olan ortak bir belleğe bilgi ekler ve bellekten bilgi alır" width="100%"></p>
 

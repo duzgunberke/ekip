@@ -112,7 +112,7 @@ running while your Mac is off, connect a VPS: [docs/install.md](docs/install.md)
 What it does not do: it does not make free models as good as Claude. They are slower, time out under
 load and cool down at their limits. ekip routes around that and keeps Claude for decisions.
 
-## Coming in v2: ekip for teams
+## Coming in v2: shared memory
 
 <p align="center"><img src="docs/assets/team-memory.svg" alt="Several people, each with their own ekip, feed and read one shared memory with personal, project and team layers" width="100%"></p>
 

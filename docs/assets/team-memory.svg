@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-label="ekip for teams (coming in v2): several people, each with their own ekip, feed and read one shared memory with personal, project and team layers.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-label="Shared memory (coming in v2): several people, each with their own ekip, feed and read one shared memory with personal, project and team layers.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
     <radialGradient id="core" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#2DD4BF" stop-opacity=".35"/><stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/></radialGradient>
