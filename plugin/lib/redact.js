@@ -1,7 +1,7 @@
 // Mask common credentials before text leaves local storage or reaches a model.
 export function redact(text) {
   return String(text)
-    .replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]")
+    .replace(/-----BEGIN [A-Z0-9 ]*PRIVATE[ ]KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE[ ]KEY-----/g, "[REDACTED PRIVATE KEY]")
     .replace(/\b((?:postgres(?:ql)?|redis|rediss|mongodb(?:\+srv)?):\/\/)([^:/@\s]+):([^@/\s]+)@([^/\s]+)/gi, "$1[REDACTED]@$4")
     .replace(/\b(?:Bearer\s+)([^\s,;]+)/gi, "Bearer [REDACTED]")
     .replace(/\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*(?:"[^"\n]+"|'[^'\n]+'|[^\s,;]+)/gi, (m) => `${m.split(/\s*[:=]/)[0]}=[REDACTED]`)
