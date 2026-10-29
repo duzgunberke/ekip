@@ -49,6 +49,8 @@ kaldırabileceği kadar bağımsız parçaya böler, parçaları paralel dağıt
 kendi Claude'u yalnızca planlar ve inceler. Her havuzun bir kapasitesi vardır (codex, copilot ve agy 2,
 qwen, opencode ve grok 1, free 3; `data/config.json` içindeki `poolConcurrency` ile değişir).
 `--via auto` dolu ya da kotası bitmiş havuzları atlar, böylece paralel işler kendiliğinden dağılır.
+İsteğe bağlı: [jcode](https://github.com/1jehuang/jcode), ücretsiz havuzda bir kabuk daha (işçi başına
+600 yerine yaklaşık 60 MB; `jcodeBin` ve freellmapi'ye bakan bir jcode sağlayıcı profili gerekir).
 `ekip mesai status` her havuzun çalışan/kapasite ve başarı oranını gösterir; `ekip mesai all "iş"` bir işi
 boş yeri olan her havuzda, her biri kendi dalında çalıştırır. Başsız Claude havuzu yalnızca
 `--include-claude` ile katılır.

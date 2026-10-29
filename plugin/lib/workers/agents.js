@@ -50,6 +50,18 @@ export const AGENTS = {
     bin: "opencode", pkg: "opencode-ai", quota: "OpenCode (its free models or your providers)", login: ["opencode", "auth", "login"],
     argv: (p, o) => ["run", "--auto", ...model(o, "-m"), p],
   },
+  // jcode (Rust harness, ~60 MB per session instead of ~600): optional, on the free pool through a jcode
+  // provider profile that points at freellmapi (jcodeProfile, default "ekip-freellmapi"). Hidden unless
+  // its binary is found ("jcodeBin" in data/config.json, or jcode on PATH).
+  jcode: {
+    hidden: () => !has(SETTINGS.jcodeBin ?? "jcode"),
+    get bin() { return SETTINGS.jcodeBin ?? "jcode"; },
+    quota: "free pool via freellmapi, light harness (jcode)", login: null, free: true,
+    env: { JCODE_RUN_MCP: "0", JCODE_RUN_AUTO_POKE: "0" },
+    argv: (p, o) => ["--quiet", "--no-update", "--no-selfdev", "--provider-profile", SETTINGS.jcodeProfile ?? "ekip-freellmapi", "--model", o.model ?? "auto", "run", "--ndjson", p],
+    // the NDJSON stream ends with {"type":"done","text":…}; failures come as {"type":"error"}
+    parse: (out) => { let text = ""; for (const l of out.split("\n")) { try { const e = JSON.parse(l); if (e.type === "done" && e.text) text = e.text; else if (e.type === "error" && !text) text = `error: ${e.message ?? e.error ?? l}`; } catch { /* not an event */ } } return text; },
+  },
   grok: {
     // grok-cli speaks any OpenAI-compatible API, so it doubles as a second harness on the free pool.
     bin: "grok", pkg: "@vibe-kit/grok-cli", quota: "free pool via freellmapi (or GROK_API_KEY for xAI)", login: null, free: !process.env.GROK_API_KEY,
@@ -159,7 +171,7 @@ export function lastQuotaHit(via) {
 
 // How many workers each pool takes at once (mesai modu keeps them all busy); "poolConcurrency" in
 // data/config.json overrides a pool. The headless Claude pool stays at 0 unless mesai includes it.
-export const POOL_CONCURRENCY = { agy: 2, codex: 2, gemini: 1, copilot: 2, qwen: 1, opencode: 1, grok: 1, free: 3, claude: 0 };
+export const POOL_CONCURRENCY = { agy: 2, codex: 2, gemini: 1, copilot: 2, qwen: 1, opencode: 1, grok: 1, jcode: 3, free: 3, claude: 0 };
 
 export function poolCapacity(via) {
   const own = SETTINGS.poolConcurrency?.[via];
@@ -223,7 +235,7 @@ export function freeReady() {
 
 /** Pools that are signed in, tested and not out of quota (ignores how busy they are). */
 export function readyPools() {
-  const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
+  const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "jcode", "grok"];
   return order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok && !lastQuotaHit(n));
 }
 
