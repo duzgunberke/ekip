@@ -197,6 +197,11 @@ function cleanProject(p) {
     if (!Array.isArray(p.repos) || p.repos.length > 50) bad("repos must be an array (max 50)");
     out.repos = p.repos.map((r, i) => str(r, 300, `repos[${i}]`, { required: true }));
   }
+  if (p.dev != null) {
+    if (typeof p.dev !== "object" || Array.isArray(p.dev)) bad("dev must be an object");
+    out.dev = {};
+    for (const [k, v] of Object.entries(p.dev)) if (/^(DATABASE_URL|REDIS_URL|PG[A-Z]+)$/.test(k) && v != null) out.dev[k] = str(String(v), 1000, `dev.${k}`);
+  }
   if (p.tdai != null) {
     if (typeof p.tdai !== "object") bad("tdai must be an object");
     out.tdai = {};
@@ -386,6 +391,8 @@ async function api(req, res, url) {
     const now = new Date().toISOString();
     if (!Array.isArray(body) && body.replace === true) store.projects.data = [];
     for (const c of clean) {
+      // dev credentials go to their own store, so GET /api/projects never returns them
+      if (c.dev) { store.devenv.data[c.name] = c.dev; delete c.dev; store.devenv.save(); }
       const i = store.projects.data.findIndex((x) => x.name === c.name);
       if (i >= 0) store.projects.data[i] = { ...store.projects.data[i], ...c, updatedAt: now };
       else store.projects.data.push({ ...c, updatedAt: now });

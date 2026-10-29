@@ -39,6 +39,8 @@ export function openStore(dir) {
     runs: new Collection(dir, "runs", []),
     tasks: new Collection(dir, "tasks", []),
     clients: new Collection(dir, "clients", {}),
+    // development env per project (DATABASE_URL, REDIS_URL, PG*): read by jobs only, never served by the API
+    devenv: new Collection(dir, "devenv", {}),
     limits: new Collection(dir, "limits", null),
     savings: new Collection(dir, "savings", null),
   };

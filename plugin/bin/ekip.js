@@ -768,6 +768,11 @@ async function hub([sub, url, token]) {
         codeGraphs: (p.tdai.codeGraphs ?? []).slice(0, 50).map(({ repo, id, branch, private: priv, status }) => ({ repo, id, branch, private: !!priv, status })),
       } : undefined,
     }));
+    // development env for projects that have one, addressed for the server (jobs use it, the API never shows it)
+    if (SETTINGS.dev?.projects) {
+      const { devEnv } = await import("../lib/dev/dev.js");
+      for (const p of projects) if (SETTINGS.dev.projects[p.name]) { try { p.dev = devEnv(p.name, { onVps: true }); } catch { /* VPS unreachable: no dev env this time */ } }
+    }
     const r = await hubFetch("/api/projects", { method: "PUT", body: JSON.stringify({ projects, replace: true }) });
     console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
   } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));

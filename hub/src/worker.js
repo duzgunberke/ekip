@@ -234,8 +234,21 @@ export class Worker {
     });
     if (job.cancelRequested) return this.finishCancelled(job, clone, wt, branch);
 
-    // 2. the worker
-    const prompt = `${WORKER_BRIEF}\n${job.task}`;
+    // 2. the worker. A project with a development environment gets it in .env.ekip-dev (kept out of
+    // the commit) and in the worker's env, and the brief says to use it, never production.
+    const dev = this.store.devenv?.data?.[project?.name ?? job.project];
+    let devNote = "";
+    if (dev && Object.keys(dev).length) {
+      try {
+        fs.writeFileSync(path.join(wt, ".env.ekip-dev"), Object.entries(dev).map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
+        const exclude = path.join(clone, ".git", "info", "exclude");
+        fs.mkdirSync(path.dirname(exclude), { recursive: true });
+        if (!fs.existsSync(exclude) || !fs.readFileSync(exclude, "utf8").includes(".env.ekip-dev")) fs.appendFileSync(exclude, "\n.env.ekip-dev\n");
+        devNote = "\n\nDevelopment database/redis for this project: source ./.env.ekip-dev (DATABASE_URL, REDIS_URL, PG*). Use it for tests and migrations; never use a production URL from the project's own .env.";
+      } catch { /* no dev env: the job still runs */ }
+    }
+    const prompt = `${WORKER_BRIEF}\n${job.task}${devNote}`;
+    const withDev = (env) => (devNote ? { ...env, ...dev } : env);
     // copilot: GitHub Copilot CLI on the user's Copilot quota (strong models, needs
     // COPILOT_GITHUB_TOKEN). free: claude --bare on freellmapi through the memory proxy.
     // auto: copilot when configured, falling back to free if it fails.
@@ -245,13 +258,13 @@ export class Worker {
       if (pool === "copilot") {
         this.append(job.id, "\n--- worker via copilot ---\n");
         r = await this.exec(job, "copilot", ["-p", prompt, "--allow-all-tools", "--allow-all-paths", ...(job.model ? ["--model", job.model] : [])], {
-          cwd: wt, env: this.copilotEnv(), timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
+          cwd: wt, env: withDev(this.copilotEnv()), timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
         });
       } else {
         const env = await this.claudeEnv(job, project);
         this.append(job.id, `\n--- claude worker via ${job.pool} (model ${env.ANTHROPIC_MODEL}) ---\n`);
         r = await this.exec(job, "claude", ["--bare", "-p", prompt, "--permission-mode", "bypassPermissions"], {
-          cwd: wt, env, timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
+          cwd: wt, env: withDev(env), timeoutMs: cfg.jobTimeoutMin * 60_000, track: true,
         });
       }
       this.append(job.id, `\n[${pool} exit ${r.code}]\n`);

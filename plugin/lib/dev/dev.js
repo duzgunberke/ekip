@@ -107,9 +107,11 @@ export function devEnv(project, { onVps = false } = {}) {
   if (!onVps) return varsFor(project);
   const env = Object.fromEntries(pgFile().split(/\r?\n/).filter((x) => x.includes("=")).map((x) => [x.slice(0, x.indexOf("=")), x.slice(x.indexOf("=") + 1)]));
   const key = map.db.replace(/_dev$/, ""), user = env[`PG_${key}_USER`] ?? map.db, password = env[`PG_${key}_PASSWORD`];
-  const pgIp = remote(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${quote(PG_UUID())}`);
-  const out = { DATABASE_URL: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${pgIp}:5432/${map.db}`, PGHOST: pgIp, PGPORT: "5432", PGDATABASE: map.db, PGUSER: user, PGPASSWORD: password };
-  if (SETTINGS.dev.redisUuid) { const ip = remote(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${quote(SETTINGS.dev.redisUuid)}`); out.REDIS_URL = `redis://:${encodeURIComponent(SETTINGS.dev.redisPassword)}@${ip}:6379/${map.redisDb}`; }
+  // On the server the container name is the address: it resolves on the shared docker network and,
+  // unlike an IP, survives restarts.
+  const pgHost = PG_UUID();
+  const out = { DATABASE_URL: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${pgHost}:5432/${map.db}`, PGHOST: pgHost, PGPORT: "5432", PGDATABASE: map.db, PGUSER: user, PGPASSWORD: password };
+  if (SETTINGS.dev.redisUuid) out.REDIS_URL = `redis://:${encodeURIComponent(SETTINGS.dev.redisPassword)}@${SETTINGS.dev.redisUuid}:6379/${map.redisDb}`;
   return out;
 }
 
