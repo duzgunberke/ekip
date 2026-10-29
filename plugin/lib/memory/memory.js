@@ -84,8 +84,15 @@ export const knowledgeTool = (knowledgeId, tool, params = {}) =>
 // ---- identity: admin user and its team (discovered, cached per process) ------------------------
 
 let ident = null;
+// Hooks start a new process for every message; asking the server who we are each time cost two
+// round trips through the tunnel before any search. The answer is kept on disk for a day.
+const IDENT_FILE = path.join(STATE_DIR, "identity.json");
 export async function identity() {
   if (ident) return ident;
+  try {
+    const c = JSON.parse(fs.readFileSync(IDENT_FILE, "utf8"));
+    if (c.userId && c.teamId && Date.now() - c.at < 86400_000 && c.key === key().slice(-8)) return (ident = { userId: c.userId, teamId: c.teamId });
+  } catch { /* none yet */ }
   const v = await post(`${CORE}/v3/meta/auth/verify`, { user_key: key() });
   const userId = v?.user?.user_id ?? v?.user_id;
   if (!userId) throw new Error("auth/verify returned no user");
@@ -93,6 +100,7 @@ export async function identity() {
   const team = teams.find((t) => t.team_id === SETTINGS.tdaiTeamId) ?? teams.find((t) => t.name === "default-team") ?? teams[0];
   if (!team) throw new Error("admin user has no team");
   ident = { userId, teamId: team.team_id };
+  try { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.writeFileSync(IDENT_FILE, JSON.stringify({ ...ident, key: key().slice(-8), at: Date.now() })); } catch { /* cache only */ }
   return ident;
 }
 
@@ -300,7 +308,9 @@ export async function recall(project, query, limit = 5, { timeoutMs = 10000, fac
   const q = String(query).slice(0, 2048);
   const [l1, l0] = await Promise.allSettled([
     coreData("/atomic/search", { ...s, query: q, limit }, timeoutMs),
-    factsOnly ? Promise.resolve(null) : coreData("/conversation/search", { ...s, query: q, limit }, timeoutMs),
+    // raw conversation search scans far more vectors than the facts: its own shorter limit, so a slow
+    // one gives up alone and the facts still come back in time
+    factsOnly ? Promise.resolve(null) : coreData("/conversation/search", { ...s, query: q, limit }, Math.round(timeoutMs * 0.7)),
   ]);
   const out = [];
   for (const m of l1.value?.items ?? []) out.push({ layer: "L1", type: m.type, content: m.content, score: m.score, at: m.updated_at });
@@ -308,7 +318,8 @@ export async function recall(project, query, limit = 5, { timeoutMs = 10000, fac
     if (out.some((o) => o.content === m.content)) continue;
     out.push({ layer: "L0", role: m.role, content: m.content, score: m.score, session: m.session_id, at: m.recorded_at ?? m.timestamp });
   }
-  if (!out.length && l1.status === "rejected" && l0.status === "rejected") throw l1.reason;
+  // a failed facts search is an error, not "no facts" (callers log it and say memory was unreachable)
+  if (!out.length && l1.status === "rejected" && (factsOnly || l0.status === "rejected")) throw l1.reason;
   return out.slice(0, limit);
 }
 
@@ -401,6 +412,7 @@ export async function remember(project, text) {
 }
 
 const SYS_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+const NOISE_RE = /^(∅|Tool loaded\.|\[tool_(result|call)\][^\n]{0,80}|.{0,2})$/s;
 function turnText(entry) {
   if (!entry || entry.isSidechain || entry.isMeta || !["user", "assistant"].includes(entry.type)) return null;
   const c = entry.message?.content;
@@ -408,6 +420,8 @@ function turnText(entry) {
   // History import reads local session files directly; redact the extracted text before upload.
   text = redact(text.replace(SYS_RE, "").trim());
   if (!text || /^<(command-|local-command|bash-|task-notification)/.test(text) || text.startsWith("Caveat:")) return null;
+  // placeholders and tool chatter carry nothing to remember and only slow every search down
+  if (NOISE_RE.test(text.replace(/\[Image[^\]]*\]/g, "").trim() || "∅")) return null;
   if (text.length > MSG_MAX) text = `${text.slice(0, MSG_MAX - 20)}\n…(truncated)`;
   return { role: entry.type, content: text };
 }

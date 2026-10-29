@@ -5,6 +5,20 @@ import os from "node:os";
 import path from "node:path";
 import { t } from "./i18n.js";
 
+// Hooks, panes, launchd jobs and Claude Code start ekip with a short PATH that misses where worker
+// CLIs install (~/.local/bin, npm's prefix, Homebrew), so an installed agy looked "not installed".
+// The usual install folders are added once here, for every module and every worker ekip spawns.
+{
+  const home = os.homedir();
+  const extra = [path.join(home, ".local/bin"), path.join(home, ".npm-global/bin"), path.join(home, ".bun/bin"), path.join(home, ".cargo/bin"),
+    "/opt/homebrew/bin", "/usr/local/bin", path.join(home, ".orbstack/bin")];
+  // npm's global prefix as ekip init set it (no `npm prefix` call: this runs on every hook)
+  try { const rc = fs.readFileSync(path.join(home, ".npmrc"), "utf8").match(/^prefix\s*=\s*(.+)$/m)?.[1]?.trim(); if (rc) extra.push(path.join(rc.replace(/^~/, home), "bin")); } catch { /* none */ }
+  const have = new Set((process.env.PATH ?? "").split(path.delimiter));
+  const add = extra.filter((d) => !have.has(d) && fs.existsSync(d));
+  if (add.length) process.env.PATH = [...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean), ...add].join(path.delimiter);
+}
+
 // Everything ekip keeps (keys, run transcripts, logs, cloned dependencies) lives inside the repo it
 // runs from, so the whole setup sits on one disk and moves with the folder. EKIP_HOME overrides it.
 export const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
@@ -103,25 +117,38 @@ export const tdaiContainer = (name) => spawnSync("sh", ["-c", TDAI_CONTAINER_SH(
 export const TUNNEL_LABEL = "io.ekip.tunnel";
 export const ssh = (cmd, opts = {}) => spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, cmd], { encoding: "utf8", ...opts });
 
-export async function up({ quiet = false } = {}) {
-  if (await healthy()) return;
+/** Linux: let the memory containers reach the local free pool (see docker-bridge.js); no-op elsewhere. */
+export function dockerBridge() {
+  if (process.platform !== "linux") return;
+  const ip = (spawnSync("sh", ["-c", "ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1"], { encoding: "utf8" }).stdout ?? "").trim();
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
+  const child = spawn(process.execPath, [path.join(REPO, "plugin/lib/core/docker-bridge.js"), ip, String(PORT)], { detached: true, stdio: "ignore" });
+  child.unref();
+}
+
+// soft: a worker run must see a startup failure as a failed attempt (failover, races go on), not
+// die() the whole dispatcher; only the interactive `ekip up` exits.
+export async function up({ quiet = false, soft = false } = {}) {
+  const fail = (msg) => { if (soft) throw new Error(msg); die(msg); };
+  if (await healthy()) { dockerBridge(); return; }
   if (REMOTE) {
     spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
     for (let i = 0; i < 40; i++) { if (await healthy()) return; await sleep(500); }
-    die(`the VPS hub is not reachable through the tunnel (ekip tunnel status; ssh ${REMOTE.ssh})`);
+    fail(`the VPS hub is not reachable through the tunnel (ekip tunnel status; ssh ${REMOTE.ssh})`);
   }
-  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) die(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
+  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) fail(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
   const env = { ...process.env, FREEAPI_ENV_PATH: path.join(FREE_DIR, ".env"), HOST: "127.0.0.1", PORT: String(PORT) };
   if (fs.existsSync(CONFIG)) env.FREEAPI_CONFIG_PATH = CONFIG;
   const out = fs.openSync(LOG, "a");
   const child = spawn(freeNode(), ["server/dist/index.js"], { cwd: FREE_DIR, env, detached: true, stdio: ["ignore", out, out] });
   child.unref();
   fs.writeFileSync(PID, String(child.pid));
+  dockerBridge();
   for (let i = 0; i < 60; i++) {
     if (await healthy()) { if (!quiet) console.error(`ekip: freellmapi up on ${URL_ROOT}`); return; }
     await sleep(500);
   }
-  die(`freellmapi did not start; see ${LOG}`);
+  fail(`freellmapi did not start; see ${LOG}`);
 }
 
 export async function down() {
@@ -240,9 +267,12 @@ export function clone(name) {
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     sh("git", ["clone", "--depth", "50", DEPS[name].repo, dir]);
     if (DEPS[name].ref) {
+      // the pinned commit drifts deeper than the shallow clone as upstream moves on: fetch the full
+      // history then, and stop loudly if it is still missing (patches only fit that commit)
       if (spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" }).status !== 0) {
-        spawnSync("git", ["-C", dir, "fetch", "-q", "--depth", "200", "origin"], { stdio: "ignore" });
-        spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" });
+        spawnSync("git", ["-C", dir, "fetch", "-q", "--unshallow", "origin"], { stdio: "ignore" });
+        if (spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" }).status !== 0)
+          die(`${name}: pinned commit ${DEPS[name].ref} not found in ${DEPS[name].repo}`);
       }
     }
   }

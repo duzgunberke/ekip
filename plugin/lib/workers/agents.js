@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "../core/core.js";
+import { DB, HOME, REMOTE, SETTINGS, URL_ROOT, die, has, keyCounts, saveSettings, unifiedKey, up } from "../core/core.js";
 import { c, dot, fit } from "../core/ui.js";
 import { t } from "../core/i18n.js";
 
@@ -83,32 +83,76 @@ export function poolScore(via) {
 }
 
 // Quota messages worth surfacing, newest log first; "Resets in 140h45m18s" gives the reopen time.
-const QUOTA = [
+export const QUOTA = [
   /Individual quota reached[^\n"]*/, /You have no remaining credits[^\n"]*/, /exceeded your (?:current )?quota[^\n"]*/i,
   /usage limit[^\n"]*reached[^\n"]*/i, /RESOURCE_EXHAUSTED[^\n"]*/,
+  // codex: "You've hit your usage limit. … try again at Nov 28th, 2026 2:43 PM."; copilot/others: premium or monthly caps
+  /hit your usage limit[^\n"]*/i, /premium requests?[^\n"]*(?:limit|exhausted|exceeded|used up)[^\n"]*/i, /monthly (?:limit|quota)[^\n"]*(?:reached|exceeded)[^\n"]*/i,
 ];
 
-/** The pool's last quota error in its run logs, until a later run succeeds or the reset time passes. */
+// No reset time in the message: assume the quota is back this long after the failure.
+const DEFAULT_COOLDOWN_MS = 6 * 3600_000;
+const UNITS = { d: 86400, h: 3600, m: 60, s: 1 };
+
+/** "Resets in 140h45m18s", "2h 45m", "5 days": milliseconds, or null when nothing parseable. */
+export function parseResetIn(text) {
+  const m = text.match(/Resets? in\s+((?:\d+\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])[\s,]*(?:and\s+)?)+)/i);
+  if (!m) return null;
+  let sec = 0;
+  for (const u of m[1].matchAll(/(\d+)\s*([a-z]+)/gi)) sec += +u[1] * UNITS[u[2][0].toLowerCase()];
+  return sec > 0 ? sec * 1000 : null;
+}
+
+// A run log split into its pool attempts: each `[ekip pool X]` mark starts one. Parsed segments are
+// cached per file version (the same logs are read for every pool).
+const segCache = new Map();
+function logSegments(file, st) {
+  const hit = segCache.get(file);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.segs;
+  const fd = fs.openSync(file, "r");
+  const len = Math.min(st.size, 64000), b = Buffer.alloc(len);
+  try { fs.readSync(fd, b, 0, len, st.size - len); } finally { fs.closeSync(fd); }
+  const text = b.toString("utf8");
+  const marks = [...text.matchAll(MARK_RE)];
+  const only = poolFromName(path.basename(file));
+  const segs = marks.length ? marks.map((m, i) => ({ via: m[1], text: text.slice(m.index + m[0].length, marks[i + 1]?.index) })) : only ? [{ via: only, text }] : [];
+  segCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, segs });
+  return segs;
+}
+
+/**
+ * The pool's last quota error in its run logs, until a later attempt succeeds or the reset time
+ * passes. A `--via auto` log holds several pools; each attempt counts for its own pool, by its own
+ * [exit] line.
+ */
 export function lastQuotaHit(via) {
   const runs = path.join(HOME, "runs");
   let files = [];
-  try { files = fs.readdirSync(runs).filter((f) => f.endsWith(`-${via}.log`) || f.includes(`-${via}+`) || f.endsWith(`+${via}.log`)).sort().reverse().slice(0, 8); } catch { return null; }
+  try { files = fs.readdirSync(runs).filter((f) => f.endsWith(".log")).sort().reverse().slice(0, 40); } catch { return null; }
   for (const f of files) {
     const file = path.join(runs, f);
-    const st = fs.statSync(file);
-    const tail = (() => { const fd = fs.openSync(file, "r"); const len = Math.min(st.size, 20000); const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return b.toString("utf8"); })();
-    // Only a finished, failed run counts: a running worker's log can quote these strings (code it
-    // writes, logs it reads), and a later success clears the pool.
-    const exit = tail.match(/\n\[exit (\d+)\][^\n]*\s*$/)?.[1];
-    if (exit == null) continue;
-    if (exit === "0") return null;
-    const end = tail.slice(-4000);
-    const hit = QUOTA.map((re) => end.match(re)?.[0]).find(Boolean);
-    if (!hit) continue;
-    const m = tail.match(/Resets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
-    const resetAt = m ? st.mtimeMs + ((+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0)) * 1000 : null;
-    if (resetAt && resetAt < Date.now()) return null;
-    return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: resetAt ? new Date(resetAt).toISOString() : null };
+    let st, segs;
+    try { st = fs.statSync(file); segs = logSegments(file, st); } catch { continue; }
+    for (const seg of segs.filter((x) => x.via === via).reverse()) {
+      // Only a finished attempt counts: a running worker's log can quote these strings (code it
+      // writes, logs it reads), and a later success clears the pool.
+      const tail = `\n${seg.text}`;
+      const exit = tail.match(/\n\[exit (-?\d+)\][^\n]*\s*$/)?.[1];
+      if (exit == null) continue;
+      const end = tail.slice(-4000);
+      const hit = QUOTA.map((re) => end.match(re)?.[0]).find(Boolean);
+      // exit 0 clears the pool, unless it is a short run that only reports the quota (as failed() sees it)
+      if (exit === "0" && !(hit && seg.text.replace(/^\$[^\n]*\n/, "").length < 600)) return null;
+      if (!hit) continue;
+      const inMs = parseResetIn(tail);
+      // "try again at Nov 28th, 2026 2:43 PM" (codex) is an absolute reopen time
+      const at = tail.match(/try again at ([A-Z][a-z]{2,8} \d{1,2})(?:st|nd|rd|th)?,? (\d{4})(?: (\d{1,2}:\d{2} ?[AP]M))?/);
+      const atMs = at ? Date.parse(`${at[1]} ${at[2]} ${at[3] ?? ""}`.trim()) : NaN;
+      const parsed = inMs != null ? st.mtimeMs + inMs : Number.isFinite(atMs) ? atMs : null;
+      const resetAt = parsed ?? st.mtimeMs + DEFAULT_COOLDOWN_MS;
+      if (resetAt < Date.now()) return null;
+      return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: new Date(resetAt).toISOString() };
+    }
   }
   return null;
 }
@@ -166,6 +210,17 @@ export function poolLoad(running = runningByPool()) {
   return Object.fromEntries(names.map((n) => [n, { running: running[n] ?? 0, capacity: poolCapacity(n) }]));
 }
 
+// The free pool is ready when provider keys are configured (cheap local check, cached 30 s); the
+// server itself is started on demand by the run.
+let freeSeen = { at: 0, ok: false };
+export function freeReady() {
+  if (Date.now() - freeSeen.at < 30_000) return freeSeen.ok;
+  let ok = false;
+  try { ok = !!(REMOTE || fs.existsSync(DB)) && keyCounts({ timeout: 2000 }).length > 0; } catch { /* unreadable: not ready */ }
+  freeSeen = { at: Date.now(), ok };
+  return ok;
+}
+
 /** Pools that are signed in, tested and not out of quota (ignores how busy they are). */
 export function readyPools() {
   const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
@@ -194,10 +249,10 @@ export function autoOrder() {
   return all.filter((n) => n !== "claude").map((n, i) => ({ n, i })).sort((a, b) => load(a.n) - load(b.n) || a.i - b.i).map((x) => x.n);
 }
 
-/** Ready pools with a free slot right now (for `ekip mesai all`): worker CLIs, then claude, then free. */
+/** Ready pools with a free slot right now (for `ekip mesai all`): worker CLIs, then claude, then free (when it has keys). */
 export function freePools() {
   const running = runningByPool();
-  const pools = [...readyPools(), "claude", "free"];
+  const pools = [...readyPools(), "claude", ...(freeReady() ? ["free"] : [])];
   return pools.filter((n) => (running[n] ?? 0) < poolCapacity(n));
 }
 

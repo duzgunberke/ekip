@@ -1,6 +1,113 @@
 --- a/app/src/core/store/sqlite/memory-store.ts
 +++ b/app/src/core/store/sqlite/memory-store.ts
-@@ -1733,6 +1733,13 @@
+@@ -254,6 +254,10 @@
+   private stmtDeleteMeta!: StatementSync;
+   private stmtGetMeta!: StatementSync;
+   private stmtSearchVec?: StatementSync;   // optional — only set when vecTablesReady
++  // ekip patch: vec tables partitioned by agent_id (migrateVecPartition); search scans one agent only
++  private stmtSearchVecAgent?: StatementSync;
++  private l1VecPartitioned = false;
++  private l0VecPartitioned = false;
+   private stmtQueryBySessionId!: StatementSync;
+   private stmtQueryBySessionIdSince!: StatementSync;
+   private stmtQueryBySessionKey!: StatementSync;
+@@ -268,6 +272,7 @@
+   private stmtL0DeleteMeta!: StatementSync;
+   private stmtL0GetMeta!: StatementSync;
+   private stmtL0SearchVec?: StatementSync;   // optional — only set when vecTablesReady
++  private stmtL0SearchVecAgent?: StatementSync;
+   /** L0 query for L1 runner: all messages for a session key */
+   private stmtL0QueryAll!: StatementSync;
+   /** L0 query for L1 runner: messages after a timestamp cursor */
+@@ -538,13 +543,16 @@
+     // When provider="none", dimensions=0 and vec0 tables are deferred until a
+     // real embedding provider is configured.
+     if (this.dimensions > 0) {
++      this.migrateVecPartition("l1_vec", "l1_records", "updated_time");
+       this.db.exec(`
+         CREATE VIRTUAL TABLE IF NOT EXISTS l1_vec USING vec0(
+           record_id TEXT PRIMARY KEY,
+           embedding float[${this.dimensions}] distance_metric=cosine,
+-          updated_time TEXT DEFAULT ''
++          updated_time TEXT DEFAULT '',
++          agent_id TEXT partition key
+         )
+       `);
++      this.l1VecPartitioned = this.isPartitioned("l1_vec");
+     }
+ 
+     // Prepare statements for reuse
+@@ -577,7 +585,9 @@
+ 
+     if (this.dimensions > 0) {
+       this.stmtDeleteVec = this.db.prepare("DELETE FROM l1_vec WHERE record_id = ?");
+-      this.stmtInsertVec = this.db.prepare("INSERT INTO l1_vec (record_id, embedding, updated_time) VALUES (?, ?, ?)");
++      this.stmtInsertVec = this.db.prepare(this.l1VecPartitioned
++        ? "INSERT INTO l1_vec (record_id, embedding, updated_time, agent_id) VALUES (?1, ?2, ?3, COALESCE((SELECT agent_id FROM l1_records WHERE record_id = ?1), 'default'))"
++        : "INSERT INTO l1_vec (record_id, embedding, updated_time) VALUES (?, ?, ?)");
+     }
+     this.stmtDeleteMeta = this.db.prepare("DELETE FROM l1_records WHERE record_id = ?");
+ 
+@@ -595,6 +605,7 @@
+           AND k = ?
+         ORDER BY distance
+       `);
++      if (this.l1VecPartitioned) this.stmtSearchVecAgent = this.db.prepare("SELECT record_id, distance FROM l1_vec WHERE embedding MATCH ? AND k = ? AND agent_id = ? ORDER BY distance");
+     }
+ 
+     // ── L0 schema ──────────────────────────────────
+@@ -660,13 +671,16 @@
+ 
+     // L0 vector virtual table (cosine distance, same dimensions as L1) — deferred when dimensions=0
+     if (this.dimensions > 0) {
++      this.migrateVecPartition("l0_vec", "l0_conversations", "recorded_at");
+       this.db.exec(`
+         CREATE VIRTUAL TABLE IF NOT EXISTS l0_vec USING vec0(
+           record_id TEXT PRIMARY KEY,
+           embedding float[${this.dimensions}] distance_metric=cosine,
+-          recorded_at TEXT DEFAULT ''
++          recorded_at TEXT DEFAULT '',
++          agent_id TEXT partition key
+         )
+       `);
++      this.l0VecPartitioned = this.isPartitioned("l0_vec");
+     }
+ 
+     // L0 prepared statements
+@@ -688,7 +702,9 @@
+ 
+     if (this.dimensions > 0) {
+       this.stmtL0DeleteVec = this.db.prepare("DELETE FROM l0_vec WHERE record_id = ?");
+-      this.stmtL0InsertVec = this.db.prepare("INSERT INTO l0_vec (record_id, embedding, recorded_at) VALUES (?, ?, ?)");
++      this.stmtL0InsertVec = this.db.prepare(this.l0VecPartitioned
++        ? "INSERT INTO l0_vec (record_id, embedding, recorded_at, agent_id) VALUES (?1, ?2, ?3, COALESCE((SELECT agent_id FROM l0_conversations WHERE record_id = ?1), 'default'))"
++        : "INSERT INTO l0_vec (record_id, embedding, recorded_at) VALUES (?, ?, ?)");
+     }
+     this.stmtL0DeleteMeta = this.db.prepare("DELETE FROM l0_conversations WHERE record_id = ?");
+ 
+@@ -705,6 +721,7 @@
+           AND k = ?
+         ORDER BY distance
+       `);
++      if (this.l0VecPartitioned) this.stmtL0SearchVecAgent = this.db.prepare("SELECT record_id, distance FROM l0_vec WHERE embedding MATCH ? AND k = ? AND agent_id = ? ORDER BY distance");
+     }
+ 
+     // L0 query statements for L1 runner (oldest-first + LIMIT to bound memory).
+@@ -1347,10 +1364,9 @@
+         `queryNorm=${Math.sqrt(Array.from(queryEmbedding).reduce((s, v) => s + v * v, 0)).toFixed(4)}`,
+       );
+ 
+-      const rows = this.stmtSearchVec!.all(
+-        Buffer.from(queryEmbedding.buffer),
+-        retrieveCount,
+-      ) as Array<{ record_id: string; distance: number }>;
++      const rows = (this.stmtSearchVecAgent && filter?.agentId !== undefined
++        ? this.stmtSearchVecAgent.all(Buffer.from(queryEmbedding.buffer), retrieveCount, filter.agentId)
++        : this.stmtSearchVec!.all(Buffer.from(queryEmbedding.buffer), retrieveCount)) as Array<{ record_id: string; distance: number }>;
+ 
+       this.logger?.debug?.(`${TAG} [L1-search] vec0 returned ${rows.length} candidate(s)`);
+ 
+@@ -1733,6 +1749,13 @@
            : " (no embedding — metadata-only write)"),
        );
  
@@ -14,7 +121,7 @@
        this.db.exec("BEGIN");
        try {
          // Legacy callers may omit isolation fields; normalize them to the
-@@ -1764,9 +1771,9 @@
+@@ -1764,9 +1787,9 @@
          // Sync FTS5 (delete + re-insert to handle updates).
          // user_id / agent_id mirrored into FTS so post-recall isolation
          // filtering doesn't require a join.
@@ -26,3 +133,56 @@
              this.stmtL0FtsInsert.run(
                tokenizeForFts(record.messageText), // message_text — segmented for indexing
                record.messageText,                 // message_text_original — raw for display
+@@ -1878,10 +1901,9 @@
+         `queryNorm=${Math.sqrt(Array.from(queryEmbedding).reduce((s, v) => s + v * v, 0)).toFixed(4)}`,
+       );
+ 
+-      const rows = this.stmtL0SearchVec!.all(
+-        Buffer.from(queryEmbedding.buffer),
+-        retrieveCount,
+-      ) as Array<{ record_id: string; distance: number }>;
++      const rows = (this.stmtL0SearchVecAgent && filter?.agentId !== undefined
++        ? this.stmtL0SearchVecAgent.all(Buffer.from(queryEmbedding.buffer), retrieveCount, filter.agentId)
++        : this.stmtL0SearchVec!.all(Buffer.from(queryEmbedding.buffer), retrieveCount)) as Array<{ record_id: string; distance: number }>;
+ 
+       this.logger?.debug?.(`${TAG} [L0-search] vec0 returned ${rows.length} candidate(s)`);
+ 
+@@ -3123,6 +3145,38 @@
+    * @returns `true` if migration was performed (= FTS index needs rebuilding).
+    * @internal
+    */
++  /** ekip patch: whether a vec0 table carries the agent_id partition key. */
++  private isPartitioned(table: string): boolean {
++    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(table) as { sql?: string } | undefined;
++    return !!row?.sql && /partition key/i.test(row.sql);
++  }
++
++  /**
++   * ekip patch: rebuild a vec0 table with `agent_id` as its partition key (one time). Without it a
++   * KNN search scanned every agent's vectors (seconds, blocking the server) and then dropped the
++   * other agents' hits, so a small agent often got nothing. Vectors without a metadata row are
++   * orphans and are not carried over. On failure the old table stays and the store runs unpartitioned.
++   */
++  private migrateVecPartition(table: string, meta: string, timeCol: string): void {
++    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(table) as { sql?: string } | undefined;
++    if (!row?.sql || /partition key/i.test(row.sql)) return;
++    const t0 = Date.now();
++    this.logger?.info(`${TAG} [ekip] partitioning ${table} by agent_id (one-time migration)`);
++    this.db.exec("BEGIN IMMEDIATE");
++    try {
++      this.db.exec(`CREATE TEMP TABLE _ekip_vec_mig AS SELECT v.record_id AS record_id, v.embedding AS embedding, v.${timeCol} AS t, m.agent_id AS agent_id FROM ${table} v JOIN ${meta} m ON m.record_id = v.record_id`);
++      this.db.exec(`DROP TABLE ${table}`);
++      this.db.exec(`CREATE VIRTUAL TABLE ${table} USING vec0(record_id TEXT PRIMARY KEY, embedding float[${this.dimensions}] distance_metric=cosine, ${timeCol} TEXT DEFAULT '', agent_id TEXT partition key)`);
++      this.db.exec(`INSERT INTO ${table} (record_id, embedding, ${timeCol}, agent_id) SELECT record_id, embedding, t, agent_id FROM _ekip_vec_mig`);
++      this.db.exec("DROP TABLE _ekip_vec_mig");
++      this.db.exec("COMMIT");
++      this.logger?.info(`${TAG} [ekip] ${table} partitioned in ${Math.round((Date.now() - t0) / 1000)} s`);
++    } catch (err) {
++      try { this.db.exec("ROLLBACK"); } catch { /* not in a transaction */ }
++      this.logger?.warn(`${TAG} [ekip] ${table} partition migration failed, staying unpartitioned: ${err instanceof Error ? err.message : String(err)}`);
++    }
++  }
++
+   private migrateFtsTablesIfNeeded(): boolean {
+     try {
+       // Check if l1_fts exists at all

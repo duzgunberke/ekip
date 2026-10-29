@@ -16,6 +16,14 @@ On the VPS the patched file is `/data/ekip/memory-store.patched.ts`; `start-memo
 it over `/app/src/core/store/sqlite/memory-store.ts` when it exists. After a memory-core image update,
 re-apply the patch to the new file (`patch -p1` in a copy of `/app`) before restarting.
 
+`memory-core` vector tables per agent (`memory-store.ts`): sqlite-vec KNN searched every agent's vectors
+(287k x 2048 floats, ~2.3 GB per query, seconds while the whole server waited, since node:sqlite is
+synchronous) and filtered by agent afterwards, so a small project often got another project's
+neighbours and then nothing. The patch rebuilds `l1_vec` / `l0_vec` once with `agent_id` as a
+partition key (orphan vectors are not carried over), inserts take the agent from the metadata row,
+and searches with an agent filter scan only that partition. `ekip memory compact`
+(`hub/tools/tdai-compact.mjs`) removes duplicate and noise conversation rows before it.
+
 ## Language rule (prompts)
 `core/prompts/{l1-extraction,l1-dedup,persona-generation,scene-extraction}.ts` and
 `core/skill/prompts/skill-review-prompt{,-strict}.ts` get one strict line: write free text in the language the

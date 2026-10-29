@@ -1,0 +1,24 @@
+--- a/app/src/core/store/embedding.ts
++++ b/app/src/core/store/embedding.ts
+@@ -478,9 +478,19 @@
+     // nothing to do — remote API is stateless
+   }
+ 
++  // ekip patch: one search embeds the same query for facts and for conversation, and the same
++  // questions come back; a small cache (and sharing of an in-flight call) saves a remote embedding
++  // round trip of 0.2-1 s on every repeat.
++  private embedCache = new Map<string, Promise<Float32Array>>();
++
+   async embed(text: string, options?: EmbeddingCallOptions): Promise<Float32Array> {
+-    const [result] = await this.embedBatch([text], options);
+-    return result;
++    const hit = this.embedCache.get(text);
++    if (hit) { this.embedCache.delete(text); this.embedCache.set(text, hit); return hit; }
++    const p = this.embedBatch([text], options).then(([result]) => result);
++    this.embedCache.set(text, p);
++    p.catch(() => this.embedCache.delete(text));
++    if (this.embedCache.size > 500) this.embedCache.delete(this.embedCache.keys().next().value as string);
++    return p;
+   }
+ 
+   async embedBatch(texts: string[], options?: EmbeddingCallOptions): Promise<Float32Array[]> {

@@ -65,3 +65,19 @@ Each of these looked like "stuck" or "broken" and was something else. Check for 
   failed earlier in the same shell line. Check that each `ekip task step` actually ran.
 - **A pane running old code.** A long-lived pane kept old logic after an update; the task pane now
   restarts itself, other long-lived processes may not.
+- **A short PATH.** Hooks, panes and launchd jobs start with a PATH without `~/.local/bin`, so an
+  installed worker CLI looked "not installed" on the panel. ekip adds the usual install folders itself.
+- **Quota found only after a failure.** A pool showed "ready" until a run failed on its quota; a pool
+  named with `--via` then failed the task. A quota failure now hands the task to the next pool, and the
+  reset time is read from the message ("Resets in …", "try again at …").
+- **A search that scans everything.** Memory search went from instant to 4-16 s as the store grew to
+  287k conversation rows (half duplicates, tool noise) in one unpartitioned vector table, and the hook
+  that adds knowledge to each message gave up silently. Lookups that time out are now logged as
+  timeouts and doctor warns; vector tables are partitioned per project; `ekip memory compact` cleans.
+- **A plain word as a project name.** "ekip" is also an everyday Turkish word; matching it in free text
+  filed unrelated research under the ekip project. Common-word names need a path or `--project` mention.
+- **A hook timeout from an older cached copy.** Claude Code runs the plugin from a cached copy with the
+  old hook timeout; a budget longer than that timeout printed an error under every message. Hooks end
+  themselves well inside the shortest timeout any copy might have.
+- **Scripts replaced while they run.** bash reads a script as it executes it; copying a new CI script
+  over a running one corrupted the run. CI now runs from a per-run copy.

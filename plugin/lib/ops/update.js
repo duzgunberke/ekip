@@ -13,7 +13,11 @@ const git = (...args) => spawnSync("git", ["-C", ROOT, ...args], { encoding: "ut
 const readState = () => { try { return JSON.parse(fs.readFileSync(STATE, "utf8")); } catch { return {}; } };
 const writeState = (s) => { try { fs.writeFileSync(STATE, JSON.stringify(s)); } catch { /* best effort */ } };
 
+// Releases are tags on tested commits (scripts/ci/release.sh), so the version is the newest tag
+// reachable from this checkout; plugin.json is the fallback for a copy without git history.
 export function localVersion() {
+  const d = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*");
+  if (d.status === 0 && d.stdout.trim()) return d.stdout.trim().replace(/^v/, "");
   try { return JSON.parse(fs.readFileSync(path.join(ROOT, "plugin/.claude-plugin/plugin.json"), "utf8")).version; } catch { return "0.0.0"; }
 }
 

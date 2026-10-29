@@ -5,7 +5,7 @@
 import { SETTINGS, die, saveSettings } from "../core/core.js";
 import { c, dot, fit, title } from "../core/ui.js";
 import { t } from "../core/i18n.js";
-import { freePools, poolCapacity, poolLoad, poolScore } from "./agents.js";
+import { freePools, freeReady, poolCapacity, poolLoad, poolScore } from "./agents.js";
 import { workerPools } from "./limits.js";
 
 const STATUS = { ready: ["ok", "hazır"], limited: ["bad", "limitte"], login: ["warn", "giriş gerekiyor"], untested: ["warn", "denenmedi"], off: ["off", "kurulu değil"] };
@@ -15,7 +15,7 @@ export function poolRows() {
   const load = poolLoad();
   const rows = workerPools().map((w) => ({ name: w.name, status: w.status, ...load[w.name], successRate: w.successRate }));
   const sc = poolScore("free");
-  rows.push({ name: "free", status: "ready", ...load.free, successRate: sc.runs ? Math.round(sc.rate * 100) : null });
+  rows.push({ name: "free", status: freeReady() ? "ready" : "login", ...load.free, successRate: sc.runs ? Math.round(sc.rate * 100) : null });
   if (poolCapacity("claude") > 0) {
     const cl = poolScore("claude");
     rows.push({ name: "claude", status: "ready", ...load.claude, successRate: cl.runs ? Math.round(cl.rate * 100) : null });

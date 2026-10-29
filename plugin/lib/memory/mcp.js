@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { findProject, getProject, listProjects } from "../projects/projects.js";
-import * as mem from "./memory.js";
+import * as memStatic from "./memory.js";
 import { redact } from "../core/redact.js";
 
 const PROTOCOL = "2025-06-18";
@@ -34,14 +34,14 @@ export const TOOLS = [
 ];
 
 function project(name) {
-  if (name === "genel" || name === "general") return mem.generalProject();
+  if (name === "genel" || name === "general") return memMod.generalProject();
   if (name) {
     const p = getProject(name);
     if (!p) throw new Error(`unknown project "${name}"; known: ${listProjects().map((x) => x.name).join(", ")}`);
     return p;
   }
   // outside any registered project: the general space (one-off work, unregistered repos)
-  return findProject(process.cwd()) ?? mem.generalProject();
+  return findProject(process.cwd()) ?? memMod.generalProject();
 }
 
 function pickGraph(p, repo) {
@@ -81,7 +81,21 @@ export async function callTool(name, a = {}) {
   }
 }
 
+// The MCP server lives as long as the Claude Code session, so after an ekip update it kept answering
+// with the old memory code. The memory module is re-imported whenever its file changes.
+let memMod = memStatic, memAt = 0;
+async function freshMem() {
+  try {
+    const f = new URL("./memory.js", import.meta.url);
+    const at = fs.statSync(f).mtimeMs;
+    if (memAt && at !== memAt) memMod = await import(`${f.href}?v=${at}`);
+    memAt = at;
+  } catch { /* keep the loaded one */ }
+  return memMod;
+}
+
 async function runTool(name, a = {}) {
+  const mem = await freshMem();
   switch (name) {
     case "projects_list":
       return listProjects().map((p) => ({ name: p.name, path: p.path, summary: p.summary, card: !!p.card,

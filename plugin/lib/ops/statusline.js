@@ -44,7 +44,8 @@ export async function main([sub] = []) {
   if (ci?.status === "pass") parts.push(c.green("CI ✓"));
   else if (ci?.status === "fail") parts.push(c.red(`CI ✗ ${ci.step ?? ""}`));
   const up = readJson(path.join(HOME, "update-check.json"), {});
-  const local = readJson(path.join(path.dirname(new URL(import.meta.url).pathname), "../../.claude-plugin/plugin.json"), {}).version;
+  const { localVersion } = await import("./update.js");
+  const local = localVersion();
   if (up.latest && local && up.latest !== local && up.latest.localeCompare(local, undefined, { numeric: true }) > 0) parts.push(c.yellow(`yeni sürüm ${up.latest}`));
   else if (local) parts.push(c.gray(`v${local}`));
 

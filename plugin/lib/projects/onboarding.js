@@ -89,5 +89,7 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
 
 export function printGaps(gaps, { heading = false, limit = Infinity } = {}) {
   if (heading) console.log(`\n› ${t("Kurulum")}`);
-  for (const g of gaps.slice(0, limit)) console.log(`  eksik: ${g.title} → ${g.command}`);
+  // most serious first, so a short list never hides a broken part behind a hint
+  const rank = { bad: 0, warn: 1, info: 2 };
+  for (const g of [...gaps].sort((a, b) => (rank[a.severity] ?? 1) - (rank[b.severity] ?? 1)).slice(0, limit)) console.log(`  eksik: ${g.title} → ${g.command}`);
 }

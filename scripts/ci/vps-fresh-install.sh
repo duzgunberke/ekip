@@ -38,6 +38,9 @@ step "memory stack up and patched"
 run 'for i in $(seq 1 40); do curl -sf http://127.0.0.1:8420/health >/dev/null && break; sleep 5; done; curl -sf http://127.0.0.1:8420/health >/dev/null
 grep -q "LANGUAGE (strict" /root/ekip/data/tdai/patched/app/src/core/prompts/l1-extraction.ts' || { result fail "memory stack"; exit 1; }
 
+step "memory-core reaches the free pool (facts and vectors need it; Linux needs host-gateway)"
+run 'C=$(docker ps --format "{{.Names}}" | grep -m1 -E "^tdai-memory-core(-|$)"); docker exec $C node -e "fetch(\"http://host.docker.internal:3001/health\").then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"' || { result fail "memory-core to free pool"; exit 1; }
+
 step "smoke test"
 run 'cd /root/ekip && bash scripts/smoke.sh' || { result fail "smoke test"; exit 1; }
 

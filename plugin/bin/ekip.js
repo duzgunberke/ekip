@@ -15,7 +15,7 @@ import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core/core.js";
 import { POINTER, REMOTE, ROOT, TDAI_CONTAINER_SH, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh, tdaiContainer } from "../lib/core/core.js";
-import { AGENTS, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
+import { AGENTS, QUOTA, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
 import { main as vpsMain } from "../lib/hub/vps.js";
@@ -87,9 +87,14 @@ async function keyWizard({ all = false } = {}) {
 
 // ---- environments of the two non-subscription pools --------------------------------------------
 
-async function freeEnv(project = null) {
-  await up({ quiet: true });
-  if (!keyCounts().length) die("no free provider keys yet — add one with: ekip key add <platform> <key>");
+// soft: a worker run gets a thrown error (a failed attempt) instead of die() killing the dispatcher.
+async function freeEnv(project = null, { soft = false } = {}) {
+  await up({ quiet: true, soft });
+  if (!keyCounts(soft ? { timeout: 10_000 } : {}).length) {
+    const msg = "no free provider keys yet — add one with: ekip key add <platform> <key>";
+    if (soft) throw new Error(msg);
+    die(msg);
+  }
   const env = { ...process.env };
   // Interactive sessions use AUTH_TOKEN (an API_KEY there triggers a "use this key?" dialog);
   // runWorker swaps it for API_KEY, the only credential --bare reads.
@@ -187,10 +192,14 @@ function registry() {
 const WORKER_BRIEF = [
   "You are a worker agent dispatched by a lead agent. Do the task below completely and autonomously in the current directory; do not ask questions, make reasonable assumptions and state them.",
   "Finish with a short report: what you changed (files), what you verified and how, and anything left open.",
-  "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).",
+  // a worker once revoked a signing certificate to get past an error; the account owner got Apple's email
+  "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
   "",
   "TASK:",
 ].join("\n");
+// only in a git repo: elsewhere there is no code index to ask
+const CODEGRAPH_LINE = "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).";
+const workerBrief = (cwd) => (spawnSync("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdio: "ignore" }).status === 0 ? WORKER_BRIEF.replace("\n\nTASK:", `\n${CODEGRAPH_LINE}\n\nTASK:`) : WORKER_BRIEF);
 
 // Watchdog for every worker: one that prints nothing for EKIP_IDLE_MIN minutes (default 15) or runs
 // past EKIP_TIMEOUT_MIN (default 90) is stopped, so a hung CLI never sits on a task for hours; the
@@ -204,22 +213,51 @@ function watchdog(child, log) {
     if (idle < idleMs && total < maxMs) return;
     why = idle >= idleMs ? `${Math.round(idle / 60000)} dk sessiz kaldı, durduruldu` : `${Math.round(total / 60000)} dk sınırını aştı, durduruldu`;
     log.write(`\n[ekip] ${why}\n`);
-    child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+    killTree(child, "SIGTERM"); setTimeout(() => killTree(child, "SIGKILL"), 10_000).unref();
   }, 30_000);
   tick.unref();
   return { alive: () => { seen = Date.now(); }, stop: () => clearInterval(tick), why: () => why };
+}
+
+// Workers run in their own process group: the watchdog and a stop signal kill the whole group, so a
+// grandchild holding the pipes cannot keep the run alive.
+const liveKids = new Set();
+function killTree(child, sig) {
+  try { process.kill(-child.pid, sig); } catch { try { child.kill(sig); } catch { /* already gone */ } }
+}
+
+// Spawns a worker and calls done(code, note) once: on a spawn error (missing binary), on close, or
+// shortly after exit when a grandchild still holds the pipes open.
+function spawnWorker(cmd, argv, opts, done) {
+  const child = spawn(cmd, argv, { ...opts, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  liveKids.add(child);
+  let ended = false, grace = null;
+  const end = (code, note = "") => {
+    if (ended) return;
+    ended = true; clearTimeout(grace); liveKids.delete(child);
+    child.stdout?.destroy(); child.stderr?.destroy();
+    done(code, note);
+  };
+  const codeOf = (code, sig) => code ?? (sig ? 143 : 1);
+  child.on("error", (e) => end(e.code === "ENOENT" ? 127 : 1, `${cmd}: ${e.message}`));
+  child.on("exit", (code, sig) => { grace = setTimeout(() => end(codeOf(code, sig)), 2000); });
+  child.on("close", (code, sig) => end(codeOf(code, sig)));
+  return child;
 }
 
 function runChild(cmd, argv, opts, logFile) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n`);
-    const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
+    const child = spawnWorker(cmd, argv, opts, (code, note) => {
+      dog.stop(); if (note) { out += `\n${note}`; log.write(`\n${note}`); }
+      if (dog.why()) { code = 124; out += `\n${dog.why()}`; }
+      log.end(`\n[exit ${code}]\n`); resolve({ code, out });
+    });
     const dog = watchdog(child, log);
     child.stdout.on("data", (d) => { dog.alive(); out += d; log.write(d); });
     child.stderr.on("data", (d) => { dog.alive(); out += d; log.write(d); });
-    child.on("close", (code) => { dog.stop(); if (dog.why()) { code = 124; out += `\n${dog.why()}`; } log.end(`\n[exit ${code}]\n`); resolve({ code, out }); });
   });
 }
 
@@ -236,8 +274,14 @@ function runStream(cmd, argv, opts, logFile, kind) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n\n`);
-    const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     let buf = "", raw = "", final = "", lastStep = -1, steps = new Map(), loggedModel = false;
+    const child = spawnWorker(cmd, argv, opts, (code, note) => {
+      dog.stop(); if (note) { raw += `\n${note}`; log.write(`\n${note}`); }
+      if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
+      if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
+      log.end(`\n\n[exit ${code}]\n`);
+      resolve({ code, out: final.trim() ? final : raw });
+    });
     const onEvent = (e) => {
       const reportedModel = e.model ?? e.response?.model ?? e.message?.model ?? e.data?.model;
       if (!loggedModel && typeof reportedModel === "string" && reportedModel.length < 200) { log.write(`model: ${reportedModel}\n`); loggedModel = true; }
@@ -266,18 +310,14 @@ function runStream(cmd, argv, opts, logFile, kind) {
       }
     });
     child.stderr.on("data", (d) => { dog.alive(); raw += d; log.write(d); });
-    child.on("close", (code) => {
-      dog.stop(); if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
-      if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
-      log.end(`\n\n[exit ${code}]\n`);
-      resolve({ code, out: final.trim() ? final : raw });
-    });
   });
 }
 
-// A run that "succeeded" but only reports a quota or auth failure counts as failed, so auto moves on.
+// A run that exited 0 but only reports a quota failure counts as failed, so auto moves on; a short
+// successful report that merely mentions "429" or "quota" does not. LIMIT_RE (broad) only reads
+// the output of runs that already failed.
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
-const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && LIMIT_RE.test(r.out));
+const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && QUOTA.some((re) => re.test(r.out)));
 
 // --plugin NAME: an installed Claude Code plugin; --skill NAME: a project or user skill,
 // wrapped as a one-skill plugin so --bare sessions can load it with --plugin-dir.
@@ -327,44 +367,42 @@ function skillDocs(o) {
   for (const name of o.plugins) {
     const hit = Object.entries(installed).find(([k]) => k === name || k.split("@")[0] === name);
     const root = hit && [hit[1]].flat()[0].installPath;
-    if (root) for (const f of spawnSync("find", [root, "-name", "SKILL.md", "-maxdepth", "4"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)) docs.push(f);
+    // the plugin's main SKILL.md (its own name) first, shallow ones next; a big plugin lists dozens
+    const rank = (f) => (path.basename(path.dirname(f)) === name.split("@")[0] ? 0 : 1);
+    if (root) docs.push(...spawnSync("find", [root, "-maxdepth", "4", "-name", "SKILL.md"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)
+      .sort((a, b) => rank(a) - rank(b) || a.split("/").length - b.split("/").length || a.localeCompare(b)));
   }
   for (const name of o.skills) {
     if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") continue;
     const src = localSkillPath(o, name) ?? path.join(os.homedir(), ".claude/skills", name);
     const f = path.join(src, "SKILL.md");
-    if (fs.existsSync(f)) docs.push(fs.realpathSync(f));
+    if (fs.existsSync(f)) docs.unshift(fs.realpathSync(f));
   }
-  return docs;
+  return docs.slice(0, 6);
 }
 
 async function runVia(via, o, logFile) {
   const docs = AGENTS[via] ? skillDocs(o) : [];
-  // The project's own procedures that match this task (learned from past sessions).
-  let procs = "";
-  if (o.project) {
-    try {
-      const { skillSearch } = await import("../lib/memory/memory.js");
-      const hits = await Promise.race([skillSearch(o.project, o.task, 3), sleep(8000).then(() => [])]);
-      if (hits.length) procs = `This project has procedures that may apply. Read the relevant ones before you start with \`ekip skill show ${o.project} <name>\`:\n${hits.map((h) => `- ${h.name}: ${h.description ?? ""}`).join("\n")}\n\n`;
-    } catch { /* memory offline: go without */ }
-  }
-  const prompt = `${WORKER_BRIEF}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
+  // the project's learned skills come with projectKnowledge (added once to the brief); listing them
+  // here as well sent the same descriptions twice
+  const procs = "";
+  const prompt = `${workerBrief(o.cwd)}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
   if (AGENTS[via]) {
     const a = AGENTS[via];
     if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
-    if (a.free) await up({ quiet: true });
+    if (a.free) await up({ quiet: true, soft: true });
     const model = o.model ?? (via === "agy" ? process.env.EKIP_AGY_MODEL : null);
     if (via === "agy") return runStream(a.bin, [...a.argv(prompt, { ...o, model }), "--output-format", "stream-json"], { cwd: o.cwd }, logFile, "agy");
     return runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd }, logFile);
   }
+  if (!has("claude")) return { code: 127, out: "claude is not installed" };
   if (via === "claude") {
     // Your own subscription with your full setup (skills, plugins, MCP): for the hard parts.
     const argv = ["-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose", ...pluginDirs(o)];
     if (o.model) argv.push("--model", o.model);
     return runStream("claude", argv, { cwd: o.cwd }, logFile, "claude");
   }
-  const env = await freeEnv(o.project);
+  const env = await freeEnv(o.project, { soft: true });
   env.ANTHROPIC_API_KEY = env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_AUTH_TOKEN;
   if (o.model) Object.assign(env, { ANTHROPIC_MODEL: o.model, ANTHROPIC_DEFAULT_SONNET_MODEL: o.model, ANTHROPIC_DEFAULT_OPUS_MODEL: o.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: o.model });
@@ -376,11 +414,9 @@ async function runVia(via, o, logFile) {
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 
 async function runOne(o, via, id) {
-  const t0 = Date.now();
   const r = await runOneInner(o, via, id);
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
-  recordStat(r.via ?? via, r.ok, Date.now() - t0);
   if (o.taskId) (await import("../lib/tasks/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
   return r;
 }
@@ -388,11 +424,13 @@ async function runOne(o, via, id) {
 // Runs of this process, so a stop signal can still report them: a killed worker used to stay
 // "running" on the hub forever.
 const activeRuns = new Map();
-let stopHandler = false;
+let stopHandler = false, stopping = false;
 function onStop() {
   if (stopHandler) return;
   stopHandler = true;
   for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, async () => {
+    stopping = true;
+    for (const child of liveKids) killTree(child, "SIGTERM");
     for (const [id, r] of activeRuns) {
       try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
       try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
@@ -401,6 +439,7 @@ function onStop() {
     }
     const { pending } = await import("../lib/tasks/tasks.js");
     await Promise.race([Promise.allSettled([...pending]), sleep(4000)]);
+    for (const child of liveKids) killTree(child, "SIGKILL");
     process.exit(143);
   });
 }
@@ -466,7 +505,8 @@ async function projectKnowledge(o, runId) {
     const mem = await import("../lib/memory/memory.js");
     const { redact } = await import("../lib/core/redact.js");
     const q = o.task.slice(0, 600);
-    const proj = (await import("../lib/projects/projects.js")).getProject(o.project);
+    const general = o.project === "genel";
+    const proj = general ? null : (await import("../lib/projects/projects.js")).getProject(o.project);
     const [skillsT, factsT, wikiT] = await Promise.all([
       timed(timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000)),
       timed(timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000)),
@@ -474,10 +514,10 @@ async function projectKnowledge(o, runId) {
     ]);
     const [skills, facts, wiki] = [skillsT.value ?? [], factsT.value ?? [], wikiT?.value ?? null];
     const lines = [];
-    const projectRules = (await import("../lib/projects/project-config.js")).rules(proj);
+    const projectRules = proj ? (await import("../lib/projects/project-config.js")).rules(proj) : "";
     if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
     // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
-    const local = (await import("../lib/projects/project-skills.js")).projectSkills(proj?.path, q).slice(0, 4);
+    const local = proj ? (await import("../lib/projects/project-skills.js")).projectSkills(proj.path, q).slice(0, 4) : [];
     if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
     if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
@@ -487,7 +527,7 @@ async function projectKnowledge(o, runId) {
     usage?.recordUse({ ...base, kind: "skill", hits: skills.length, names: skills.map((k) => k.name), ms: skillsT.ms });
     if (wikiT) usage?.recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
     usage?.recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
-    return lines.length ? redact(`\n\n## Project knowledge (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
+    return lines.length ? redact(`\n\n## ${general ? "Knowledge from earlier work outside projects" : "Project knowledge"} (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
   } catch (e) { usage?.recordUse({ ...base, kind: "memory", hits: 0, error: e?.message }); return ""; /* memory down: the worker still gets the brief */ }
 }
 
@@ -500,6 +540,9 @@ async function runOneInner(o, via, id) {
     const { SETTINGS } = await import("../lib/core/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
     if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o, id); }
+  } else if (!o.knowledgeAdded) {
+    // outside registered projects: what the general space remembers (one-off work, unregistered repos)
+    o.knowledgeAdded = true; o.task += await projectKnowledge({ ...o, project: "genel" }, id);
   }
   try { (await import("../lib/projects/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
@@ -510,17 +553,30 @@ async function runOneInner(o, via, id) {
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`, { title: `ekip · ${o.label ?? via}` });
   const order = via === "auto" ? autoOrder() : [via];
-  let last = null;
-  for (const v of order) {
+  let last = null, lastVia = via;
+  for (let i = 0; i < order.length; i++) {
+    const v = order[i];
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     // which pool this run is on, so other `--via auto` runs see it as busy
     fs.appendFileSync(logFile, poolMark(v));
+    const t0 = Date.now();
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
-    if (!failed(last)) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
+    lastVia = v;
+    const ok = !failed(last);
+    recordStat(v, ok, Date.now() - t0);
+    if (stopping) break;
+    if (ok) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
+    // A pool asked for by name that is out of quota hands the task on instead of failing it: the
+    // next pools of the auto order (limited ones are already left out; never the headless Claude)
+    if (via !== "auto" && i === order.length - 1 && LIMIT_RE.test(last.out.slice(-4000))) {
+      const rest = autoOrder().filter((x) => !order.includes(x) && x !== "claude");
+      if (rest.length) { warn(`${c.bold(v, process.stderr)} ${t("kotası dolu; sıradaki havuza geçiliyor")}: ${rest.join(" → ")}`); order.push(...rest); }
+    }
   }
   clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload();
-  return { ok: false, via, out: last?.out.trim() ?? "", logFile, model };
+  // a failed run belongs to the last pool tried ("auto" is only the requested mode)
+  return { ok: false, via: lastVia, out: last?.out.trim() ?? "", logFile, model };
 }
 
 function modelFromLog(file) {
@@ -1221,6 +1277,15 @@ export function patchTdaiScripts(dir) {
     const r = spawnSync("git", ["-C", clone, "apply", "--3way", ip], { encoding: "utf8" });
     if (r.status !== 0) console.error(`ekip: importer patch did not apply (${r.stderr.trim().split("\n")[0]}); history import works without its retries`);
   }
+  // memory-core reaches the free pool at host.docker.internal (LLM for facts, embeddings), but unlike
+  // the proxy and hub scripts it is started without the host-gateway entry: on Linux Docker Engine the
+  // name did not resolve and fact extraction and vectors failed silently (macOS Docker adds it itself)
+  {
+    const sc = path.join(dir, "start-memory-core.sh");
+    const st = fs.readFileSync(sc, "utf8");
+    if (!st.includes("host.docker.internal:host-gateway") && st.includes('$DOCKER run -d --name "$CONTAINER" \\\n'))
+      fs.writeFileSync(sc, st.replace('$DOCKER run -d --name "$CONTAINER" \\\n', '$DOCKER run -d --name "$CONTAINER" \\\n  --add-host=host.docker.internal:host-gateway \\\n'));
+  }
   // memory-core ships with embeddings off ("provider: none" = keyword search only); make the block
   // read MEMORY_EMBEDDING_* so it can use an OpenAI-compatible embeddings endpoint (freellmapi).
   const core = path.join(dir, "start-memory-core.sh");
@@ -1295,7 +1360,9 @@ async function importHistory(args = []) {
       cwd: tdai, stdio: "inherit",
       env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key,
         // conversation only, no tool output (see agents/asset-import.ts LEAN); TDAI_IMPORT_LEAN=0 for everything
-        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1", TDAI_IMPORT_SINCE_DAYS: days, TDAI_IMPORT_MAX_MB: maxMb },
+        // what people said and what was answered: tool calls and results were 85% of the rows and
+        // made every vector search slower without adding decisions (TDAI_IMPORT_ESSENTIAL=0 keeps calls)
+        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1", TDAI_IMPORT_ESSENTIAL: process.env.TDAI_IMPORT_ESSENTIAL ?? "1", TDAI_IMPORT_SINCE_DAYS: days, TDAI_IMPORT_MAX_MB: maxMb },
     });
   }
 }
@@ -1312,9 +1379,30 @@ function reindex() {
   } else console.log(spawnSync("sh", ["-c", cmd(tdaiDeploy(), script)], { encoding: "utf8" }).stdout.trim());
 }
 
+// ekip memory compact: duplicates and tool noise out of memory-core's store (hub/tools/tdai-compact.mjs),
+// with memory-core stopped for the few seconds it takes; a copy of the store is kept next to it (the
+// previous copy is replaced). Runs where the memory stack runs: the VPS or local Docker.
+function compact() {
+  const script = path.join(ROOT, "hub/tools/tdai-compact.mjs");
+  const body = (src) => `set -e; C=$(${TDAI_CONTAINER_SH("tdai-memory-core")}); [ -n "$C" ] || { echo "memory-core is not running"; exit 1; }
+IMG=$(docker inspect -f '{{.Config.Image}}' $C)
+DIR=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' $C | sed -n 's/^TDAI_DATA_DIR=//p'); DIR=\${DIR:-/data/tdai-memory}
+docker stop $C >/dev/null
+docker run --rm --volumes-from $C -v ${src}:/tmp/ekip-compact.mjs:ro --entrypoint sh $IMG -c "rm -f $DIR/vectors.db.bak && cp $DIR/vectors.db $DIR/vectors.db.bak && node /tmp/ekip-compact.mjs $DIR/vectors.db" || { docker start $C >/dev/null; exit 1; }
+docker start $C >/dev/null
+echo "memory-core restarted; its first start rebuilds the vector tables per project (minutes on a large store)"`;
+  if (REMOTE) {
+    spawnSync("scp", ["-q", script, `${REMOTE.ssh}:${REMOTE.dir}/tdai-compact.mjs`], { stdio: "inherit" });
+    const r = ssh(body(`${REMOTE.dir}/tdai-compact.mjs`), { stdio: "inherit" });
+    return r.status ?? 1;
+  }
+  return spawnSync("sh", ["-c", body(script)], { stdio: "inherit" }).status ?? 1;
+}
+
 async function memory([sub = "status", ...rest]) {
   if (sub === "import-history") return importHistory(rest);
   if (sub === "reindex") return reindex();
+  if (sub === "compact") { process.exitCode = compact(); return; }
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
@@ -1469,7 +1557,7 @@ ${c.bold("Development environment")}
 
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
@@ -1509,7 +1597,7 @@ ${c.bold("Geliştirme ortamı")}
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
