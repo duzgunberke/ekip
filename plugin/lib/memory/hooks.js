@@ -53,7 +53,11 @@ export async function main([sub, ...rest] = []) {
     if (sub === "session-start") {
       const input = await readStdin();
       const ctx = await sessionStartContext(input.cwd || process.cwd());
-      if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
+      // Claude Code clears the screen when it starts, so what `ekip` printed before is gone: the gaps
+      // are repeated inside the session, where the user sees them (only at startup, not every resume)
+      const gaps = input.source === "startup" ? (await setupGaps({ cwd: input.cwd || process.cwd() })).filter((g) => g.severity !== "info") : [];
+      const systemMessage = gaps.length ? `ekip · ${lang === "en" ? "missing" : "eksik"}: ${gaps.map((g) => `${g.title} → ${g.command}`).join(" · ")}` : undefined;
+      if (ctx) process.stdout.write(JSON.stringify({ ...(systemMessage ? { systemMessage } : {}), hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
     } else if (sub === "stop") {
       const input = await readStdin();
       const cwd = input.cwd || process.cwd();
