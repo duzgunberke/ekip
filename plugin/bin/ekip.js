@@ -1138,7 +1138,7 @@ ${c.bold("Workers")}
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
 
 ${c.bold("Development environment")}
-  ${c.cyan("ekip dev")} ${c.gray("ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
+  ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
 
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
@@ -1173,7 +1173,7 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
 
 ${c.bold("Geliştirme ortamı")}
-  ${c.cyan("ekip dev")} ${c.gray("ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
+  ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}

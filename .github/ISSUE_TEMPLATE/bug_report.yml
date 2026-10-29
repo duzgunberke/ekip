@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible problem
+ labels: []
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ekip version or commit
+      description: Run `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and terminal
+      description: For example, macOS and Terminal, iTerm2, or another terminal.
+    validations:
+      required: true
+  - type: textarea
+    id: pools
+    attributes:
+      label: Configured pools
+      description: Paste `ekip agents` output and redact personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpt
+      description: If useful, include a redacted excerpt from data/runs. Strip tokens, hostnames, and project names.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed personal data.
+          required: true

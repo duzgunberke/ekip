@@ -52,7 +52,7 @@ const isRepo = (d) => fs.existsSync(path.join(d, ".git"));
 const remote = (d) => mem.httpsRemote(git(d, "remote", "get-url", "origin").stdout);
 const lastCommit = (d) => Number(git(d, "log", "-1", "--format=%ct").stdout.trim()) || 0;
 
-// Sub-repos one or two levels down (multi-repo folders such as lumareef).
+// Sub-repos one or two levels down (multi-repo folders such as my-app).
 function subRepos(dir) {
   const out = [];
   const walk = (rel, depth) => {

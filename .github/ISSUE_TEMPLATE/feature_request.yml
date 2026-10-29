@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an improvement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - lead
+        - workers
+        - memory
+        - hub
+        - review
+        - dev
+        - skills
+    validations:
+      required: true

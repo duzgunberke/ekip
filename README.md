@@ -156,6 +156,8 @@ and the agent CLIs of Antigravity, Codex, Copilot, Qwen Code, OpenCode and grok-
 
 MIT licensed. The projects it builds on keep their own licenses.
 
+See [Contributing](CONTRIBUTING.md) before opening a pull request.
+
 ## Development databases
 
 Use `ekip dev add PROJECT` to map a project to an isolated `_dev` database, then `ekip dev up PROJECT` to create `.env.ekip-dev` and open the local tunnel. Workers should source that file; never use production database URLs for tests or migrations. Reset only development data with `ekip dev reset PROJECT --yes`, then close the tunnel with `ekip dev down`.

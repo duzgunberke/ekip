@@ -23,7 +23,7 @@ splitting the work, integration and review. Everything well-scoped goes to worke
 
 ```bash
 ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR] [--model ID] [--plugin NAME] [--skill NAME] "brief"
-ekip run --via agy --project lumareef - <<'EOF'
+ekip run --via agy --project my-app - <<'EOF'
 long brief...
 EOF
 ```
@@ -76,3 +76,18 @@ EOF
   - `ekip agents login` signs in to codex, qwen and the other CLIs.
   - These are interactive, so the user runs them in their own terminal.
 - When the Claude limit is out, the user can run `ekip --free`: the lead itself then runs on free models.
+
+
+## Development databases
+
+When a task needs a database or Redis in a registered project, run `ekip dev ls`, then `ekip dev up PROJECT`. This writes `PROJECT_ROOT/.env.ekip-dev` and opens the tunnel. Workers load it with:
+
+```bash
+set -a; source .env.ekip-dev; set +a
+```
+
+Never use production URLs from a project's `.env` for tests or migrations. Run `ekip dev add PROJECT` for a new project, `ekip dev reset PROJECT --yes` instead of hand-dropping data, and `ekip dev sql PROJECT "..."` for quick queries. Run `ekip dev down` when done. If `ekip dev` says it is not initialised, tell the user to run `ekip dev init`.
+
+## Review
+
+Run `ekip review --project NAME` to check and review project changes. Add `--dry-run` to preview checks, `--checks-only` to run checks without reviews, and use `ekip review profile NAME --refresh` to regenerate the project's review profile.

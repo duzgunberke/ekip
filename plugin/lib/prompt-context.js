@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit hook: whatever folder the session was opened in, find the registered project(s)
 // a message is about and add that project's relevant facts (L1), skills and card summary to the
-// context. Matching is typo-tolerant ("luamreef" finds lumareef); with no name in the message, the
+// context. Matching is typo-tolerant ("my-ap" finds my-app); with no name in the message, the
 // project of the session's folder is used. Fails silently and never takes longer than ~6 s.
 import fs from "node:fs";
 import path from "node:path";

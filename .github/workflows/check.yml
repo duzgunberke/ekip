@@ -1,0 +1,17 @@
+name: Check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          for f in $(git ls-files 'plugin/**/*.js' 'hub/**/*.js' ':!**/node_modules/**'); do
+            node --check "$f"
+          done
+      - name: Check tracked files for personal data patterns
+        run: bash scripts/privacy-check.sh

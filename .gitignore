@@ -1,4 +1,5 @@
 data/
+.privacy-denylist
 vendor/
 node_modules/
 .DS_Store
