@@ -608,7 +608,7 @@ async function job(args) {
 
 async function hub([sub, url, token]) {
   if (sub === "link") {
-    if (!url || !token) die("usage: ekip hub link <https://ai.sazora.io> <token>");
+    if (!url || !token) die("usage: ekip hub link <https://hub.example.com> <token>");
     saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token });
     await hubFetch("/api/heartbeat", { method: "POST", body: JSON.stringify({ client: "mac", host: os.hostname() }) });
     console.log(`linked to ${url}`);
@@ -724,7 +724,7 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
   their cards (stack, commands, frequent tasks). The ekip MCP tools search each project's memory,
   wiki and code graph; codegraph MCP explores code. Save durable facts with memory_remember.
-- The hub on the user's VPS (panel https://ai.sazora.io) runs queued jobs even when this Mac is off:
+- The hub on the user's VPS (if linked: `ekip hub status`) runs queued jobs even when this Mac is off:
   \`ekip job "<task>" --project NAME\` queues one (it works on a branch and pushes it).
 - Long-lived peers: \`ekip team up --open\` starts ekip-agy/ekip-free as hoptell peers in their own
   terminal windows; message them with hoptell send_message.
