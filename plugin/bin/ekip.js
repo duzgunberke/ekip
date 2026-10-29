@@ -15,7 +15,7 @@ import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core/core.js";
 import { POINTER, REMOTE, ROOT, TDAI_CONTAINER_SH, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh, tdaiContainer } from "../lib/core/core.js";
-import { AGENTS, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
+import { AGENTS, QUOTA, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
 import { main as vpsMain } from "../lib/hub/vps.js";
@@ -87,9 +87,14 @@ async function keyWizard({ all = false } = {}) {
 
 // ---- environments of the two non-subscription pools --------------------------------------------
 
-async function freeEnv(project = null) {
-  await up({ quiet: true });
-  if (!keyCounts().length) die("no free provider keys yet — add one with: ekip key add <platform> <key>");
+// soft: a worker run gets a thrown error (a failed attempt) instead of die() killing the dispatcher.
+async function freeEnv(project = null, { soft = false } = {}) {
+  await up({ quiet: true, soft });
+  if (!keyCounts(soft ? { timeout: 10_000 } : {}).length) {
+    const msg = "no free provider keys yet — add one with: ekip key add <platform> <key>";
+    if (soft) throw new Error(msg);
+    die(msg);
+  }
   const env = { ...process.env };
   // Interactive sessions use AUTH_TOKEN (an API_KEY there triggers a "use this key?" dialog);
   // runWorker swaps it for API_KEY, the only credential --bare reads.
@@ -189,10 +194,12 @@ const WORKER_BRIEF = [
   "Finish with a short report: what you changed (files), what you verified and how, and anything left open.",
   // a worker once revoked a signing certificate to get past an error; the account owner got Apple's email
   "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
-  "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).",
   "",
   "TASK:",
 ].join("\n");
+// only in a git repo: elsewhere there is no code index to ask
+const CODEGRAPH_LINE = "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).";
+const workerBrief = (cwd) => (spawnSync("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"], { stdio: "ignore" }).status === 0 ? WORKER_BRIEF.replace("\n\nTASK:", `\n${CODEGRAPH_LINE}\n\nTASK:`) : WORKER_BRIEF);
 
 // Watchdog for every worker: one that prints nothing for EKIP_IDLE_MIN minutes (default 15) or runs
 // past EKIP_TIMEOUT_MIN (default 90) is stopped, so a hung CLI never sits on a task for hours; the
@@ -206,22 +213,51 @@ function watchdog(child, log) {
     if (idle < idleMs && total < maxMs) return;
     why = idle >= idleMs ? `${Math.round(idle / 60000)} dk sessiz kaldı, durduruldu` : `${Math.round(total / 60000)} dk sınırını aştı, durduruldu`;
     log.write(`\n[ekip] ${why}\n`);
-    child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+    killTree(child, "SIGTERM"); setTimeout(() => killTree(child, "SIGKILL"), 10_000).unref();
   }, 30_000);
   tick.unref();
   return { alive: () => { seen = Date.now(); }, stop: () => clearInterval(tick), why: () => why };
+}
+
+// Workers run in their own process group: the watchdog and a stop signal kill the whole group, so a
+// grandchild holding the pipes cannot keep the run alive.
+const liveKids = new Set();
+function killTree(child, sig) {
+  try { process.kill(-child.pid, sig); } catch { try { child.kill(sig); } catch { /* already gone */ } }
+}
+
+// Spawns a worker and calls done(code, note) once: on a spawn error (missing binary), on close, or
+// shortly after exit when a grandchild still holds the pipes open.
+function spawnWorker(cmd, argv, opts, done) {
+  const child = spawn(cmd, argv, { ...opts, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  liveKids.add(child);
+  let ended = false, grace = null;
+  const end = (code, note = "") => {
+    if (ended) return;
+    ended = true; clearTimeout(grace); liveKids.delete(child);
+    child.stdout?.destroy(); child.stderr?.destroy();
+    done(code, note);
+  };
+  const codeOf = (code, sig) => code ?? (sig ? 143 : 1);
+  child.on("error", (e) => end(e.code === "ENOENT" ? 127 : 1, `${cmd}: ${e.message}`));
+  child.on("exit", (code, sig) => { grace = setTimeout(() => end(codeOf(code, sig)), 2000); });
+  child.on("close", (code, sig) => end(codeOf(code, sig)));
+  return child;
 }
 
 function runChild(cmd, argv, opts, logFile) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n`);
-    const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
+    const child = spawnWorker(cmd, argv, opts, (code, note) => {
+      dog.stop(); if (note) { out += `\n${note}`; log.write(`\n${note}`); }
+      if (dog.why()) { code = 124; out += `\n${dog.why()}`; }
+      log.end(`\n[exit ${code}]\n`); resolve({ code, out });
+    });
     const dog = watchdog(child, log);
     child.stdout.on("data", (d) => { dog.alive(); out += d; log.write(d); });
     child.stderr.on("data", (d) => { dog.alive(); out += d; log.write(d); });
-    child.on("close", (code) => { dog.stop(); if (dog.why()) { code = 124; out += `\n${dog.why()}`; } log.end(`\n[exit ${code}]\n`); resolve({ code, out }); });
   });
 }
 
@@ -238,8 +274,14 @@ function runStream(cmd, argv, opts, logFile, kind) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n\n`);
-    const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
     let buf = "", raw = "", final = "", lastStep = -1, steps = new Map(), loggedModel = false;
+    const child = spawnWorker(cmd, argv, opts, (code, note) => {
+      dog.stop(); if (note) { raw += `\n${note}`; log.write(`\n${note}`); }
+      if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
+      if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
+      log.end(`\n\n[exit ${code}]\n`);
+      resolve({ code, out: final.trim() ? final : raw });
+    });
     const onEvent = (e) => {
       const reportedModel = e.model ?? e.response?.model ?? e.message?.model ?? e.data?.model;
       if (!loggedModel && typeof reportedModel === "string" && reportedModel.length < 200) { log.write(`model: ${reportedModel}\n`); loggedModel = true; }
@@ -268,18 +310,14 @@ function runStream(cmd, argv, opts, logFile, kind) {
       }
     });
     child.stderr.on("data", (d) => { dog.alive(); raw += d; log.write(d); });
-    child.on("close", (code) => {
-      dog.stop(); if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
-      if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
-      log.end(`\n\n[exit ${code}]\n`);
-      resolve({ code, out: final.trim() ? final : raw });
-    });
   });
 }
 
-// A run that "succeeded" but only reports a quota or auth failure counts as failed, so auto moves on.
+// A run that exited 0 but only reports a quota failure counts as failed, so auto moves on; a short
+// successful report that merely mentions "429" or "quota" does not. LIMIT_RE (broad) only reads
+// the output of runs that already failed.
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
-const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && LIMIT_RE.test(r.out));
+const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && QUOTA.some((re) => re.test(r.out)));
 
 // --plugin NAME: an installed Claude Code plugin; --skill NAME: a project or user skill,
 // wrapped as a one-skill plugin so --bare sessions can load it with --plugin-dir.
@@ -329,15 +367,18 @@ function skillDocs(o) {
   for (const name of o.plugins) {
     const hit = Object.entries(installed).find(([k]) => k === name || k.split("@")[0] === name);
     const root = hit && [hit[1]].flat()[0].installPath;
-    if (root) for (const f of spawnSync("find", [root, "-name", "SKILL.md", "-maxdepth", "4"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)) docs.push(f);
+    // the plugin's main SKILL.md (its own name) first, shallow ones next; a big plugin lists dozens
+    const rank = (f) => (path.basename(path.dirname(f)) === name.split("@")[0] ? 0 : 1);
+    if (root) docs.push(...spawnSync("find", [root, "-maxdepth", "4", "-name", "SKILL.md"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)
+      .sort((a, b) => rank(a) - rank(b) || a.split("/").length - b.split("/").length || a.localeCompare(b)));
   }
   for (const name of o.skills) {
     if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") continue;
     const src = localSkillPath(o, name) ?? path.join(os.homedir(), ".claude/skills", name);
     const f = path.join(src, "SKILL.md");
-    if (fs.existsSync(f)) docs.push(fs.realpathSync(f));
+    if (fs.existsSync(f)) docs.unshift(fs.realpathSync(f));
   }
-  return docs;
+  return docs.slice(0, 6);
 }
 
 async function runVia(via, o, logFile) {
@@ -345,22 +386,23 @@ async function runVia(via, o, logFile) {
   // the project's learned skills come with projectKnowledge (added once to the brief); listing them
   // here as well sent the same descriptions twice
   const procs = "";
-  const prompt = `${WORKER_BRIEF}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
+  const prompt = `${workerBrief(o.cwd)}\n${procs}${docs.length ? `Before you start, read these skill instructions completely and follow them (paths in them are relative to each file's folder):\n${docs.map((d) => `- ${d}`).join("\n")}\n\n` : ""}${o.task}`;
   if (AGENTS[via]) {
     const a = AGENTS[via];
     if (!has(a.bin)) return { code: 127, out: `${a.bin} is not installed (ekip agents install ${via})` };
-    if (a.free) await up({ quiet: true });
+    if (a.free) await up({ quiet: true, soft: true });
     const model = o.model ?? (via === "agy" ? process.env.EKIP_AGY_MODEL : null);
     if (via === "agy") return runStream(a.bin, [...a.argv(prompt, { ...o, model }), "--output-format", "stream-json"], { cwd: o.cwd }, logFile, "agy");
     return runChild(a.bin, a.argv(prompt, { ...o, model }), { cwd: o.cwd }, logFile);
   }
+  if (!has("claude")) return { code: 127, out: "claude is not installed" };
   if (via === "claude") {
     // Your own subscription with your full setup (skills, plugins, MCP): for the hard parts.
     const argv = ["-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose", ...pluginDirs(o)];
     if (o.model) argv.push("--model", o.model);
     return runStream("claude", argv, { cwd: o.cwd }, logFile, "claude");
   }
-  const env = await freeEnv(o.project);
+  const env = await freeEnv(o.project, { soft: true });
   env.ANTHROPIC_API_KEY = env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_AUTH_TOKEN;
   if (o.model) Object.assign(env, { ANTHROPIC_MODEL: o.model, ANTHROPIC_DEFAULT_SONNET_MODEL: o.model, ANTHROPIC_DEFAULT_OPUS_MODEL: o.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: o.model });
@@ -372,11 +414,9 @@ async function runVia(via, o, logFile) {
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 
 async function runOne(o, via, id) {
-  const t0 = Date.now();
   const r = await runOneInner(o, via, id);
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
-  recordStat(r.via ?? via, r.ok, Date.now() - t0);
   if (o.taskId) (await import("../lib/tasks/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
   return r;
 }
@@ -384,11 +424,13 @@ async function runOne(o, via, id) {
 // Runs of this process, so a stop signal can still report them: a killed worker used to stay
 // "running" on the hub forever.
 const activeRuns = new Map();
-let stopHandler = false;
+let stopHandler = false, stopping = false;
 function onStop() {
   if (stopHandler) return;
   stopHandler = true;
   for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, async () => {
+    stopping = true;
+    for (const child of liveKids) killTree(child, "SIGTERM");
     for (const [id, r] of activeRuns) {
       try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
       try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
@@ -397,6 +439,7 @@ function onStop() {
     }
     const { pending } = await import("../lib/tasks/tasks.js");
     await Promise.race([Promise.allSettled([...pending]), sleep(4000)]);
+    for (const child of liveKids) killTree(child, "SIGKILL");
     process.exit(143);
   });
 }
@@ -510,14 +553,19 @@ async function runOneInner(o, via, id) {
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`, { title: `ekip · ${o.label ?? via}` });
   const order = via === "auto" ? autoOrder() : [via];
-  let last = null;
+  let last = null, lastVia = via;
   for (let i = 0; i < order.length; i++) {
     const v = order[i];
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     // which pool this run is on, so other `--via auto` runs see it as busy
     fs.appendFileSync(logFile, poolMark(v));
+    const t0 = Date.now();
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
-    if (!failed(last)) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
+    lastVia = v;
+    const ok = !failed(last);
+    recordStat(v, ok, Date.now() - t0);
+    if (stopping) break;
+    if (ok) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
     // A pool asked for by name that is out of quota hands the task on instead of failing it: the
     // next pools of the auto order (limited ones are already left out; never the headless Claude)
@@ -527,7 +575,8 @@ async function runOneInner(o, via, id) {
     }
   }
   clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload();
-  return { ok: false, via, out: last?.out.trim() ?? "", logFile, model };
+  // a failed run belongs to the last pool tried ("auto" is only the requested mode)
+  return { ok: false, via: lastVia, out: last?.out.trim() ?? "", logFile, model };
 }
 
 function modelFromLog(file) {

@@ -126,14 +126,17 @@ export function dockerBridge() {
   child.unref();
 }
 
-export async function up({ quiet = false } = {}) {
+// soft: a worker run must see a startup failure as a failed attempt (failover, races go on), not
+// die() the whole dispatcher; only the interactive `ekip up` exits.
+export async function up({ quiet = false, soft = false } = {}) {
+  const fail = (msg) => { if (soft) throw new Error(msg); die(msg); };
   if (await healthy()) { dockerBridge(); return; }
   if (REMOTE) {
     spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { stdio: "ignore" });
     for (let i = 0; i < 40; i++) { if (await healthy()) return; await sleep(500); }
-    die(`the VPS hub is not reachable through the tunnel (ekip tunnel status; ssh ${REMOTE.ssh})`);
+    fail(`the VPS hub is not reachable through the tunnel (ekip tunnel status; ssh ${REMOTE.ssh})`);
   }
-  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) die(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
+  if (!fs.existsSync(path.join(FREE_DIR, "server/dist/index.js"))) fail(`freellmapi is not built in ${FREE_DIR} (npm run build)`);
   const env = { ...process.env, FREEAPI_ENV_PATH: path.join(FREE_DIR, ".env"), HOST: "127.0.0.1", PORT: String(PORT) };
   if (fs.existsSync(CONFIG)) env.FREEAPI_CONFIG_PATH = CONFIG;
   const out = fs.openSync(LOG, "a");
@@ -145,7 +148,7 @@ export async function up({ quiet = false } = {}) {
     if (await healthy()) { if (!quiet) console.error(`ekip: freellmapi up on ${URL_ROOT}`); return; }
     await sleep(500);
   }
-  die(`freellmapi did not start; see ${LOG}`);
+  fail(`freellmapi did not start; see ${LOG}`);
 }
 
 export async function down() {
