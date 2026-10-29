@@ -449,6 +449,27 @@ export async function reconcileRuns() {
   return n;
 }
 
+// Project knowledge reaches every worker whether or not the lead remembered to look it up: the
+// project's own skills and memories that match the brief are appended to it. ekip's housekeeping
+// runs (cards, review profiles, the skill learner) are left alone.
+async function projectKnowledge(o) {
+  if (/^(proje kartı: |review-|skill-learn)/.test(o.label ?? "")) return "";
+  const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r([]), ms))]);
+  try {
+    const mem = await import("../lib/memory.js");
+    const { redact } = await import("../lib/redact.js");
+    const q = o.task.slice(0, 600);
+    const [skills, facts] = await Promise.all([
+      timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000),
+      timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000),
+    ]);
+    const lines = [];
+    if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
+    if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
+    return lines.length ? redact(`\n\n## Project knowledge (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
+  } catch { return ""; /* memory down: the worker still gets the brief */ }
+}
+
 async function runOneInner(o, via, id) {
   process.env.EKIP_PARENT_RUN = id;
   const logFile = path.join(RUNS, `${id}.log`);
@@ -457,6 +478,7 @@ async function runOneInner(o, via, id) {
   if (o.project) {
     const { SETTINGS } = await import("../lib/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
+    if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o); }
   }
   try { (await import("../lib/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
