@@ -53,14 +53,35 @@ const notify = (title, body) => process.platform === "darwin" && spawnSync("osas
 // Pushes in flight; ekip.js waits for them before it exits, or the update would be cut off.
 export const pending = new Set();
 
+// Tasks whose last state did not reach the hub (timeout, network, hub restart). They are sent
+// again by the next task command and by `ekip doctor`, so the panel never keeps a task open that
+// was closed here.
+const UNSYNCED = path.join(HOME, "tasks-unsynced.json");
+const readUnsynced = () => { try { return new Set(JSON.parse(fs.readFileSync(UNSYNCED, "utf8"))); } catch { return new Set(); } };
+function markSynced(id, ok) {
+  const s = readUnsynced();
+  if (ok ? !s.delete(id) : s.has(id) || !s.add(id)) return;
+  try { fs.writeFileSync(UNSYNCED, JSON.stringify([...s])); } catch { /* best effort */ }
+}
+
 function push(t) {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   const pr = fetch(`${SETTINGS.hubUrl}/api/tasks`, {
-    method: "PUT", signal: AbortSignal.timeout(4000),
+    method: "PUT", signal: AbortSignal.timeout(8000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify({ ...t, pct: percent(t), eta: eta(t), host: os.hostname() }),
-  }).catch(() => {}).finally(() => pending.delete(pr));
+  }).then((r) => markSynced(t.id, r.ok), () => markSynced(t.id, false)).finally(() => pending.delete(pr));
   pending.add(pr);
+}
+
+/** Sends the tasks the hub may have missed, plus everything touched in the last two days. */
+export async function syncHub() {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return 0;
+  const missed = readUnsynced();
+  const list = read().filter((t) => missed.has(t.id) || t.status === "running" || Date.now() - Date.parse(t.updatedAt ?? t.createdAt) < 48 * 3600_000);
+  for (const t of list) push(t);
+  await Promise.allSettled([...pending]);
+  return list.length;
 }
 
 export function create({ title, project, steps = [] }) {

@@ -1210,8 +1210,10 @@ switch (cmd) {
     break;
   }
   case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest);
-    // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd)
+    // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd), and resend
+    // task states the hub missed
     await (await import("../lib/limits.js")).push().catch(() => {});
+    await (await import("../lib/tasks.js")).syncHub().catch(() => {});
     await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/savings.js")).report(rest); break;
@@ -1219,6 +1221,7 @@ switch (cmd) {
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
     try { t.reapStale(); } catch { /* never block a task command */ }
+    if (cmd === "tasks" && rest[0] === "sync") { console.log(`${await t.syncHub()} görev panele gönderildi`); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);
