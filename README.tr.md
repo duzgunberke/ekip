@@ -130,6 +130,7 @@ Temel zaten hazır: bellek, tek bir depoda proje ve agent bazında yalıtılmı�
 | [Kurulum](docs/install.md) | Mac kurulumu, ücretsiz model anahtarları, VPS hub |
 | [Komutlar ve havuzlar](docs/commands.md) | Tüm komutlar ve worker havuzları |
 | [Operasyonlar](docs/operations.md) | Üst projelere yamalar, sorun giderme, veri ve gizlilik |
+| [Yol haritası](docs/roadmap.md) | v2 ortak hafıza ve ekip çalışması, v3 entegrasyonlar (hata takibi, uptime, analitik, metrikler) |
 | [Marka](docs/brand.md) | Logo, renkler, kullanım |
 
 ## Üzerine kurulduğu projeler

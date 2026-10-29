@@ -148,6 +148,7 @@ it to several people with roles and privacy rules. Watch the repo to follow alon
 | [Install](docs/install.md) | Mac setup, free model keys, the VPS hub |
 | [Commands and pools](docs/commands.md) | every command, every worker pool |
 | [Operations](docs/operations.md) | patches to upstream projects, troubleshooting, data and privacy |
+| [Roadmap](docs/roadmap.md) | v2 shared memory and teamwork, v3 integrations (error tracking, uptime, analytics, metrics) |
 | [Brand](docs/brand.md) | logo, colours, usage |
 
 ## Built on
