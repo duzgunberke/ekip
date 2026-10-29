@@ -113,6 +113,18 @@ yerine bunları öğrenir.
   projeye özel düzgün bir `SKILL.md` taslağı çıkarır; tek komutla kabul edersiniz ve o andan itibaren
   her agent kullanır.
 
+## Projeyle birlikte gezen ayarlar
+
+`ekip project config <ad>` bir kez çalıştırılınca projeye kodla birlikte commit edilen bir `.ekip/`
+klasörü gelir; o projede ekip ile çalışan herkes aynı ayarları kullanır:
+
+- `rules.md`: projenin kuralları; her worker'ın brief'ine ve liderin bağlamına eklenir.
+- `review.md`: `ekip review`'un değişiklikleri okuduğu inceleme profili.
+- `checks/`: projenin kendi kontrol script'leri; `ekip review` her değişiklikte çalıştırır.
+- `dev.json`: geliştirme veritabanı eşlemesi (şifre asla).
+
+Süreç becerileri Claude Code'un okuduğu `.claude/skills/` içinde kalır.
+
 ## Kendi ortamlarınızda çalışır (isteğe bağlı)
 
 Testler ve migration'lar hiçbir zaman production'a dokunmamalı. ekip'in worker'larının gerçek veri
@@ -143,8 +155,9 @@ ekip                             # lideri başlatın; ne isterseniz sorun
 ekip ilk açılışta sizi karşılar ve her açılışta neyin eksik kaldığına bakar: daha yeni bir ekip
 sürümü, indekslenmemiş bir proje, eksik kod grafiği ya da wiki, belleğe aktarılmamış Claude
 geçmişi, vektörsüz kayıtlar, bağlanmamış worker havuzları ya da ücretsiz model anahtarları. Claude
-en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni sürümü `ekip update`
-getirir; sürüm çıktığında ekip logosuyla tek bir macOS bildirimi gelir.
+en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni sürümler kendiliğinden kurulur: sürüm çıktığında ve kurulumunuzda yerel değişiklik yoksa ekip
+kendini günceller ve bir kez haber verir (`data/config.json` içinde `"autoUpdate": false` kapatır,
+`ekip update` elle yapar).
 
 `ekip keys` her ücretsiz sağlayıcının anahtar sayfasını sırayla açar. Mac'iniz kapalıyken de belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutmak için bir VPS bağlayın: [docs/install.md](docs/install.md).
 

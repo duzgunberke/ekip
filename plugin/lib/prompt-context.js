@@ -70,6 +70,8 @@ async function main() {
     const local = projectSkills(p.path, prompt).slice(0, 4);
     const lines = [`## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
     if (p.summary) lines.push(clip(redact(p.summary.replace(/\s+/g, " ")), 300));
+    const projectRules = (await import("./project-config.js")).rules(p, 900);
+    if (projectRules) lines.push("Project rules (.ekip/rules.md):", redact(projectRules));
     const facts = (memories ?? []).filter((m) => m.layer === "L1").slice(0, 5);
     if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(redact(String(m.content).replace(/\s+/g, " ")), 260)}`));
     if (local.length) lines.push("Project process skills that fit this message (invoke or read their SKILL.md before planning):", ...local.map((k) => `- ${k.name}: ${clip(redact(k.description), 160)} (${k.file})`));

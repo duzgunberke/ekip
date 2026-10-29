@@ -466,6 +466,8 @@ async function projectKnowledge(o) {
       proj?.tdai?.wikiId ? timeout(mem.knowledgeTool(proj.tdai.wikiId, "search", { query: q.slice(0, 300), limit: 3 }).catch(() => null), 6000) : null,
     ]);
     const lines = [];
+    const projectRules = (await import("../lib/project-config.js")).rules(proj);
+    if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
     // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
     const local = (await import("../lib/project-skills.js")).projectSkills(proj?.path, q).slice(0, 4);
     if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
@@ -942,6 +944,7 @@ async function lead(args) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
     console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
+    try { const up = (await import("../lib/update.js")).autoUpdate(); if (up.updated) console.log(`        ${c.green(`ekip ${up.from} → ${up.to} güncellendi`)} ${c.gray("(yeni hook'lar bir sonraki açılışta)")}`); } catch { /* offline */ }
     const onboarding = await import("../lib/onboarding.js");
     const gaps = await onboarding.setupGaps({ cwd: process.cwd() });
     onboarding.printGaps(gaps, { limit: 3 });
@@ -1335,7 +1338,7 @@ ${c.bold("Development environment")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
 
 ${c.bold("Projects and memory")}
-  ${c.cyan("ekip project")} ${c.gray("add|remove|move|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
@@ -1373,7 +1376,7 @@ ${c.bold("Geliştirme ortamı")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
-  ${c.cyan("ekip project")} ${c.gray("add|remove|move|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
@@ -1462,7 +1465,7 @@ switch (cmd) {
     await (await import("../lib/limits.js")).push().catch(() => {});
     await (await import("../lib/tasks.js")).syncHub().catch(() => {});
     await heartbeat();
-    try { (await import("../lib/update.js")).checkUpdate({ maxAgeH: 6, notify: true }); } catch { /* offline */ }
+    try { (await import("../lib/update.js")).autoUpdate(); } catch { /* offline */ }
     await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/savings.js")).report(rest); break;

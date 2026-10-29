@@ -145,11 +145,11 @@ function readFiles(root, patterns) {
   return out;
 }
 
-function runCommand(repo, name) {
+function runCommand(repo, name, cmd = null) {
   return new Promise((resolve) => {
     const started = Date.now();
     let output = "";
-    const child = spawn("npm", ["run", name], { cwd: repo });
+    const child = cmd ? spawn(cmd[0], cmd.slice(1), { cwd: repo }) : spawn("npm", ["run", name], { cwd: repo });
     const timer = setTimeout(() => child.kill("SIGTERM"), 300000);
     child.stdout.on("data", (data) => { output += data; });
     child.stderr.on("data", (data) => { output += data; });
@@ -200,7 +200,7 @@ function extractProfile(output, project) {
 }
 
 async function ensureProfile(project, root, checks, refresh = false, via = null) {
-  const file = path.join(HOME, "projects", `${project}.review.md`);
+  const file = (await import("./project-config.js")).reviewProfileFile({ name: project, path: root });
   if (fs.existsSync(file) && !refresh) return fs.readFileSync(file, "utf8");
   const cardFile = path.join(HOME, "projects", `${project}.md`);
   const card = fs.existsSync(cardFile) ? fs.readFileSync(cardFile, "utf8") : "(no project card)";
@@ -282,20 +282,22 @@ export async function main(args) {
     }
   }
   if (!repoStates.length) console.log(t("No changed files found."));
+  // the project's own checks (.ekip/checks) always run when anything changed
+  if (repoStates.length) for (const x of (await import("./project-config.js")).extraChecks(project)) plan.push({ name: x.name, why: "project check (.ekip/checks)", repo: x.cwd, label: "", cmd: x.cmd });
   printSelection(plan.map((check) => ({ ...check, name: `${check.label}${check.name}` })), skippedChecks);
 
   // Profile mode only discovers check names; dry-run prints the plan and exits before spawning checks.
   if (sub === "profile") {
     const checkList = plan.map((check) => check.name).join(", ") || "none discovered";
     const profile = await ensureProfile(project.name, project.path, checkList, options.refresh, options.via);
-    const file = path.join(HOME, "projects", `${project.name}.review.md`);
+    const file = (await import("./project-config.js")).reviewProfileFile(project);
     console.log(`\n${file}\n${profile.split("\n").slice(0, 40).join("\n")}`);
     return 0;
   }
   if (options.dryRun) return 0;
 
   const results = [];
-  for (let i = 0; i < plan.length; i += 4) results.push(...await Promise.all(plan.slice(i, i + 4).map((check) => runCommand(check.repo, check.name))));
+  for (let i = 0; i < plan.length; i += 4) results.push(...await Promise.all(plan.slice(i, i + 4).map((check) => runCommand(check.repo, check.name, check.cmd))));
   console.log(`\n${t("results")}`);
   console.log(`${t("check")}  ${t("result")}  ${t("time")}`);
   for (const result of results) console.log(fit(`${dot(result.ok ? "ok" : "bad")} ${result.name}  ${result.ok ? c.green(t("ok")) : c.red(t("failed"))}  ${(result.duration / 1000).toFixed(1)}s`));

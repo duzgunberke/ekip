@@ -124,6 +124,18 @@ review to everything.
   a proper `SKILL.md` for that project from the real runs; you accept it with one command and every
   agent can use it from then on.
 
+## Settings that travel with the project
+
+Run `ekip project config <name>` once and the project gets a `.ekip/` folder, committed with its
+code, so everyone who works on it with ekip shares the same setup:
+
+- `rules.md`: the project's rules, added to every worker's brief and to the lead's context.
+- `review.md`: the review profile `ekip review` reads changes through.
+- `checks/`: the project's own check scripts; `ekip review` runs them on every change.
+- `dev.json`: the development database mapping (never passwords).
+
+Process skills stay in `.claude/skills/`, where Claude Code reads them.
+
 ## Works against your environments (optional)
 
 Tests and migrations should never touch production. If you want ekip's workers to run against real
@@ -156,8 +168,9 @@ ekip                             # start the lead; ask for anything
 On first start ekip greets you, and every start it checks what is still missing: a newer ekip
 release, a project that is not indexed, no code graph or wiki, Claude history not in memory,
 memories without vectors, worker pools or free model keys not connected. Claude offers the most
-useful step once, in a sentence, and does it when you say yes. `ekip update` brings a new release
-in; you get one macOS notification (with the ekip icon) when a release is out.
+useful step once, in a sentence, and does it when you say yes. New releases install themselves: when one is out and your checkout is clean, ekip fast-forwards it
+and tells you once (`"autoUpdate": false` in `data/config.json` turns that off, `ekip update` does it
+by hand).
 
 `ekip keys` opens each free provider's key page in turn. To keep memory, the free pool and a job queue
 running while your Mac is off, connect a VPS: [docs/install.md](docs/install.md).

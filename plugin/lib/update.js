@@ -4,7 +4,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME, ROOT, die } from "./core.js";
+import { HOME, ROOT, SETTINGS, die } from "./core.js";
 import { c } from "./ui.js";
 import { lang } from "./i18n.js";
 
@@ -56,6 +56,33 @@ export function checkUpdate({ maxAgeH = 12, notify = false } = {}) {
 async function notifyRelease(local, latest) {
   const { notify } = await import("./core.js");
   notify(lang === "en" ? `ekip ${latest} is out` : `ekip ${latest} çıktı`, lang === "en" ? `You have ${local}. Run: ekip update` : `Sizdeki ${local}. Güncellemek için: ekip update`, { subtitle: lang === "en" ? "New version" : "Yeni sürüm", group: "ekip-update" });
+}
+
+/**
+ * Automatic update (on by default, "autoUpdate": false in data/config.json turns it off): when a newer
+ * release is out and the checkout is clean on its usual branch, fast-forward it and say so once.
+ * A dirty checkout or another branch is never touched; the user gets the notice instead.
+ * Returns { updated, from, to } or { skipped: reason }.
+ */
+export function autoUpdate() {
+  if (SETTINGS.autoUpdate === false) return { skipped: "off" };
+  const u = checkUpdate();
+  if (!u.behind) return { skipped: "current" };
+  const branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
+  const upstream = git("rev-parse", "--abbrev-ref", "@{u}").stdout.trim();
+  if (git("status", "--porcelain", "--untracked-files=no").stdout.trim() || !upstream || !upstream.endsWith(`/${branch}`)) {
+    checkUpdate({ notify: true });
+    return { skipped: "local changes or another branch" };
+  }
+  const before = git("rev-parse", "HEAD").stdout.trim();
+  const pull = git("pull", "--ff-only", "--tags", "--quiet");
+  if (pull.status !== 0) { checkUpdate({ notify: true }); return { skipped: pull.stderr.trim().slice(0, 200) }; }
+  const to = localVersion();
+  writeState({ ...readState(), at: 0, notified: to });
+  if (git("rev-parse", "HEAD").stdout.trim() !== before) {
+    import("./core.js").then(({ notify }) => notify(lang === "en" ? `ekip updated to ${to}` : `ekip ${to} sürümüne güncellendi`, lang === "en" ? `from ${u.local}; restart the lead to load new hooks` : `${u.local} sürümünden; yeni hook'lar için lead'i yeniden başlatın`, { subtitle: lang === "en" ? "Automatic update" : "Otomatik güncelleme", group: "ekip-update" })).catch(() => {});
+  }
+  return { updated: true, from: u.local, to };
 }
 
 /** One line for the lead start, or "" when up to date. */

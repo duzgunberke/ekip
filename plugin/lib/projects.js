@@ -344,6 +344,11 @@ export async function main(argv) {
     const todo = c.filter((x) => !x.registered);
     if (!yes) { console.log(`\n${todo.length} unregistered (* = registered). Add all with: ekip project scan --days ${days} --yes`); return; }
     await pool(todo, 4, (x) => addProject(x.path).catch((e) => console.error(`${x.name}: ${e.message}`)));
+  } else if (sub === "config") {
+    const p = args[0] && !args[0].startsWith("-") ? getProject(args[0]) : null;
+    if (!p) die("kullanım: ekip project config <ad>  (projede paylaşılan .ekip/ klasörünü kurar)");
+    const r = (await import("./project-config.js")).initConfig(p);
+    console.log(`${r.dir}${r.made.length ? `\n  oluşturuldu: ${r.made.join(", ")}` : "\n  zaten vardı"}\n  .ekip/rules.md'yi doldurun ve klasörü projeyle birlikte commit edin.`);
   } else if (sub === "remove" || sub === "rm") {
     // For a project you deleted or no longer work on: registry entry, card and server-side wiki and
     // code graphs go; the project folder itself is never touched.
