@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, notify, sleep, tdaiUp } from "../core/core.js";
+import { HOME, REMOTE, SETTINGS, TDAI_CONTAINER_SH, TUNNEL_LABEL, healthy, keyCounts, notify, sleep, tdaiUp } from "../core/core.js";
 import { c, dot, mark, title, fit } from "../core/ui.js";
 import { lang, t } from "../core/i18n.js";
 
@@ -93,9 +93,10 @@ export async function main(args = []) {
   }
 
   console.log(title(t("Vektör indeksi")));
+  const bfCmd = `C=$(${TDAI_CONTAINER_SH("tdai-memory-core")}); docker exec $C cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec $C sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING`;
   const st = REMOTE
-    ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout
-    : spawnSync("sh", ["-c", "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout;
+    ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, bfCmd], { encoding: "utf8" }).stdout
+    : spawnSync("sh", ["-c", bfCmd], { encoding: "utf8" }).stdout;
   let bf = null; try { bf = JSON.parse((st ?? "").replace(/RUNNING/g, "").trim().split("\n")[0]); } catch { /* none */ }
   const running = /RUNNING/.test(st ?? "");
   if (bf?.layer === "done") line("ok", t("vektörler"), t("tüm kayıtlar vektörlü"));

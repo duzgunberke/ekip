@@ -14,7 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core/core.js";
-import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core/core.js";
+import { POINTER, REMOTE, ROOT, TDAI_CONTAINER_SH, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh, tdaiContainer } from "../lib/core/core.js";
 import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/workers/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
@@ -711,7 +711,7 @@ async function remote([host, dir = "/data/ekip"]) {
   saveSettings({ remote: { ssh: host, dir }, freellmapiKey: unifiedKey(), tdaiKey: adminKey() });
   console.log("stopping local freellmapi and memory containers (their ports go to the tunnel)");
   await down();
-  spawnSync("docker", ["rm", "-f", "tdai-proxy", "tdai-memory-hub", "tdai-memory-core"], { stdio: "ignore" });
+  spawnSync("docker", ["rm", "-f", ...["tdai-proxy", "tdai-memory-hub", "tdai-memory-core"].map(tdaiContainer)], { stdio: "ignore" });
   console.log("now run: ekip tunnel install");
 }
 
@@ -1127,7 +1127,7 @@ async function memoryUp() {
     MEMORY_EMBEDDING_API_KEY: key, MEMORY_EMBEDDING_MODEL: "nemotron-3-embed-1b", MEMORY_EMBEDDING_DIMENSIONS: "2048",
     MEMORY_LLM_MODEL: "auto:memory",
   });
-  if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every(containerRunning)) { console.log("memory stack already running"); return; }
+  if (["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"].every((n) => containerRunning(tdaiContainer(n)))) { console.log("memory stack already running"); return; }
   // start-all.sh probes the LLM from the host, where host.docker.internal does not resolve; the
   // three service scripts it wraps need no probe.
   for (const script of ["start-memory-core.sh", "start-memory-hub.sh", "start-proxy.sh"]) {
@@ -1257,7 +1257,7 @@ async function importHistory(args = []) {
 function reindex() {
   const script = path.join(ROOT, "hub/tools/tdai-backfill-vectors.mjs");
   const env = `-e EMBED_URL=http://freellmapi:3001/v1 -e EMBED_KEY="$(grep ^MEMORY_LLM_API_KEY= .env | cut -d= -f2)" -e EMBED_MODEL="$(grep ^MEMORY_EMBEDDING_MODEL= .env | cut -d= -f2)"`;
-  const cmd = (dir, src) => `cd ${dir} && docker cp ${src} tdai-memory-core:/tmp/backfill.mjs && (docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo "already running" || (docker exec -d ${env} tdai-memory-core node /tmp/backfill.mjs && echo started))`;
+  const cmd = (dir, src) => `cd ${dir} && C=$(${TDAI_CONTAINER_SH("tdai-memory-core")}) && docker cp ${src} $C:/tmp/backfill.mjs && (docker exec $C sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo "already running" || (docker exec -d ${env} $C node /tmp/backfill.mjs && echo started))`;
   if (REMOTE) {
     spawnSync("scp", ["-q", script, `${REMOTE.ssh}:${REMOTE.dir}/tdai-backfill-vectors.mjs`], { stdio: "inherit" });
     console.log(ssh(cmd(`${REMOTE.dir}/tdai/deploy/global-images`, `${REMOTE.dir}/tdai-backfill-vectors.mjs`)).stdout.trim());
@@ -1281,7 +1281,7 @@ async function memory([sub = "status", ...rest]) {
   else if (sub === "down") memoryDown();
   else if (sub === "open") openUrl(`http://127.0.0.1:${TDAI_PORTS.panel}`);
   else if (sub === "status") {
-    for (const n of ["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"]) console.log(`${n}: ${containerRunning(n) ? "running" : "stopped"}`);
+    for (const n of ["tdai-memory-core", "tdai-memory-hub", "tdai-proxy"]) console.log(`${n}: ${containerRunning(tdaiContainer(n)) ? "running" : "stopped"}`);
     console.log(`panel: http://127.0.0.1:${TDAI_PORTS.panel}   admin key: ${adminKey() ? path.join(tdaiDeploy(), ".admin-key") : "not created yet"}`);
   } else die("usage: ekip memory up|down|status|open");
 }

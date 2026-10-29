@@ -95,6 +95,10 @@ export const REMOTE = SETTINGS.remote ?? null;
 // The free pool's container: "freellmapi" from ekip's own compose, "freellmapi-<id>" when a PaaS such
 // as Coolify runs it. Resolved at call time (shell snippet), "freellmapiContainer" in config overrides.
 export const FREE_CONTAINER_SH = SETTINGS.freellmapiContainer ? `echo ${SETTINGS.freellmapiContainer}` : "docker ps --format '{{.Names}}' | grep -m1 -E '^freellmapi(-|$)'";
+// The memory stack's containers (tdai-memory-core, tdai-memory-hub, tdai-proxy) the same way: plain names
+// from TencentDB's start scripts, "<name>-<id>" under Coolify. Network aliases (http://tdai-proxy:8096) keep the plain name.
+export const TDAI_CONTAINER_SH = (name) => `docker ps --format '{{.Names}}' | grep -m1 -E '^${name}(-|$)'`;
+export const tdaiContainer = (name) => spawnSync("sh", ["-c", TDAI_CONTAINER_SH(name)], { encoding: "utf8" }).stdout?.trim() || name;
 export const TUNNEL_LABEL = "io.ekip.tunnel";
 export const ssh = (cmd, opts = {}) => spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", REMOTE.ssh, cmd], { encoding: "utf8", ...opts });
 
