@@ -99,6 +99,9 @@ night. ekip handles that itself, so you never have to chase it.
 - **Background jobs run one copy at a time**, so two imports never fight over the same quota.
 - **Every worker starts from the project's knowledge.** `ekip run --project` searches the project's
   skills and memory with the brief and appends what matches, even when the lead forgot to look.
+- **You can see whether that knowledge is used.** `ekip stats` counts memory, wiki, skill and code
+  graph lookups per project, by the lead's hook, worker briefs and MCP calls, with hit rates, which
+  skills workers actually opened, and run success with and without knowledge (signals, not proof).
 - **Nothing runs out of sight.** Workers open in a pane, and any long job the lead starts itself
   gets one too (`ekip show <log>`).
 - **A pool whose quota ran out leaves the rotation** until it resets, instead of failing every job sent

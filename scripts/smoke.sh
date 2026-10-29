@@ -29,7 +29,7 @@ for args in 'review --project x --dry-run' 'dev ls'; do
   [[ "$out" != *"Cannot find module"* && "$out" != *"ERR_MODULE_NOT_FOUND"* && "$out" != *SyntaxError* ]]
   if [[ "$args" == review* ]]; then grep -q 'registered project required' <<<"$out"; fi
 done
-for args in 'skill candidates' 'project ls'; do
+for args in 'skill candidates' 'project ls' 'stats --local'; do
   echo "== $args =="; read -r -a parts <<< "$args"; run plugin/bin/ekip.js "${parts[@]}"
 done
 echo '== doctor (20s cap) =='

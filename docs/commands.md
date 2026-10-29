@@ -37,6 +37,7 @@ Projects and memory
   ekip project add|remove|move|scan|ls|show|sync|card
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
   ekip skill ls|search|show|learn|prune|candidates|accept|reject
+  ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
   ekip tasks [--watch|--all]
   ekip task new|step|add|note|done|fail|cancel
   ekip tasks sync

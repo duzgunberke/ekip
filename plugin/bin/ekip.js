@@ -452,19 +452,27 @@ export async function reconcileRuns() {
 // Project knowledge reaches every worker whether or not the lead remembered to look it up: the
 // project's own skills and memories that match the brief are appended to it. ekip's housekeeping
 // runs (cards, review profiles, the skill learner) are left alone.
-async function projectKnowledge(o) {
+// Each brief is also logged to the knowledge usage log (ekip stats), with where the run's log
+// output starts so that a worker opening a listed SKILL.md can be told apart from the brief itself.
+async function projectKnowledge(o, runId) {
   if (/^(proje kartı: |review-|skill-learn)/.test(o.label ?? "")) return "";
   const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r([]), ms))]);
+  const timed = async (p) => { const t0 = Date.now(); const value = await p; return { value, ms: Date.now() - t0 }; };
+  const usage = await import("../lib/memory/usage.js").catch(() => null);
+  let logFrom;
+  try { logFrom = fs.statSync(path.join(RUNS, `${runId}.log`)).size; } catch { /* no log yet */ }
+  const base = { source: "worker-brief", project: o.project, query: o.task.slice(0, 600), runId, taskId: o.taskId, logFrom };
   try {
     const mem = await import("../lib/memory/memory.js");
     const { redact } = await import("../lib/core/redact.js");
     const q = o.task.slice(0, 600);
     const proj = (await import("../lib/projects/projects.js")).getProject(o.project);
-    const [skills, facts, wiki] = await Promise.all([
-      timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000),
-      timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000),
-      proj?.tdai?.wikiId ? timeout(mem.knowledgeTool(proj.tdai.wikiId, "search", { query: q.slice(0, 300), limit: 3 }).catch(() => null), 6000) : null,
+    const [skillsT, factsT, wikiT] = await Promise.all([
+      timed(timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000)),
+      timed(timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000)),
+      proj?.tdai?.wikiId ? timed(timeout(mem.knowledgeTool(proj.tdai.wikiId, "search", { query: q.slice(0, 300), limit: 3 }).catch(() => null), 6000)) : null,
     ]);
+    const [skills, facts, wiki] = [skillsT.value ?? [], factsT.value ?? [], wikiT?.value ?? null];
     const lines = [];
     const projectRules = (await import("../lib/projects/project-config.js")).rules(proj);
     if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
@@ -475,8 +483,12 @@ async function projectKnowledge(o) {
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
     const pages = (Array.isArray(wiki) ? wiki : wiki?.results ?? wiki?.items ?? wiki?.data ?? []).slice(0, 3);
     if (pages.length) lines.push("Project wiki pages that match (read with the wiki_read MCP tool):", ...pages.map((w) => `- ${String(w.title ?? w.ref ?? w.path ?? w.id ?? "").slice(0, 120)}${w.snippet ? `: ${String(w.snippet).replace(/\s+/g, " ").slice(0, 160)}` : ""}`));
+    usage?.recordUse({ ...base, kind: "memory", hits: facts.length, ms: factsT.ms });
+    usage?.recordUse({ ...base, kind: "skill", hits: skills.length, names: skills.map((k) => k.name), ms: skillsT.ms });
+    if (wikiT) usage?.recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
+    usage?.recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
     return lines.length ? redact(`\n\n## Project knowledge (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
-  } catch { return ""; /* memory down: the worker still gets the brief */ }
+  } catch (e) { usage?.recordUse({ ...base, kind: "memory", hits: 0, error: e?.message }); return ""; /* memory down: the worker still gets the brief */ }
 }
 
 async function runOneInner(o, via, id) {
@@ -487,7 +499,7 @@ async function runOneInner(o, via, id) {
   if (o.project) {
     const { SETTINGS } = await import("../lib/core/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
-    if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o); }
+    if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o, id); }
   }
   try { (await import("../lib/projects/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
@@ -1394,6 +1406,7 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip limits")}                   pool limits and where a new task will go
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
+  ${c.cyan("ekip stats")} ${c.gray("[project] [--days N] [--json]")} how memory, wiki, skills and code graph are used
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
@@ -1433,6 +1446,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
   ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
+  ${c.cyan("ekip stats")} ${c.gray("[proje] [--days N] [--json]")} hafıza, wiki, beceri ve kod grafiği ne kadar kullanılıyor
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
@@ -1538,9 +1552,11 @@ switch (cmd) {
     await (await import("../lib/tasks/tasks.js")).syncHub().catch(() => {});
     await heartbeat();
     try { (await import("../lib/ops/update.js")).autoUpdate(); } catch { /* offline */ }
-    await (await import("../lib/workers/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
+    await (await import("../lib/workers/savings.js")).report(["--json", "--silent"]).catch(() => {});
+    await (await import("../lib/memory/usage.js")).push().catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/workers/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/workers/savings.js")).report(rest); break;
+  case "stats": code = await (await import("../lib/memory/usage.js")).main(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks/tasks.js");

@@ -3,8 +3,8 @@ import { getRouteApi } from '@tanstack/react-router'
 import { Brain, FolderGit2, GitBranch, Search as SearchIcon, X } from 'lucide-react'
 import { stripMd } from '@/lib/format'
 import { projectRepos } from '@/lib/repo'
-import type { Project } from '@/lib/types'
-import { useProjects } from '@/hooks/queries'
+import type { Project, ProjectUsage } from '@/lib/types'
+import { useProjects, useUsage } from '@/hooks/queries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import { Main } from '@/components/layout/main'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ProjectSheet } from './project-sheet'
+import { ProjectUsageSummary } from './knowledge-usage'
 import { formatNumber, useLanguage, useT } from '@/lib/i18n'
 
 const route = getRouteApi('/_authenticated/projects')
@@ -23,6 +24,8 @@ export function Projects() {
   const t = useT()
   const language = useLanguage()
   const projects = useProjects()
+  const usage = useUsage()
+  const usageOf = (name: string) => usage.data?.projects.find((u) => u.name === name)
   const { p: openName, q = '' } = route.useSearch()
   const navigate = route.useNavigate()
 
@@ -102,13 +105,14 @@ export function Projects() {
         ) : (
           <Grid>
             {filtered.map((p) => (
-              <ProjectCard key={p.name} project={p} onOpen={() => setSearch({ p: p.name })} />
+              <ProjectCard key={p.name} project={p} usage={usageOf(p.name)} onOpen={() => setSearch({ p: p.name })} />
             ))}
           </Grid>
         )}
       </Main>
       <ProjectSheet
         project={open}
+        usage={open ? usageOf(open.name) : undefined}
         open={!!open}
         onOpenChange={(o) => !o && setSearch({ p: undefined })}
       />
@@ -120,7 +124,7 @@ function Grid({ children }: { children: React.ReactNode }) {
   return <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>{children}</div>
 }
 
-function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => void }) {
+function ProjectCard({ project: p, usage, onOpen }: { project: Project; usage?: ProjectUsage; onOpen: () => void }) {
   const t = useT()
   const repos = projectRepos(p)
   const shown = repos.slice(0, 3)
@@ -184,6 +188,11 @@ function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => v
           </>
         )}
       </CardContent>
+      {usage?.lookups ? (
+        <CardContent>
+          <ProjectUsageSummary usage={usage} />
+        </CardContent>
+      ) : null}
       <CardFooter className='mt-auto text-xs text-muted-foreground'>
         {t('güncellendi')}&nbsp;<TimeAgo iso={p.updatedAt} />
       </CardFooter>

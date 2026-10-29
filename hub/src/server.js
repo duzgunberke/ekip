@@ -382,6 +382,15 @@ async function api(req, res, url) {
   }
   if (p === "/api/savings" && m === "GET") return send(res, 200, store.savings.data);
 
+  if (p === "/api/usage" && m === "PUT") {
+    const body = await readJson(req, 500_000, { allowEmpty: false });
+    if (!body || typeof body !== "object" || Array.isArray(body) || !Array.isArray(body.projects)) bad("expected a usage summary");
+    store.usage.data = { ...body, receivedAt: new Date().toISOString() };
+    store.usage.save();
+    return send(res, 200, { ok: true });
+  }
+  if (p === "/api/usage" && m === "GET") return send(res, 200, store.usage.data);
+
   if (p === "/api/projects" && m === "GET") return send(res, 200, store.projects.data);
   if (p === "/api/projects" && m === "PUT") {
     const body = await readJson(req, 5_000_000);

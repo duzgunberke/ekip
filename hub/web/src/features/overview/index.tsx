@@ -12,7 +12,7 @@ import {
 import { duration, firstLine } from '@/lib/format'
 import { poolProviders } from '@/lib/pools'
 import { cn } from '@/lib/utils'
-import { useJobs, useLimits, useProjects, useRuns, useSavings, useStatus } from '@/hooks/queries'
+import { useJobs, useLimits, useProjects, useRuns, useSavings, useStatus, useUsage } from '@/hooks/queries'
 import { useNewJob } from '@/context/new-job-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,6 +33,7 @@ import { formatNumber, useT } from '@/lib/i18n'
 import { ActiveTasksMini } from '@/features/tasks/mini'
 import { JobsChart } from './jobs-chart'
 import { SavingsChart } from './savings-chart'
+import { UsageOverviewCard } from '@/features/projects/knowledge-usage'
 import { ProviderLogo } from '@/components/provider-logo'
 import { useNow } from '@/hooks/use-now'
 
@@ -44,6 +45,7 @@ export function Overview() {
   const runs = useRuns()
   const limits = useLimits()
   const savings = useSavings()
+  const usage = useUsage()
   const { openNewJob } = useNewJob()
   const now = useNow(30_000)
 
@@ -231,7 +233,8 @@ export function Overview() {
 
         <div className='mt-5 grid min-w-0 gap-4 lg:grid-cols-7'>
           <RecentJobs className='lg:col-span-4' />
-          <Card className='lg:col-span-3'>
+          <div className='grid min-w-0 content-start gap-4 lg:col-span-3'>
+          <Card>
             <CardHeader>
               <CardTitle>{t('İşçi slotları')}</CardTitle>
               <CardDescription>
@@ -250,6 +253,8 @@ export function Overview() {
               )}
             </CardContent>
           </Card>
+          <UsageOverviewCard summary={usage.data} />
+          </div>
         </div>
       </Main>
     </>

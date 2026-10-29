@@ -73,6 +73,12 @@ flowchart TB
 
 The `UserPromptSubmit` hook looks for registered project names and repository folder names in each message. Matching tolerates common typos; it adds relevant L1 facts, project skills, and the card summary to the prompt. It searches up to two named projects. If no project is named, it uses the registered project containing the current folder. L1 lookup is typically about a second, within a short hook time budget.
 
+## Is the knowledge used?
+
+Every lookup is appended to `data/knowledge-usage.jsonl`: what the prompt hook injected for each message, what went into each worker brief (with the run id), and every MCP tool call (`memory_search`, `wiki_search`, `wiki_read`, `skill_search`, `skill_get`, `code_graph`, `project_card`, `memory_remember`). Queries are redacted and clipped; a worker's MCP calls carry its run id, the lead's carry none. Logging never breaks the call it describes.
+
+`ekip stats [project] [--days N] [--json]` reads it back per project: lookups by kind and source, hit rate (the lookup returned something), the most used skills, whether a worker opened a SKILL.md its brief listed (its run log mentions the file more often than the brief line), and run success for briefs with and without knowledge. These are signals, not proof. `ekip stats` and `ekip doctor` push the summary to the hub (`PUT /api/usage`), where the Projects page and the overview show it.
+
 ## Joining a project in flight
 
 `ekip memory import-history` imports past Claude Code sessions into their registered project memories. By default it considers sessions from the last 30 days and up to 200 MB each; imports are incremental. Use `--all` for the full history, or adjust the limits:

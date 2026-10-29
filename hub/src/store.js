@@ -43,6 +43,8 @@ export function openStore(dir) {
     devenv: new Collection(dir, "devenv", {}),
     limits: new Collection(dir, "limits", null),
     savings: new Collection(dir, "savings", null),
+    // knowledge usage summary pushed by `ekip stats` / `ekip doctor` (lookups, hit rates, skills)
+    usage: new Collection(dir, "usage", null),
   };
   s.flushAll = () => { for (const c of Object.values(s)) if (c instanceof Collection) c.flush(); };
   return s;

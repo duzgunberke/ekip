@@ -56,7 +56,32 @@ function pickGraph(p, repo) {
 
 const text = (v) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
 
+// Which kind of knowledge each tool reads, for the knowledge usage log (ekip stats).
+const KIND = { project_card: "card", memory_search: "memory", memory_remember: "memory", wiki_search: "wiki", wiki_read: "wiki",
+  skill_search: "skill", skill_get: "skill", skill_list: "skill", code_graph: "codegraph" };
+
+// Every knowledge tool call is logged with its result count; a worker's calls carry its run id
+// (ekip run sets EKIP_PARENT_RUN for everything the worker starts), the lead's carry none.
 export async function callTool(name, a = {}) {
+  const t0 = Date.now();
+  let out, error;
+  try { out = await runTool(name, a); return out; } catch (e) { error = e; throw e; } finally {
+    if (KIND[name]) {
+      try {
+        const { recordUse, countHits } = await import("./usage.js");
+        let projectName = a.project ?? null;
+        if (!projectName) try { projectName = findProject(process.cwd())?.name ?? null; } catch { /* no project */ }
+        const list = Array.isArray(out) ? out : out && typeof out === "object" && out.name ? [out] : [];
+        recordUse({ source: "mcp", kind: KIND[name], tool: name, project: projectName,
+          query: a.query ?? a.name ?? a.refs?.join(", ") ?? a.params?.query ?? a.params?.symbol ?? (name === "memory_remember" ? a.text : null) ?? a.tool ?? null,
+          hits: error ? 0 : countHits(out), names: list.map((x) => x?.name).filter(Boolean),
+          runId: Number(process.env.EKIP_RUN_DEPTH ?? 0) > 0 ? process.env.EKIP_PARENT_RUN : null, ms: Date.now() - t0, error: error?.message });
+      } catch { /* usage logging must never affect MCP */ }
+    }
+  }
+}
+
+async function runTool(name, a = {}) {
   switch (name) {
     case "projects_list":
       return listProjects().map((p) => ({ name: p.name, path: p.path, summary: p.summary, card: !!p.card,

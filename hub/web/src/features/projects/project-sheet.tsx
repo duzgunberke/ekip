@@ -3,7 +3,7 @@ import { Brain, ExternalLink, FileText, GitBranch, Network, Send } from 'lucide-
 import { useState } from 'react'
 import { stripMd } from '@/lib/format'
 import { projectRepos } from '@/lib/repo'
-import type { Project } from '@/lib/types'
+import type { Project, ProjectUsage } from '@/lib/types'
 import { useNewJob } from '@/context/new-job-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,10 +20,11 @@ import { Md } from '@/components/ekip/markdown'
 import { EmptyState } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { useT } from '@/lib/i18n'
+import { ProjectUsageDetail } from './knowledge-usage'
 
-type Props = { project?: Project; open: boolean; onOpenChange: (o: boolean) => void }
+type Props = { project?: Project; usage?: ProjectUsage; open: boolean; onOpenChange: (o: boolean) => void }
 
-export function ProjectSheet({ project, open, onOpenChange }: Props) {
+export function ProjectSheet({ project, usage, open, onOpenChange }: Props) {
   const t = useT()
   // Keep showing the last project while the sheet animates closed.
   const [shown, setShown] = useState(project)
@@ -94,6 +95,7 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
                   </dl>
                 </section>
               )}
+              <ProjectUsageDetail usage={usage} />
               <Separator className='mb-5' />
               {p.card?.trim() ? (
                 <Md>{p.card}</Md>
