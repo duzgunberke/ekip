@@ -136,6 +136,8 @@ node plugin/bin/ekip.js init     # servisler, plugin, MCP sunucuları, worker CL
 ekip                             # lideri başlatın; ne isterseniz sorun
 ```
 
+ekip ilk açılışta sizi karşılar ve eksik kurulum adımlarını önerir.
+
 `ekip keys` her ücretsiz sağlayıcının anahtar sayfasını sırayla açar. Mac'iniz kapalıyken de belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutmak için bir VPS bağlayın: [docs/install.md](docs/install.md).
 
 Yapmadığı şey: ücretsiz modelleri Claude kadar iyi hâle getirmez. Daha yavaştırlar, yoğunlukta zaman aşımına uğrar ve limitlerine ulaşınca beklemeye geçerler. ekip bunları hesaba katar ve kararlar için Claude'u kullanır.

@@ -4,8 +4,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
-import { HOME, SETTINGS, die, sleep } from "./core.js";
+import { spawn } from "node:child_process";
+import { HOME, SETTINGS, die, sleep, notify } from "./core.js";
 import { c, dot, mark, progress, fit } from "./ui.js";
 import { t as tr, lang } from "./i18n.js";
 
@@ -48,8 +48,6 @@ export function eta(t) {
 }
 
 const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? tr("<1 dk") : m < 60 ? tr("{n} dk", { n: m }) : tr("{h} sa {m} dk", { h: Math.floor(m / 60), m: m % 60 }); };
-const notify = (title, body) => process.platform === "darwin" && spawnSync("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore" });
-
 // Pushes in flight; ekip.js waits for them before it exits, or the update would be cut off.
 export const pending = new Set();
 

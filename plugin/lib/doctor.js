@@ -40,6 +40,9 @@ export async function main(args = []) {
   console.log(`${mark()}  ${c.gray(fix ? t("doktor · onarım modu") : t("doktor · sadece kontrol (onarmak için --fix)"))}`);
   let problems = 0;
 
+  const onboarding = await import("./onboarding.js");
+  onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd() }), { heading: true });
+
   console.log(title(t("Bağlantı")));
   if (REMOTE) {
     const t = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
@@ -97,6 +100,8 @@ export async function main(args = []) {
   if (bf?.layer === "done") line("ok", t("vektörler"), t("tüm kayıtlar vektörlü"));
   else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
   else line("warn", t("vektörler"), t("doldurma hiç çalışmadı (ekip memory reindex)"));
+  // for the setup gaps shown at the lead start (onboarding.js reads it without a network call)
+  try { fs.writeFileSync(path.join(HOME, "vectors-status.json"), JSON.stringify({ at: Date.now(), missing: bf?.layer === "done" ? 0 : bf ? (running ? 0 : Math.max(0, bf.total - bf.done)) : 0, never: !bf })); } catch { /* best effort */ }
 
   console.log(title(t("Geçmiş oturumlar")));
   let done = 0;

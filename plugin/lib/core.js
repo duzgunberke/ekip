@@ -33,13 +33,19 @@ const errTTY = process.stderr.isTTY && !process.env.NO_COLOR;
 export const die = (msg, code = 1) => { process.stderr.write(`${errTTY ? "\x1b[31mekip ✗\x1b[39m" : "ekip:"} ${t(msg)}\n`); process.exit(code); };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
+export function notify(title, message) {
+  if (process.platform !== "darwin") return;
+  const icon = path.join(ROOT, "plugin/assets/ekip-icon.png");
+  if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", "ekip", "-subtitle", title, "-message", message, "-appIcon", icon, "-group", "ekip"], { stdio: "ignore", timeout: 1000 });
+  else spawnSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore", timeout: 1000 });
+}
 fs.mkdirSync(path.dirname(LOG), { recursive: true });
 fs.mkdirSync(RUNS, { recursive: true });
 
 // ---- freellmapi server ------------------------------------------------------------------------
 
-export async function healthy() {
-  try { return (await fetch(`${URL_ROOT}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
+export async function healthy(timeoutMs = 1500) {
+  try { return (await fetch(`${URL_ROOT}/health`, { signal: AbortSignal.timeout(timeoutMs) })).ok; } catch { return false; }
 }
 
 // Remote mode: the services (freellmapi, TencentDB memory) run on the VPS hub, and a launchd SSH
@@ -84,17 +90,17 @@ export async function down() {
   for (let i = 0; i < 20 && (await healthy()); i++) await sleep(250);
 }
 
-export function sql(query) {
-  const r = spawnSync("sqlite3", ["-separator", "\t", DB, query], { encoding: "utf8" });
-  if (r.status !== 0) die(`sqlite3 failed: ${r.stderr.trim()}`);
+export function sql(query, { timeout } = {}) {
+  const r = spawnSync("sqlite3", ["-separator", "\t", DB, query], { encoding: "utf8", ...(timeout ? { timeout } : {}) });
+  if (r.status !== 0) { if (timeout) return ""; die(`sqlite3 failed: ${r.stderr.trim()}`); }
   return r.stdout.trim();
 }
 
 export const unifiedKey = () => SETTINGS.freellmapiKey ?? sql("select value from settings where key='unified_api_key'");
 // Remote mode counts the declared keys (the VPS applies the same file on boot).
-export const keyCounts = () => (REMOTE
+export const keyCounts = ({ timeout } = {}) => (REMOTE
   ? Object.entries(readConfig().keys.reduce((m, k) => ({ ...m, [k.platform]: (m[k.platform] ?? 0) + 1 }), {})).map(([p, c]) => [p, String(c)])
-  : sql("select platform, count(*) from api_keys where enabled=1 group by platform").split("\n").filter(Boolean).map((l) => l.split("\t")));
+  : sql("select platform, count(*) from api_keys where enabled=1 group by platform", { timeout }).split("\n").filter(Boolean).map((l) => l.split("\t")));
 
 // Applies data/freellmapi.config.json: restarts the local server, or ships it to the VPS hub.
 export async function restartFree() {
@@ -193,8 +199,8 @@ export function clone(name) {
 
 export const TDAI_PORTS = { core: 8420, panel: 8125, knowledge: 8424, proxy: 8096 };
 export const tdaiDeploy = () => path.join(depDir("tdai"), "deploy/global-images");
-export const tdaiUp = async () => {
-  try { return (await fetch(`http://127.0.0.1:${TDAI_PORTS.proxy}/health`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
+export const tdaiUp = async (timeoutMs = 1500) => {
+  try { return (await fetch(`http://127.0.0.1:${TDAI_PORTS.proxy}/health`, { signal: AbortSignal.timeout(timeoutMs) })).status < 500; } catch { return false; }
 };
 export const containerRunning = (n) => spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", n], { encoding: "utf8" }).stdout.trim() === "true";
 

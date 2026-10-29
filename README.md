@@ -149,6 +149,8 @@ node plugin/bin/ekip.js init     # services, plugin, MCP servers, worker CLIs, f
 ekip                             # start the lead; ask for anything
 ```
 
+On first start, ekip greets you and suggests any setup steps still missing.
+
 `ekip keys` opens each free provider's key page in turn. To keep memory, the free pool and a job queue
 running while your Mac is off, connect a VPS: [docs/install.md](docs/install.md).
 
