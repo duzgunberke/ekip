@@ -40,3 +40,13 @@ ekip keeps patches alongside its deployment tools and applies them to its local 
 ---
 
 [← Back to README](../README.md) · Next: [README](../README.md)
+
+### Memories in the wrong language
+
+The memory extractor is told to write in the source language, but free models sometimes answer in
+Chinese. `hub/tools/translate-cron.sh` rewrites those records (text, search index and vector together)
+and is safe to run often: it is resumable and refuses a second copy. On the hub it runs nightly:
+
+```cron
+30 3 * * * /data/ekip/hub/tools/translate-cron.sh >> /data/ekip/translate-cron.log 2>&1
+```
