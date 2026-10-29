@@ -78,6 +78,9 @@ export type LimitsWorker = {
   runs: number
   successRate: number | null
   cooling: boolean
+  /** workers on this pool right now and how many it takes at once (older snapshots lack them) */
+  running?: number
+  capacity?: number
 }
 
 export type LimitsProvider = Provider & {

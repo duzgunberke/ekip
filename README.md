@@ -48,6 +48,17 @@ lead › 3 tasks · videos → Antigravity + film skill · storefront fix → Co
        reviews the diffs and renders, reports what shipped, what was verified, what is left
 ```
 
+### Mesai modu: every pool at work at once
+
+With several pools signed in, `ekip mesai on` turns on the work shift: the lead splits each request
+into as many independent parts as the pools can take and dispatches them in parallel, racing the
+uncertain ones, while its own Claude only plans and reviews. Each pool has a capacity (codex, copilot
+and agy 2, qwen, opencode and grok 1, free 3; `poolConcurrency` in `data/config.json` changes it), and
+`--via auto` skips pools that are full or out of quota, so parallel runs spread out by themselves.
+`ekip mesai status` shows each pool's running/capacity and success rate; `ekip mesai all "task"` runs
+one task on every pool with a free slot, each on its own branch. The headless Claude pool joins only
+with `--include-claude`.
+
 ## Joins projects already in flight
 
 You don't start from zero. When ekip registers a project it imports your **past Claude Code sessions**

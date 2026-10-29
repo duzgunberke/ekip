@@ -93,6 +93,11 @@ export function Pools() {
                         {worker.status === 'limited' && worker.limit?.resetAt && Date.parse(worker.limit.resetAt) < now ? (
                           <ToneBadge tone='ok'>{t('açılmış olmalı')}</ToneBadge>
                         ) : <ToneBadge tone={WORKER_TONE[worker.status] ?? 'off'}>{t(WORKER_LABEL[worker.status] ?? worker.status)}</ToneBadge>}
+                        {worker.status === 'ready' && worker.capacity != null && (
+                          <p className={`mt-1 text-xs tabular-nums ${(worker.running ?? 0) >= worker.capacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                            {t('{running}/{capacity} çalışıyor', { running: worker.running ?? 0, capacity: worker.capacity })}
+                          </p>
+                        )}
                         <p className='mt-1 text-xs tabular-nums text-muted-foreground'>
                           {t('{count} iş', { count: worker.runs })} · {worker.successRate == null ? t('başarı oranı yok') : `${formatPercent(worker.successRate)} ${t('başarı')}`}
                         </p>
