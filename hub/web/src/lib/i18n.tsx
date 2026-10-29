@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
-import { useRouterState } from '@tanstack/react-router'
+import { useRouter, useRouterState } from '@tanstack/react-router'
 
 export type Language = 'en' | 'tr'
 
@@ -663,25 +663,20 @@ export function getLanguage(): Language {
   return language
 }
 
-function updateLanguageUrl(value: Language) {
-  if (typeof window === 'undefined') return
-  const url = new URL(window.location.href)
+function languageHref(value: Language, href: string) {
+  const url = new URL(href, window.location.origin)
   url.searchParams.set('lang', value)
-  window.history.replaceState(window.history.state, '', url)
+  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export function setLanguage(value: Language) {
-  if (language === value) {
-    updateLanguageUrl(value)
-    return
-  }
+  if (language === value) return
   language = value
   try {
     window.localStorage.setItem('ekip-lang', value)
   } catch {
     // The URL remains the persistent source when storage is unavailable.
   }
-  updateLanguageUrl(value)
   document.documentElement.lang = value
   listeners.forEach((listener) => listener())
 }
@@ -714,6 +709,7 @@ export function useLanguage() {
 
 export function LanguageSwitcher() {
   const lang = useLanguage()
+  const router = useRouter()
   return (
     <div role='group' aria-label={translate('Dil seçimi')} className='flex items-center gap-2 text-xs'>
       {(['en', 'tr'] as const).map((value) => (
@@ -723,7 +719,11 @@ export function LanguageSwitcher() {
           aria-pressed={lang === value}
           aria-label={translate(value === 'en' ? 'İngilizce' : 'Türkçe')}
           className={lang === value ? 'font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground'}
-          onClick={() => setLanguage(value)}
+          onClick={() => {
+            setLanguage(value)
+            // Router history keeps its location store in sync with URL changes.
+            router.history.replace(languageHref(value, router.state.location.href))
+          }}
         >
           {value.toUpperCase()}
         </button>
@@ -735,17 +735,22 @@ export function LanguageSwitcher() {
 export function LanguageSync() {
   const lang = useLanguage()
   const location = useRouterState({ select: (state) => state.location.href })
+  const router = useRouter()
   useEffect(() => {
-    const urlLanguage = new URLSearchParams(window.location.search).get('lang')
+    const current = new URL(location, window.location.origin)
+    const urlLanguage = current.searchParams.get('lang')
     const urlLang: Language | null =
       urlLanguage === 'en' || urlLanguage === 'tr' ? urlLanguage : null
-    if (urlLang) {
-      if (urlLang !== lang) setLanguage(urlLang)
+    if (urlLang && urlLang !== lang) {
+      setLanguage(urlLang)
     } else {
-      updateLanguageUrl(lang)
+      if (current.searchParams.get('lang') !== lang) {
+        // Avoid mutating window.history behind the router's location subscribers.
+        router.history.replace(languageHref(lang, location))
+      }
     }
     document.documentElement.lang = lang
-  }, [lang, location])
+  }, [lang, location, router])
   return null
 }
 
