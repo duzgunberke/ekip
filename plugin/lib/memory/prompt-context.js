@@ -30,7 +30,10 @@ const GENERIC = new Set(["web", "api", "app", "apps", "mobile", "backend", "fron
 // Names a project answers to: its name, the name without separators, and its repos' folder names
 // unless they are generic.
 function aliases(p) {
-  const out = new Set([p.name, ...(p.repos ?? []).map((r) => path.basename(r.path ?? "")).filter((n) => !GENERIC.has(fold(n)))].filter(Boolean).map(fold));
+  // the product name people actually type (a folder "shop-backend" for the product "Acme") comes from the card summary's
+  // bold name and from an optional `aliases` list in the project entry
+  const product = [...String(p.summary ?? "").matchAll(/\*\*([^*(]{3,40})/g)].map((m) => m[1].trim()).filter((n) => !/\s/.test(n) || n.split(/\s+/).length <= 2);
+  const out = new Set([p.name, ...(p.aliases ?? []), ...product, ...(p.repos ?? []).map((r) => path.basename(r.path ?? "")).filter((n) => !GENERIC.has(fold(n)))].filter(Boolean).map(fold));
   for (const a of [...out]) { out.add(a.replace(/[-_.]/g, "")); out.add(a.replace(/[-_.]/g, " ")); }
   return [...out].filter((a) => a.length >= 3);
 }
@@ -54,6 +57,18 @@ export function mentioned(prompt, projects) {
   return hits;
 }
 
+// words of 4+ letters that are not filler, folded (case, Turkish i, accents); a 5+ letter stem match
+// counts too, so "takvime" meets "takvim" and "tarihte" meets "tarih"
+const FILLER = new Set(["bunu", "bunun", "sonra", "once", "olarak", "icin", "gibi", "daha", "kadar", "nasil", "neden", "olan", "olsun", "artik", "yani", "sadece", "bence", "ama", "this", "that", "with", "from", "have", "what", "when", "will", "should", "would", "there", "their", "they", "your", "about", "into", "more", "only", "also", "than", "then"]);
+const words = (s) => new Set((fold(String(s)).match(/[a-z0-9çğöşü]{4,}/g) ?? []).filter((w) => !FILLER.has(w)));
+// facts about a moment, not knowledge: "background job b123 started, output in /tmp/claude-.../x.output"
+const EPHEMERAL = /\/tmp\/claude-|\/tasks\/[a-z0-9]+\.output|\b(task|görev)[ -]?id\b|arka plan görevi|background (job|task)/i;
+function related(content, prompt) {
+  if (EPHEMERAL.test(String(content))) return false;
+  const a = words(prompt), b = words(content);
+  for (const w of a) { if (b.has(w)) return true; if (w.length >= 5) for (const x of b) if (x.length >= 5 && (x.startsWith(w.slice(0, 5)) || w.startsWith(x.slice(0, 5)))) return true; }
+  return false;
+}
 const withTimeout = (pr, ms) => Promise.race([pr, new Promise((r) => setTimeout(() => r(null), ms))]);
 // a lookup and how long it took, for the knowledge usage log
 const timed = async (pr) => { const t0 = Date.now(); const value = await pr; return { value, ms: Date.now() - t0 }; };
@@ -62,7 +77,9 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 export async function main() {
   const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
   const prompt = String(input.prompt ?? "");
-  if (prompt.trim().length < 8 || prompt.startsWith("/")) return;
+  // system notifications (finished background tasks, agent results) arrive as prompts too: they are
+  // not the user asking anything and only pulled in noise
+  if (prompt.trim().length < 8 || prompt.startsWith("/") || /^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION)/.test(prompt)) return;
   const { listProjects, findProject } = await import("../projects/projects.js");
   const projects = listProjects().filter((p) => p.tdai?.agentId);
   let hits = mentioned(prompt, projects).slice(0, 2);
@@ -84,12 +101,16 @@ export async function main() {
     ]);
     const [memories, skills, wiki] = [memoriesT.value, skillsT.value, wikiT?.value ?? null];
     const { projectSkills } = await import("../projects/project-skills.js");
-    const local = projectSkills(p.path, prompt).slice(0, 4);
+    // the home folder's skills are the user's general ones, which Claude Code already lists
+    const local = by === "general" ? [] : projectSkills(p.path, prompt).slice(0, 4);
     const lines = [by === "general" ? "## genel (work outside registered projects)" : `## ${p.name}${by === "folder" ? "" : ` (matched "${by}")`}`];
     if (p.summary) lines.push(clip(redact(p.summary.replace(/\s+/g, " ")), 300));
     const projectRules = (await import("../projects/project-config.js")).rules(p, 900);
     if (projectRules) lines.push("Project rules (.ekip/rules.md):", redact(projectRules));
-    const facts = (memories ?? []).filter((m) => m.layer === "L1").slice(0, 5);
+    // the vector search always returns its nearest records, related or not (a Polish forestry law
+    // came back for a question about something else): a fact is used only when it shares a real word with the
+    // message, so unrelated memories never reach the model
+    const facts = (memories ?? []).filter((m) => m.layer === "L1" && related(m.content, prompt)).slice(0, 5);
     if (facts.length) lines.push("Known facts and decisions:", ...facts.map((m) => `- ${clip(redact(String(m.content).replace(/\s+/g, " ")), 260)}`));
     // the general space has few extracted facts yet: earlier exchanges on the same subject help too
     const snippets = by === "general" ? (memories ?? []).filter((m) => m.layer !== "L1").slice(0, 3) : [];
