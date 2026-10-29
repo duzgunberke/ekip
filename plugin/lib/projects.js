@@ -232,7 +232,7 @@ export async function main(argv) {
   if (sub === "add") {
     const name = flag(args, "--name");
     const noCard = bool(args, "--no-card");
-    if (!args[0]) die("usage: ekip project add <path> [--name N] [--no-card]");
+    if (!args[0] || args[0].startsWith("-")) die("kullanım: ekip project add <klasör> [--name AD] [--no-card]");
     const r = await addProject(args[0], { name, card: !noCard });
     const p = getProject(r.name);
     console.log(`${p.name}: ${p.path}\n  card: ${p.card ?? "-"}\n  tdai: ${JSON.stringify({ agent: p.tdai?.agentId, wiki: p.tdai?.wikiId, codeGraphs: (p.tdai?.codeGraphs ?? []).map((g) => g.id ?? `failed: ${g.error}`) })}`);
