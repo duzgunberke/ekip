@@ -1,5 +1,5 @@
 # ekip hub stack for the VPS. TDAI (memory) runs separately via its own scripts on the
-# `tdai-memory-stack` network; Coolify's Traefik routes ai.sazora.io -> http://ekip-hub:7777
+# `tdai-memory-stack` network; Coolify's Traefik routes your domain -> http://ekip-hub:7777
 # over the external `coolify` network (dynamic file written by hand).
 #
 #   cp .env.example .env    # fill it in

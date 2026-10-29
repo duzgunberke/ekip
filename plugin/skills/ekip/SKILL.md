@@ -58,7 +58,7 @@ EOF
 
 - `ekip job "<task>" --project NAME` queues a job on the hub. A free worker clones the repo, works on the branch `ekip/job-<id>`, pushes it, and the hub keeps the report.
 - `ekip job ls` lists jobs and `ekip job show ID` shows one.
-- The panel is at https://ai.sazora.io. It shows projects, jobs, runs from the Mac and the pool status.
+- The panel is at the hub URL set with `ekip hub link` (`ekip hub open` opens it). It shows projects, jobs, runs from the Mac and the pool status.
 - `ekip vps sh "<cmd>"` runs a command on the server over SSH.
 - `ekip vps apps|deploy|logs|restart <app>` uses the Coolify API.
 

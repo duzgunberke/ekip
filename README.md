@@ -456,8 +456,7 @@ code and facts, `implementer` (Sonnet) does a coding step that needs the session
 
 ## Shared tools
 
-Third-party tools used by more than one project live in `/Volumes/SSD/Projects/tools` (or wherever you
-point them), never inside a project: freellmapi, TencentDB Agent Memory, hoptell, earshot (sound for
+Third-party tools used by more than one project live in one shared `tools/` folder next to your projects, never inside a project: freellmapi, TencentDB Agent Memory, hoptell, earshot (sound for
 code-made films, also an MCP server), ACE-Step (music), img2threejs. The paths are in
 `data/config.json` (`freellmapiDir`, `tdaiDir`, `hoptellDir`).
 

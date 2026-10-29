@@ -2,13 +2,14 @@
 // agent + wiki + code graph(s), and is found from any cwd inside it.
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { HOME, REPO, SETTINGS, die } from "./core.js";
 import * as mem from "./memory.js";
 
 export const REGISTRY = path.join(HOME, "projects.json");
 export const CARDS = path.join(HOME, "projects");
-export const PROJECTS_ROOT = SETTINGS.projectsRoot ?? "/Volumes/SSD/Projects";
+export const PROJECTS_ROOT = SETTINGS.projectsRoot ?? path.join(os.homedir(), "Projects");
 const EKIP_JS = path.join(REPO, "plugin/bin/ekip.js");
 const LOGS = path.join(HOME, "logs");
 

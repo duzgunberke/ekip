@@ -2,7 +2,7 @@
   "name": "ekip-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "Always-on ekip job runner and control panel (ai.sazora.io).",
+  "description": "Always-on ekip job runner and control panel.",
   "type": "module",
   "main": "src/server.js",
   "scripts": { "start": "node src/server.js" },

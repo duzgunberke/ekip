@@ -15,7 +15,7 @@ export const WORKER_BRIEF = [
 // A run that "succeeded" but only reports a quota or auth failure counts as failed (as in ekip.js).
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured|invalid api key/i;
 
-const AUTHOR = { name: "ekip-hub", email: "ekip@sazora.io" };
+const AUTHOR = { name: process.env.EKIP_GIT_NAME ?? "ekip-hub", email: process.env.EKIP_GIT_EMAIL ?? "ekip-hub@users.noreply.github.com" };
 const GIT_TIMEOUT = 10 * 60_000;
 
 // Accepted repo spellings: owner/name, github.com/owner/name, https://github.com/owner/name(.git).

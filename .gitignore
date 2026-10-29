@@ -2,3 +2,8 @@ data/
 vendor/
 node_modules/
 .DS_Store
+
+# demo build artefacts
+docs/demo/.frames/
+hub/demo/.data/
+hub/demo/.termhome/

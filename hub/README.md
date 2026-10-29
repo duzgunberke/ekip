@@ -1,7 +1,7 @@
 # ekip hub
 
 Always-on service for the VPS: runs ekip worker jobs while the Mac is off and serves the control
-panel at https://ai.sazora.io. Node 22, built-ins only; state in JSON files under `/data`.
+panel at your own domain (e.g. https://ai.example.com). Node 22, built-ins only; state in JSON files under `/data`.
 
 ## What it does
 
@@ -9,7 +9,7 @@ panel at https://ai.sazora.io. Node 22, built-ins only; state in JSON files unde
   `/data/work/<project>`, creates worktree branch `ekip/job-<id>` from the default branch, runs
   `claude --bare -p` there (through the TDAI memory proxy with the project's `x-team-id`/`x-agent-id`,
   or straight to freellmapi when TDAI is down or the project has no TDAI ids), commits the changes as
-  `ekip-hub <ekip@sazora.io>` and pushes the branch when `push` is true. Log: `/data/jobs/<id>.log`.
+  `ekip-hub` (set `EKIP_GIT_EMAIL` for the commit email) and pushes the branch when `push` is true. Log: `/data/jobs/<id>.log`.
 - **Registry and reports from the Mac**: `PUT /api/projects`, `POST /api/runs`, `POST /api/heartbeat`.
 - **Panel** (`/`): React SPA in `web/` (based on shadcn-admin, see `web/UPSTREAM.md`), built into
   `public/` by the Docker image: Görevler (live task progress, default page), Genel bakış, Projeler,
@@ -58,7 +58,7 @@ the `X-Ekip-Csrf: 1` header for writes).
 4. First run of freellmapi: open its dashboard through an SSH tunnel
    (`ssh -L 3001:127.0.0.1:3001 vps`, http://127.0.0.1:3001), create the account, copy the unified
    API key into `FREELLMAPI_KEY`, then `docker compose up -d ekip-hub`.
-5. Traefik dynamic file: route `Host(\`ai.sazora.io\`)` to `http://ekip-hub:7777` on the `coolify`
+5. Traefik dynamic file: route `Host(\`ai.example.com\`)` to `http://ekip-hub:7777` on the `coolify`
    network, TLS via your resolver.
 
 Local test without compose:
