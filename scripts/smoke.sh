@@ -39,7 +39,8 @@ timeout 20s node plugin/bin/ekip.js doctor >"$tmp/doctor.out" 2>&1
 status=$?
 set -e
 cat "$tmp/doctor.out"
-[[ $status -eq 0 || $status -eq 124 ]]
+# doctor exits 1 when it finds setup issues (expected on a fresh machine); only a crash fails the smoke test
+[[ $status -le 1 || $status -eq 124 ]]
 if grep -Eqi 'Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError' "$tmp/doctor.out"; then exit 1; fi
 for p in plugin/lib/prompt-context.js plugin/lib/memory/prompt-context.js; do
   echo "== prompt context / $p =="

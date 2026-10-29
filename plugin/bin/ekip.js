@@ -1548,7 +1548,8 @@ if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "-h", "--help"].in
 let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
-  case "review": code = await (await import("../lib/review/review.js")).main(rest); break;
+  // a usage problem (no registered project, unknown option) is a message, not a stack trace
+  case "review": try { code = await (await import("../lib/review/review.js")).main(rest); } catch (e) { die(e.message); } break;
   case "clean": clean(rest); break;
   case "mesai": code = await mesai(rest); if (rest[0] === "all") await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
   case "watch": await watch(rest); break;

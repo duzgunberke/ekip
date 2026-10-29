@@ -1,6 +1,6 @@
 {
   "name": "ekip",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "A lead Claude Code session that hands work to agents on other quotas.",
   "type": "module",
   "bin": { "ekip": "plugin/bin/ekip.js" },
