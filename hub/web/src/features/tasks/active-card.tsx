@@ -21,7 +21,12 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
   const translate = useT()
   const cur = currentStep(t)
   const eta = etaText(t, now)
-  const workers = t.workers.filter((w) => w.status === 'running' || (!w.endedAt && w.status !== 'done' && w.status !== 'failed'))
+  // every worker the task has had: running ones first, then finished ones with their end state, so
+  // a worker that just finished does not vanish and make it look as if there never was one
+  const isRunning = (w: Task['workers'][number]) => w.status === 'running' || (!w.endedAt && w.status !== 'done' && w.status !== 'failed')
+  const workers = [...t.workers.filter(isRunning), ...t.workers.filter((w) => !isRunning(w)).reverse()].slice(0, 6)
+  const runningCount = t.workers.filter(isRunning).length
+  const lastEnded = t.workers.filter((w) => !isRunning(w)).sort((a, b) => String(b.endedAt).localeCompare(String(a.endedAt)))[0]
   const note = t.notes[t.notes.length - 1]
   return (
     <Card className='min-w-0 gap-5 border-status-running/30'>
@@ -81,8 +86,13 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
         <div className='grid content-start gap-5'>
           <section aria-label={translate('Çalışan ajanlar')}>
             <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>
-              {translate('Çalışan ajanlar')} ({formatNumber(workers.length)})
+              {translate('Ajanlar')} ({formatNumber(runningCount)} {translate('çalışıyor')}{t.workers.length > runningCount ? ` · ${formatNumber(t.workers.length - runningCount)} ${translate('bitti')}` : ''})
             </h3>
+            {runningCount === 0 && lastEnded && t.status === 'running' && (
+              <p className='mb-2 text-sm text-muted-foreground'>
+                {translate('{worker} bitirdi; lead (Claude) sonucu inceliyor.', { worker: lastEnded.via ?? lastEnded.label ?? 'işçi' })}
+              </p>
+            )}
             {workers.length === 0 ? (
               <p className='text-sm text-muted-foreground'>{translate('İşçi yok: bu görevi lead (Claude) kendisi yürütüyor.')}</p>
             ) : (

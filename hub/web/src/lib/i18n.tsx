@@ -94,6 +94,8 @@ const en: Record<string, string> = Object.fromEntries([
   ["geçti", "elapsed"],
   ["Adımlar", "Steps"],
   ["Çalışan ajanlar", "Active agents"],
+  ["Ajanlar", "Agents"],
+  ["{worker} bitirdi; lead (Claude) sonucu inceliyor.", "{worker} finished; the lead (Claude) is reviewing the result."],
   ["İşçi yok: bu görevi lead (Claude) kendisi yürütüyor.", "No workers: the lead (Claude) is doing this task itself."],
   ["tamamlandı", "completed"],
   ["atlandı", "skipped"],
