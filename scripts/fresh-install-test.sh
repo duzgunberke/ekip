@@ -34,6 +34,9 @@ in_vm 'for i in $(seq 1 30); do curl -sf http://127.0.0.1:8420/health >/dev/null
 curl -sf http://127.0.0.1:8420/health >/dev/null && echo "memory-core healthy"
 grep -q "LANGUAGE (strict" ~/ekip/data/tdai/patched/app/src/core/prompts/l1-extraction.ts && echo "patches applied"'
 
+echo "== memory-core reaches the free pool"
+in_vm 'C=$(docker ps --format "{{.Names}}" | grep -m1 -E "^tdai-memory-core(-|$)"); docker exec $C node -e "fetch(\"http://host.docker.internal:3001/health\").then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" && echo "free pool reachable from memory-core"'
+
 echo "== smoke test"
 in_vm 'cd ~/ekip && bash scripts/smoke.sh > /tmp/smoke.log 2>&1 && echo "smoke ok" || { tail -30 /tmp/smoke.log; exit 1; }'
 
