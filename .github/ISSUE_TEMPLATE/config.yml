@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/OWNER/REPO/security/advisories/new
+    url: https://github.com/duzgunberke/ekip/security/advisories/new
     about: Report vulnerabilities privately through GitHub Security Advisories.
