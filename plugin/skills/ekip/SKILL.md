@@ -91,3 +91,16 @@ Never use production URLs from a project's `.env` for tests or migrations. Run `
 ## Review
 
 Run `ekip review --project NAME` to check and review project changes. Add `--dry-run` to preview checks, `--checks-only` to run checks without reviews, and use `ekip review profile NAME --refresh` to regenerate the project's review profile.
+
+## Skills
+
+- [ekip-delegate](../ekip-delegate/SKILL.md): split requests and dispatch reviewable worker briefs.
+- [ekip-project-context](../ekip-project-context/SKILL.md): load a registered project's process, memory, wiki, graph, and card.
+- [ekip-tasks](../ekip-tasks/SKILL.md): keep task steps and panel state current.
+- [ekip-stuck-work](../ekip-stuck-work/SKILL.md): diagnose stalled work and prevent repeat failures.
+- [ekip-review](../ekip-review/SKILL.md): run and interpret project checks and two reviews.
+- [ekip-skills](../ekip-skills/SKILL.md): learn, curate, and write project procedures.
+- [ekip-dev-env](../ekip-dev-env/SKILL.md): use safe development databases and environments.
+- [ekip-projects](../ekip-projects/SKILL.md): register, refresh, relocate, and remove projects.
+- [ekip-hub-ops](../ekip-hub-ops/SKILL.md): operate and diagnose the optional VPS hub.
+- [ekip-setup](../ekip-setup/SKILL.md): set up ekip from a clone and close setup gaps.
