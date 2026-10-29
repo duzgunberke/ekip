@@ -15,22 +15,26 @@ import { Main } from '@/components/layout/main'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ProjectSheet } from './project-sheet'
+import { formatNumber, useLanguage, useT } from '@/lib/i18n'
 
 const route = getRouteApi('/_authenticated/projeler')
 
 export function Projects() {
+  const t = useT()
+  const language = useLanguage()
   const projects = useProjects()
   const { p: openName, q = '' } = route.useSearch()
   const navigate = route.useNavigate()
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLocaleLowerCase('tr')
+    const locale = language === 'tr' ? 'tr-TR' : 'en-US'
+    const needle = q.trim().toLocaleLowerCase(locale)
     const list = projects.data ?? []
     if (!needle) return list
     return list.filter((p) =>
-      [p.name, p.summary, p.repo ?? '', ...(p.repos ?? [])].some((x) => x.toLocaleLowerCase('tr').includes(needle))
+      [p.name, p.summary, p.repo ?? '', ...(p.repos ?? [])].some((x) => x.toLocaleLowerCase(locale).includes(needle))
     )
-  }, [projects.data, q])
+  }, [language, projects.data, q])
 
   const open = openName ? projects.data?.find((p) => p.name === openName) : undefined
   const setSearch = (next: { p?: string; q?: string }) =>
@@ -41,8 +45,8 @@ export function Projects() {
       <AppHeader />
       <Main>
         <PageTitle
-          title='Projeler'
-          description="Mac'teki ekip'in hub'a kaydettiği projeler ve proje kartları."
+          title={t('Projeler')}
+          description={t("Mac'teki ekip'in hub'a kaydettiği projeler ve proje kartları.")}
         />
 
         <div className='mb-4 flex items-center gap-2'>
@@ -52,19 +56,19 @@ export function Projects() {
               type='search'
               value={q}
               onChange={(e) => setSearch({ q: e.target.value || undefined })}
-              placeholder='Proje, özet veya repo ara…'
-              aria-label='Projelerde ara'
+              placeholder={t('Proje, özet veya repo ara…')}
+              aria-label={t('Projelerde ara')}
               className='h-9 ps-8'
             />
           </div>
           {q && (
             <Button variant='ghost' size='sm' onClick={() => setSearch({ q: undefined })}>
-              Temizle <X />
+              {t('Temizle')} <X />
             </Button>
           )}
           {projects.data && (
             <span className='ms-auto text-sm text-muted-foreground tabular-nums'>
-              {filtered.length} / {projects.data.length}
+              {formatNumber(filtered.length)} / {formatNumber(projects.data.length)}
             </span>
           )}
         </div>
@@ -90,11 +94,11 @@ export function Projects() {
         ) : !projects.data?.length ? (
           <EmptyState
             icon={FolderGit2}
-            title='Kayıtlı proje yok'
-            description="Mac'teki ekip projeleri PUT /api/projects ile buraya gönderir."
+            title={t('Kayıtlı proje yok')}
+            description={t("Mac'teki ekip projeleri PUT /api/projects ile buraya gönderir.")}
           />
         ) : filtered.length === 0 ? (
-          <EmptyState icon={SearchIcon} title='Eşleşen proje yok' description={`"${q}" için sonuç bulunamadı.`} />
+          <EmptyState icon={SearchIcon} title={t('Eşleşen proje yok')} description={t('"{query}" için sonuç bulunamadı.', { query: q })} />
         ) : (
           <Grid>
             {filtered.map((p) => (
@@ -117,6 +121,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 }
 
 function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => void }) {
+  const t = useT()
   const repos = projectRepos(p)
   const shown = repos.slice(0, 3)
   const memory = !!p.tdai?.teamId
@@ -135,18 +140,18 @@ function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => v
           </CardTitle>
           {memory && (
             <Badge variant='outline' className='border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300'>
-              <Brain /> hafıza bağlı
+              <Brain /> {t('hafıza bağlı')}
             </Badge>
           )}
         </div>
         <CardDescription className='line-clamp-3 min-h-[3lh]'>
-          {stripMd(p.summary) || 'Özet yok.'}
+          {stripMd(p.summary) || t('Özet yok.')}
         </CardDescription>
       </CardHeader>
       <CardContent className='flex flex-wrap gap-1.5'>
         {repos.length === 0 ? (
           <Badge variant='secondary' className='font-normal text-muted-foreground'>
-            repo yok
+            {t('repo yok')}
           </Badge>
         ) : (
           <>
@@ -158,14 +163,14 @@ function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => v
             ))}
             {repos.length > shown.length && (
               <Badge variant='secondary' className='font-normal'>
-                +{repos.length - shown.length} repo
+                {t('+{count} repo', { count: repos.length - shown.length })}
               </Badge>
             )}
           </>
         )}
       </CardContent>
       <CardFooter className='mt-auto text-xs text-muted-foreground'>
-        güncellendi&nbsp;<TimeAgo iso={p.updatedAt} />
+        {t('güncellendi')}&nbsp;<TimeAgo iso={p.updatedAt} />
       </CardFooter>
     </Card>
   )

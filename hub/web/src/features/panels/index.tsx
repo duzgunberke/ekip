@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader, PageTitle } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
 import { EmptyState, QueryError } from '@/components/ekip/states'
+import { useT } from '@/lib/i18n'
 
 const ICONS: [RegExp, React.ElementType, string][] = [
   [/coolify/i, Rocket, 'Uygulama ve servis dağıtımı'],
@@ -35,13 +36,14 @@ function meta(name: string) {
 }
 
 export function Panels() {
+  const t = useT()
   const status = useStatus()
   const links = status.data?.links ?? []
   return (
     <>
       <AppHeader />
       <Main>
-        <PageTitle title='Paneller' description='Aynı sunucudaki diğer yönetim panelleri. Yeni sekmede açılır.' />
+        <PageTitle title={t('Paneller')} description={t('Aynı sunucudaki diğer yönetim panelleri. Yeni sekmede açılır.')} />
         {status.isError ? (
           <QueryError error={status.error} onRetry={() => status.refetch()} />
         ) : status.isLoading ? (
@@ -53,13 +55,13 @@ export function Panels() {
         ) : links.length === 0 ? (
           <EmptyState
             icon={PanelsTopLeft}
-            title='Panel bağlantısı yok'
-            description='Hub ortamında EKIP_LINKS="Ad|https://url,…" ayarlayın.'
+            title={t('Panel bağlantısı yok')}
+            description={t('Hub ortamında EKIP_LINKS="Ad|https://url,…" ayarlayın.')}
           />
         ) : (
           <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
             {links.map((l) => {
-              const { icon: Icon, desc } = meta(l.name)
+              const { icon: Icon, desc: description } = meta(l.name)
               let host = l.url
               try {
                 host = new URL(l.url).host
@@ -85,11 +87,11 @@ export function Panels() {
                         aria-hidden='true'
                       />
                       <CardDescription className='min-w-0'>
-                        <span className='block truncate'>{desc}</span>
+                        <span className='block truncate'>{t(description)}</span>
                         <span className='block truncate font-mono text-xs'>{host}</span>
                       </CardDescription>
                     </CardHeader>
-                    <span className='sr-only'>(yeni sekmede açılır)</span>
+                    <span className='sr-only'>{t('(yeni sekmede açılır)')}</span>
                   </Card>
                 </a>
               )

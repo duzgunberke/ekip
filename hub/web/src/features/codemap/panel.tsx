@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { formatNumber, formatPercent, useT } from '@/lib/i18n'
 import { type GraphState, type Selection, findDir, treeOf } from './flow'
 import { type DirNode, compact, langColor, topLangs } from './tree'
 
@@ -60,9 +61,10 @@ export function DetailPanel({ project, repos, graphs, selection, onSelect }: Pro
 }
 
 function Section({ title, children, className }: { title: React.ReactNode; children: React.ReactNode; className?: string }) {
+  const t = useT()
   return (
     <section className={cn('border-t px-4 py-4', className)}>
-      <h3 className='mb-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{title}</h3>
+      <h3 className='mb-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{typeof title === 'string' ? t(title) : title}</h3>
       {children}
     </section>
   )
@@ -81,11 +83,12 @@ function Head({
   sub?: React.ReactNode
   actions?: React.ReactNode
 }) {
+  const t = useT()
   return (
     <div className='px-4 pt-4 pb-3'>
       {back && (
         <Button variant='ghost' size='sm' className='-ms-2 mb-1 h-7 max-w-full text-muted-foreground' onClick={back.onClick}>
-          <ArrowLeft /> <span className='truncate'>{back.label}</span>
+          <ArrowLeft /> <span className='truncate'>{t(back.label)}</span>
         </Button>
       )}
       <div className='flex items-start gap-2.5'>
@@ -103,10 +106,11 @@ function Head({
 }
 
 function LangBar({ items }: { items: { name: string; share: number; color?: string | null }[] }) {
-  if (!items.length) return <p className='text-sm text-muted-foreground'>Dil bilgisi yok.</p>
+  const t = useT()
+  if (!items.length) return <p className='text-sm text-muted-foreground'>{t('Dil bilgisi yok.')}</p>
   return (
     <div>
-      <div className='flex h-2 overflow-hidden rounded-full bg-muted' role='img' aria-label={items.map((l) => `${l.name} %${Math.round(l.share * 100)}`).join(', ')}>
+      <div className='flex h-2 overflow-hidden rounded-full bg-muted' role='img' aria-label={items.map((l) => `${l.name} ${formatPercent(Math.round(l.share * 100))}`).join(', ')}>
         {items.map((l) => (
           <span key={l.name} style={{ width: `${Math.max(l.share * 100, 1)}%`, backgroundColor: langColor(l.name, l.color) }} />
         ))}
@@ -115,7 +119,7 @@ function LangBar({ items }: { items: { name: string; share: number; color?: stri
         {items.map((l) => (
           <li key={l.name} className='flex items-center gap-1.5'>
             <span className='size-2 rounded-full' style={{ backgroundColor: langColor(l.name, l.color) }} aria-hidden='true' />
-            {l.name} <span className='text-muted-foreground tabular-nums'>%{(l.share * 100).toFixed(l.share < 0.1 ? 1 : 0)}</span>
+            {l.name} <span className='text-muted-foreground tabular-nums'>{formatPercent(Number((l.share * 100).toFixed(l.share < 0.1 ? 1 : 0)))}</span>
           </li>
         ))}
       </ul>
@@ -124,9 +128,10 @@ function LangBar({ items }: { items: { name: string; share: number; color?: stri
 }
 
 function ProjectOverview({ repos, onSelect }: { repos: RepoMeta[]; onSelect: (s: Selection) => void }) {
+  const t = useT()
   return (
     <div>
-      <Head icon={Layers} title='Depolar' sub='Bir depoya tıklayın: dalları ve klasör yapısı açılır.' />
+      <Head icon={Layers} title={t('Depolar')} sub={t('Bir depoya tıklayın: dalları ve klasör yapısı açılır.')} />
       <ul className='border-t'>
         {repos.map((r) => (
           <li key={r.url} className='border-b last:border-b-0'>
@@ -144,13 +149,13 @@ function ProjectOverview({ repos, onSelect }: { repos: RepoMeta[]; onSelect: (s:
               </div>
               {!r.error && (
                 <span className='flex shrink-0 items-center gap-2.5 text-xs text-muted-foreground tabular-nums'>
-                  <span className='flex items-center gap-1' title='Dal'>
+                  <span className='flex items-center gap-1' title={t('Dal')}>
                     <GitBranch className='size-3' aria-hidden='true' />
-                    {r.branchCount ?? 0}
+                    {formatNumber(r.branchCount ?? 0)}
                   </span>
-                  <span className='flex items-center gap-1' title='Açık PR'>
+                  <span className='flex items-center gap-1' title={t('Açık PR')}>
                     <GitPullRequest className='size-3' aria-hidden='true' />
-                    {r.openPrs ?? 0}
+                    {formatNumber(r.openPrs ?? 0)}
                   </span>
                 </span>
               )}
@@ -163,6 +168,7 @@ function ProjectOverview({ repos, onSelect }: { repos: RepoMeta[]; onSelect: (s:
 }
 
 function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: GraphState; onSelect: (s: Selection) => void }) {
+  const t = useT()
   const tree = g?.data ? treeOf(g.data) : null
   return (
     <div>
@@ -174,7 +180,7 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
         actions={
           (r.htmlUrl ?? r.url) && (
             <Button variant='outline' size='icon' className='size-8 shrink-0' asChild>
-              <a href={r.htmlUrl ?? r.url} target='_blank' rel='noopener noreferrer' aria-label='Depoyu GitHub’da aç'>
+              <a href={r.htmlUrl ?? r.url} target='_blank' rel='noopener noreferrer' aria-label={t('Depoyu GitHub’da aç')}>
                 <ExternalLink />
               </a>
             </Button>
@@ -184,10 +190,10 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
       <div className='flex flex-wrap gap-1.5 px-4 pb-4'>
         {r.private && (
           <Badge variant='secondary'>
-            <Lock /> özel
+            <Lock /> {t('özel')}
           </Badge>
         )}
-        {r.archived && <Badge variant='secondary'>arşiv</Badge>}
+        {r.archived && <Badge variant='secondary'>{t('arşiv')}</Badge>}
         {r.fork && <Badge variant='secondary'>fork</Badge>}
         {r.defaultBranch && (
           <Badge variant='outline' className='font-mono'>
@@ -196,7 +202,7 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
         )}
         {r.codeGraph && (
           <Badge variant='outline' className='border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300'>
-            <Layers /> kod grafiği
+            <Layers /> {t('kod grafiği')}
           </Badge>
         )}
         {r.pushedAt && (
@@ -218,9 +224,9 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
           <Section
             title={
               <span className='flex items-center justify-between'>
-                <span>Dallar ({r.branchCount ?? 0})</span>
+                <span>{t('Dallar ({count})', { count: r.branchCount ?? 0 })}</span>
                 <span className='flex items-center gap-1 normal-case'>
-                  <GitPullRequest className='size-3' aria-hidden='true' /> {r.openPrs ?? 0} açık PR
+                  <GitPullRequest className='size-3' aria-hidden='true' /> {formatNumber(r.openPrs ?? 0)} {t('açık PR')}
                 </span>
               </span>
             }
@@ -240,7 +246,7 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
                     </a>
                     {b.name === r.defaultBranch && (
                       <Badge variant='secondary' className='px-1.5 py-0 text-[10px]'>
-                        varsayılan
+                        {t('varsayılan')}
                       </Badge>
                     )}
                     <span className='shrink-0 text-[11px] text-muted-foreground'>
@@ -255,7 +261,7 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
               ))}
             </ul>
             {(r.branchCount ?? 0) > (r.branches?.length ?? 0) && (
-              <p className='mt-2 text-xs text-muted-foreground'>İlk {r.branches?.length} dal gösteriliyor.</p>
+              <p className='mt-2 text-xs text-muted-foreground'>{t('İlk {count} dal gösteriliyor.', { count: r.branches?.length ?? 0 })}</p>
             )}
           </Section>
         </>
@@ -281,12 +287,13 @@ function RepoDetail({ repo: r, graph: g, onSelect }: { repo: RepoMeta; graph?: G
 }
 
 function GraphSource({ graph }: { graph: GraphState }) {
+  const t = useT()
   const d = graph.data!
   return (
     <div className='mb-3 grid gap-1 text-xs text-muted-foreground'>
       <p>
-        {d.files.length} dosya
-        {d.indexed > 0 && ` · ${d.indexed} dosya kod grafiğinde`}
+        {t('{count} dosya', { count: d.files.length })}
+        {d.indexed > 0 && ` · ${t('{count} dosya kod grafiğinde', { count: d.indexed })}`}
         {d.branch && (
           <>
             {' · '}
@@ -295,9 +302,9 @@ function GraphSource({ graph }: { graph: GraphState }) {
         )}
       </p>
       <p>
-        Kaynak:{' '}
-        {d.source === 'codegraph+github' ? 'kod grafiği + GitHub ağacı' : d.source === 'codegraph' ? 'kod grafiği' : 'GitHub ağacı'}
-        {d.truncated && ' (kısaltılmış)'}
+        {t('Kaynak:')}{' '}
+        {d.source === 'codegraph+github' ? t('kod grafiği + GitHub ağacı') : d.source === 'codegraph' ? t('kod grafiği') : t('GitHub ağacı')}
+        {d.truncated && ` ${t('(kısaltılmış)')}`}
       </p>
       {d.notes.map((n) => (
         <p key={n} className='text-warning'>
@@ -309,6 +316,7 @@ function GraphSource({ graph }: { graph: GraphState }) {
 }
 
 function DirList({ dir, repo, onSelect }: { dir: DirNode; repo: string; onSelect: (s: Selection) => void }) {
+  const t = useT()
   return (
     <ul className='-mx-1 flex flex-col gap-0.5'>
       {dir.dirs.map(compact).map(({ dir: d, label }) => (
@@ -320,7 +328,7 @@ function DirList({ dir, repo, onSelect }: { dir: DirNode; repo: string; onSelect
           >
             <Folder className='size-3.5 shrink-0 text-muted-foreground' aria-hidden='true' />
             <span className='min-w-0 flex-1 truncate'>{label}</span>
-            <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{d.count}</span>
+            <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{formatNumber(d.count)}</span>
           </button>
         </li>
       ))}
@@ -335,11 +343,11 @@ function DirList({ dir, repo, onSelect }: { dir: DirNode; repo: string; onSelect
               <span className='size-2 rounded-full' style={{ backgroundColor: langColor(f.l) }} />
             </span>
             <span className='min-w-0 flex-1 truncate font-mono text-xs'>{f.p.split('/').pop()}</span>
-            {f.s != null && <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{f.s} sembol</span>}
+            {f.s != null && <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{formatNumber(f.s)} {t('sembol')}</span>}
           </button>
         </li>
       ))}
-      {!dir.dirs.length && !dir.files.length && <li className='px-1 text-sm text-muted-foreground'>Boş.</li>}
+      {!dir.dirs.length && !dir.files.length && <li className='px-1 text-sm text-muted-foreground'>{t('Boş.')}</li>}
     </ul>
   )
 }
@@ -350,6 +358,7 @@ function parentSel(repo: string, path: string): Selection {
 }
 
 function DirDetail({ repo, dir, branch, onSelect }: { repo: RepoMeta; dir: DirNode; branch: string | null; onSelect: (s: Selection) => void }) {
+  const t = useT()
   const parent = dir.path.includes('/') ? dir.path.slice(0, dir.path.lastIndexOf('/')) : null
   return (
     <div>
@@ -365,7 +374,7 @@ function DirDetail({ repo, dir, branch, onSelect }: { repo: RepoMeta; dir: DirNo
         actions={
           repo.htmlUrl && branch && (
             <Button variant='outline' size='icon' className='size-8 shrink-0' asChild>
-              <a href={`${repo.htmlUrl}/tree/${encodeURIComponent(branch)}/${dir.path}`} target='_blank' rel='noopener noreferrer' aria-label='Klasörü GitHub’da aç'>
+              <a href={`${repo.htmlUrl}/tree/${encodeURIComponent(branch)}/${dir.path}`} target='_blank' rel='noopener noreferrer' aria-label={t('Klasörü GitHub’da aç')}>
                 <ExternalLink />
               </a>
             </Button>
@@ -375,7 +384,7 @@ function DirDetail({ repo, dir, branch, onSelect }: { repo: RepoMeta; dir: DirNo
       <div className='grid grid-cols-3 gap-2 px-4 pb-4 text-center'>
         <Stat label='dosya' value={dir.count} />
         <Stat label='klasör' value={dir.dirs.length} />
-        <Stat label='sembol' value={dir.symbols || 'Yok'} />
+        <Stat label='sembol' value={dir.symbols || t('Yok')} />
       </div>
       <Section title='Diller'>
         <LangBar items={topLangs(dir.langs, 6)} />
@@ -388,10 +397,11 @@ function DirDetail({ repo, dir, branch, onSelect }: { repo: RepoMeta; dir: DirNo
 }
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+  const t = useT()
   return (
     <div className='rounded-lg border bg-muted/30 px-2 py-2'>
-      <p className='text-lg font-semibold tabular-nums'>{value}</p>
-      <p className='text-[11px] text-muted-foreground'>{label}</p>
+      <p className='text-lg font-semibold tabular-nums'>{typeof value === 'number' ? formatNumber(value) : value}</p>
+      <p className='text-[11px] text-muted-foreground'>{t(label)}</p>
     </div>
   )
 }
@@ -407,6 +417,7 @@ function FileDetail(props: {
   indexed: boolean
   onSelect: (s: Selection) => void
 }) {
+  const t = useT()
   const { project, repo, path, lang, symbolCount, size, branch, indexed, onSelect } = props
   const sym = useSymbols(project, indexed ? repo.url : undefined, indexed ? path : undefined)
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null
@@ -424,14 +435,14 @@ function FileDetail(props: {
                 {lang}
               </span>
             )}
-            {symbolCount != null && <span>{symbolCount} sembol</span>}
-            {size != null && <span>{size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`}</span>}
+            {symbolCount != null && <span>{formatNumber(symbolCount)} {t('sembol')}</span>}
+            {size != null && <span>{size < 1024 ? `${formatNumber(size)} B` : `${formatNumber(Number((size / 1024).toFixed(1)))} KB`}</span>}
           </span>
         }
         actions={
           repo.htmlUrl && branch && (
             <Button variant='outline' size='icon' className='size-8 shrink-0' asChild>
-              <a href={`${repo.htmlUrl}/blob/${encodeURIComponent(branch)}/${path}`} target='_blank' rel='noopener noreferrer' aria-label='Dosyayı GitHub’da aç'>
+              <a href={`${repo.htmlUrl}/blob/${encodeURIComponent(branch)}/${path}`} target='_blank' rel='noopener noreferrer' aria-label={t('Dosyayı GitHub’da aç')}>
                 <ExternalLink />
               </a>
             </Button>
@@ -440,15 +451,15 @@ function FileDetail(props: {
       />
       <Section title='Öne çıkan semboller'>
         {!indexed ? (
-          <p className='text-sm text-muted-foreground'>Bu dosya kod grafiğinde yok; sembol bilgisi alınamıyor.</p>
+          <p className='text-sm text-muted-foreground'>{t('Bu dosya kod grafiğinde yok; sembol bilgisi alınamıyor.')}</p>
         ) : sym.isLoading ? (
           <p className='flex items-center gap-2 text-sm text-muted-foreground'>
-            <Loader2 className='size-4 animate-spin' aria-hidden='true' /> Kod grafiği sorgulanıyor…
+            <Loader2 className='size-4 animate-spin' aria-hidden='true' /> {t('Kod grafiği sorgulanıyor…')}
           </p>
         ) : sym.isError ? (
           <p className='text-sm text-destructive'>{errorMessage(sym.error)}</p>
         ) : !sym.data?.symbols.length ? (
-          <p className='text-sm text-muted-foreground'>Sembol bulunamadı.</p>
+          <p className='text-sm text-muted-foreground'>{t('Sembol bulunamadı.')}</p>
         ) : (
           <ul className='flex flex-col gap-1'>
             {sym.data.symbols.map((s) => (
@@ -482,11 +493,12 @@ function FileDetail(props: {
 }
 
 function GraphPending({ graph, repo, onSelect }: { graph?: GraphState; repo: RepoMeta; onSelect: (s: Selection) => void }) {
+  const t = useT()
   return (
     <div>
-      <Head back={{ label: repo.name, onClick: () => onSelect({ kind: 'repo', repo: repo.url }) }} icon={Folder} title='Yapı yükleniyor' />
+      <Head back={{ label: repo.name, onClick: () => onSelect({ kind: 'repo', repo: repo.url }) }} icon={Folder} title={t('Yapı yükleniyor')} />
       <div className='px-4 pb-4 text-sm text-muted-foreground'>
-        {graph?.error ? errorMessage(graph.error) : 'Klasör yapısı alınıyor…'}
+        {graph?.error ? errorMessage(graph.error) : t('Klasör yapısı alınıyor…')}
       </div>
     </div>
   )

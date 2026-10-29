@@ -13,6 +13,7 @@ const env = process.env;
 const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 const stripSlash = (u) => (u ? u.replace(/\/+$/, "") : "");
 const DATA = env.EKIP_DATA ?? "/data";
+const DEMO = env.EKIP_DEMO === "1";
 
 const cfg = {
   // "Name|https://url,Name|https://url": other dashboards on the same server, shown as links.
@@ -21,6 +22,7 @@ const cfg = {
   port: num(env.PORT, 7777),
   host: env.HOST ?? "0.0.0.0",
   data: DATA,
+  demo: DEMO,
   jobsDir: path.join(DATA, "jobs"),
   workDir: path.join(DATA, "work"),
   claudeDir: env.CLAUDE_CONFIG_DIR ?? path.join(DATA, "claude"),
@@ -42,7 +44,7 @@ const cfg = {
 };
 
 if (cfg.hubToken.length < 16) { console.error("EKIP_HUB_TOKEN must be set (at least 16 characters)"); process.exit(1); }
-if (cfg.hubPassword.length < 10) { console.error("EKIP_HUB_PASSWORD must be set (at least 10 characters)"); process.exit(1); }
+if (cfg.hubPassword.length < (DEMO ? 1 : 10)) { console.error(`EKIP_HUB_PASSWORD must be set (at least ${DEMO ? 1 : 10} characters)`); process.exit(1); }
 
 fs.mkdirSync(DATA, { recursive: true });
 function serverSecret() {
@@ -72,6 +74,7 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
@@ -293,6 +296,16 @@ async function getJson(url, headers = {}) {
 }
 
 async function status() {
+  if (DEMO) {
+    const counts = { queued: 0, running: 0, done: 0, failed: 0, cancelled: 0 };
+    for (const j of store.jobs.data) counts[j.status] = (counts[j.status] ?? 0) + 1;
+    const snap = store.limits.data ?? {};
+    return { time: new Date().toISOString(), freellmapi: { configured: true, up: true, ready: true, reason: null,
+      providers: (Array.isArray(snap.free) ? snap.free : []).map(({ platform, name, status, keys, resumeAt }) => ({ platform, name, status, keys, resumeAt })),
+      providerCount: (snap.free ?? []).length, counts: { healthy: (snap.free ?? []).filter((p) => p.status === "healthy").length }, authError: null },
+      tdai: { configured: true, up: true, version: "demo", memory: true }, github: { token: false, copilot: true }, queue: counts,
+      workers: worker.status(), links: cfg.links, clients: Object.values(store.clients.data) };
+  }
   const [ready, providers, tdai] = await Promise.all([
     cfg.freellmapiUrl ? getJson(`${cfg.freellmapiUrl}/readyz`) : null,
     cfg.freellmapiUrl && cfg.freellmapiKey ? getJson(`${cfg.freellmapiUrl}/v1/providers`, { authorization: `Bearer ${cfg.freellmapiKey}` }) : null,
@@ -367,6 +380,15 @@ async function api(req, res, url) {
     const project = store.projects.data.find((x) => x.name === decodeURIComponent(match[1]));
     if (!project) return send(res, 404, { error: "no such project" });
     const fresh = url.searchParams.get("fresh") === "1";
+    if (DEMO && match[2] === "repos") return send(res, 200, { project: project.name, fetchedAt: new Date().toISOString(), repos: (project.repos ?? [project.repo]).filter(Boolean).map((url) => ({ url, key: url.replace(/^https:\/\/github.com\//, "github.com/"), host: "github.com", owner: "northwind-labs", name: url.split("/").pop(), github: true, codeGraph: { id: project.tdai?.codeGraphs?.[0]?.id ?? "cg_demo_storefront", branch: "main", status: "ready" }, fullName: `northwind-labs/${url.split("/").pop()}`, htmlUrl: url, description: project.summary, private: true, archived: false, fork: false, pushedAt: new Date().toISOString(), defaultBranch: "main", language: project.name === "payments-api" ? "Go" : project.name === "ios-app" ? "Swift" : "TypeScript", languages: [{ name: project.name === "payments-api" ? "Go" : "TypeScript", color: "#3178c6", share: 82 }, { name: "Shell", color: "#89e051", share: 18 }], openPrs: 3, branchCount: 14, branches: [] })) });
+    if (DEMO && match[2] === "graph") {
+      const repo = url.searchParams.get("repo") ?? "";
+      return send(res, 200, { source: "codegraph+github", codeGraph: { id: "cg_demo_storefront", branch: "main", ok: true, error: null }, repo, branch: "main", indexed: 42, truncated: false, notes: [], files: [
+        { p: "src", l: null, s: null }, { p: "src/checkout", l: null, s: null }, { p: "src/checkout/CheckoutFlow.tsx", l: "TypeScript", s: 318, b: 12640 },
+        { p: "src/checkout/useCart.ts", l: "TypeScript", s: 142, b: 5912 }, { p: "src/payments", l: null, s: null }, { p: "src/payments/stripe.ts", l: "TypeScript", s: 206, b: 8421 },
+        { p: "src/components", l: null, s: null }, { p: "src/components/CartDrawer.tsx", l: "TypeScript", s: 94, b: 3820 }, { p: "src/lib", l: null, s: null }, { p: "src/lib/telemetry.ts", l: "TypeScript", s: 71, b: 2900 },
+        { p: "tests", l: null, s: null }, { p: "tests/checkout-race.spec.ts", l: "TypeScript", s: 118, b: 4490 }, { p: "README.md", l: "Markdown", s: null, b: 6800 }] });
+    }
     try {
       if (match[2] === "repos") return send(res, 200, await codemap.repos(project, { fresh }));
       const repo = str(url.searchParams.get("repo"), 300, "repo", { required: true });
@@ -536,7 +558,7 @@ const server = http.createServer((req, res) => {
 server.requestTimeout = 30_000;
 server.headersTimeout = 15_000;
 
-worker.start();
+if (!DEMO) worker.start();
 server.listen(cfg.port, cfg.host, () => {
   console.log(`ekip hub on http://${cfg.host}:${cfg.port}  workers=${cfg.workers}  freellmapi=${cfg.freellmapiUrl || "-"}  tdai=${cfg.tdaiUrl || "-"}  github=${cfg.githubToken ? "token" : "none"}`);
 });

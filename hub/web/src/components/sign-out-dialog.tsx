@@ -1,5 +1,6 @@
 import { useSignOut } from '@/hooks/use-sign-out'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { useT } from '@/lib/i18n'
 
 interface SignOutDialogProps {
   open: boolean
@@ -7,14 +8,15 @@ interface SignOutDialogProps {
 }
 
 export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
+  const t = useT()
   const signOut = useSignOut()
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title='Çıkış yap'
-      desc='Oturum kapatılsın mı? Panele tekrar erişmek için parola gerekecek.'
-      confirmText='Çıkış yap'
+      title={t('Çıkış yap')}
+      desc={t('Oturum kapatılsın mı? Panele tekrar erişmek için parola gerekecek.')}
+      confirmText={t('Çıkış yap')}
       destructive
       handleConfirm={signOut}
       className='sm:max-w-sm'

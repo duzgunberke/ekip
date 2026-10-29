@@ -14,7 +14,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { ChevronRight, History } from 'lucide-react'
-import { STATUS_LABEL, duration, firstLine, normalizeRunStatus } from '@/lib/format'
+import { statusLabel, duration, firstLine, normalizeRunStatus } from '@/lib/format'
 import type { Run } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useRuns } from '@/hooks/queries'
@@ -26,6 +26,7 @@ import { Md } from '@/components/ekip/markdown'
 import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { translate, useLanguage, useT } from '@/lib/i18n'
 
 const when = (r: Run) => r.finishedAt ?? r.startedAt ?? r.receivedAt
 const inList = (row: { getValue: (id: string) => unknown }, id: string, value: string[]) =>
@@ -34,14 +35,14 @@ const inList = (row: { getValue: (id: string) => unknown }, id: string, value: s
 const columns: ColumnDef<Run>[] = [
   {
     id: 'expand',
-    header: () => <span className='sr-only'>Aç/kapat</span>,
+    header: () => <span className='sr-only'>{translate('Aç/kapat')}</span>,
     cell: ({ row }) => (
       <Button
         variant='ghost'
         size='icon'
         className='size-7'
         aria-expanded={row.getIsExpanded()}
-        aria-label={row.getIsExpanded() ? 'Raporu gizle' : 'Raporu göster'}
+        aria-label={translate(row.getIsExpanded() ? 'Raporu gizle' : 'Raporu göster')}
         onClick={() => row.toggleExpanded()}
       >
         <ChevronRight className={cn('transition-transform', row.getIsExpanded() && 'rotate-90')} />
@@ -73,14 +74,14 @@ const columns: ColumnDef<Run>[] = [
   },
   {
     id: 'project',
-    accessorFn: (r) => r.project ?? 'Yok',
+    accessorFn: (r) => r.project ?? translate('Yok'),
     header: ({ column }) => <DataTableColumnHeader column={column} title='Proje' />,
     filterFn: inList,
     meta: { className: 'hidden sm:table-cell' },
   },
   {
     id: 'via',
-    accessorFn: (r) => r.via ?? 'Yok',
+    accessorFn: (r) => r.via ?? translate('Yok'),
     header: ({ column }) => <DataTableColumnHeader column={column} title='Yol' />,
     cell: ({ getValue }) => <span className='text-muted-foreground'>{getValue<string>()}</span>,
     meta: { className: 'hidden md:table-cell' },
@@ -110,6 +111,8 @@ const columns: ColumnDef<Run>[] = [
 ]
 
 export function Runs() {
+  const t = useT()
+  const language = useLanguage()
   const runs = useRuns()
   const [sorting, setSorting] = useState<SortingState>([{ id: 'when', desc: true }])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -118,8 +121,11 @@ export function Runs() {
   const data = useMemo(() => runs.data ?? [], [runs.data])
 
   const projectOptions = useMemo(
-    () => [...new Set(data.map((r) => r.project ?? 'Yok'))].sort().map((p) => ({ label: p, value: p })),
-    [data]
+    () =>
+      [...new Set(data.map((r) => r.project ?? translate('Yok', undefined, language)))]
+        .sort()
+        .map((p) => ({ label: p, value: p })),
+    [data, language]
   )
 
   const table = useReactTable({
@@ -135,9 +141,10 @@ export function Runs() {
     autoResetPageIndex: false,
     autoResetExpanded: false,
     globalFilterFn: (row, _id, value) => {
-      const v = String(value).toLocaleLowerCase('tr')
+      const locale = language === 'tr' ? 'tr-TR' : 'en-US'
+      const v = String(value).toLocaleLowerCase(locale)
       const r = row.original
-      return [r.id, r.task, r.project ?? '', r.via ?? '', r.host ?? ''].some((x) => x.toLocaleLowerCase('tr').includes(v))
+      return [r.id, r.task, r.project ?? '', r.via ?? '', r.host ?? ''].some((x) => x.toLocaleLowerCase(locale).includes(v))
     },
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
@@ -154,27 +161,30 @@ export function Runs() {
       <AppHeader />
       <Main>
         <PageTitle
-          title='Çalıştırmalar'
-          description="Mac'teki ekip'in yerel olarak çalıştırıp hub'a bildirdiği görevler."
+          title={t('Çalıştırmalar')}
+          description={t("Mac'teki ekip'in yerel olarak çalıştırıp hub'a bildirdiği görevler.")}
         />
         {runs.isError ? (
           <QueryError error={runs.error} onRetry={() => runs.refetch()} />
         ) : !runs.isLoading && data.length === 0 ? (
           <EmptyState
             icon={History}
-            title='Bildirilen çalıştırma yok'
-            description="Mac'teki ekip bitirdiği işleri POST /api/runs ile buraya gönderir."
+            title={t('Bildirilen çalıştırma yok')}
+            description={t("Mac'teki ekip bitirdiği işleri POST /api/runs ile buraya gönderir.")}
           />
         ) : (
           <div className='flex flex-col gap-4'>
             <DataTableToolbar
               table={table}
-              searchPlaceholder='Görev, proje veya makine ara…'
+              searchPlaceholder={t('Görev, proje veya makine ara…')}
               filters={[
                 {
                   columnId: 'status',
                   title: 'Durum',
-                  options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+                  options: ['queued', 'running', 'done', 'failed', 'cancelled'].map((value) => ({
+                    value,
+                    label: statusLabel(value),
+                  })),
                 },
                 { columnId: 'project', title: 'Proje', options: projectOptions },
               ]}
@@ -182,7 +192,7 @@ export function Runs() {
             <DataTable
               table={table}
               loading={runs.isLoading}
-              empty='Filtrelere uyan çalıştırma yok.'
+              empty={t('Filtrelere uyan çalıştırma yok.')}
               onRowClick={(row) => row.toggleExpanded()}
               renderExpanded={(row) => <RunDetail run={row.original} />}
             />
@@ -194,28 +204,29 @@ export function Runs() {
 }
 
 function RunDetail({ run: r }: { run: Run }) {
+  const t = useT()
   return (
     <div className='grid gap-4 px-4 py-4 sm:px-6 lg:grid-cols-5'>
       <section className='lg:col-span-2'>
-        <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Görev</h3>
+        <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{t('Görev')}</h3>
         <pre className='max-h-80 overflow-auto rounded-md bg-muted/40 p-3 font-sans text-sm whitespace-pre-wrap'>
-          {r.task || 'Yok'}
+          {r.task || t('Yok')}
         </pre>
         <dl className='mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs'>
-          <dt className='text-muted-foreground'>Proje</dt>
-          <dd>{r.project ?? 'Yok'}</dd>
-          <dt className='text-muted-foreground'>Yol</dt>
-          <dd>{r.via ?? 'Yok'}</dd>
-          <dt className='text-muted-foreground'>Makine</dt>
-          <dd className='font-mono'>{r.host ?? 'Yok'}</dd>
-          <dt className='text-muted-foreground'>Durum (ham)</dt>
-          <dd className='font-mono'>{r.status ?? 'Yok'}</dd>
+          <dt className='text-muted-foreground'>{t('Proje')}</dt>
+          <dd>{r.project ?? t('Yok')}</dd>
+          <dt className='text-muted-foreground'>{t('Yol')}</dt>
+          <dd>{r.via ?? t('Yok')}</dd>
+          <dt className='text-muted-foreground'>{t('Makine')}</dt>
+          <dd className='font-mono'>{r.host ?? t('Yok')}</dd>
+          <dt className='text-muted-foreground'>{t('Durum (ham)')}</dt>
+          <dd className='font-mono'>{r.status ?? t('Yok')}</dd>
         </dl>
       </section>
       <section className='min-w-0 lg:col-span-3'>
-        <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Rapor</h3>
+        <h3 className='mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{t('Rapor')}</h3>
         <div className='max-h-[28rem] overflow-auto rounded-md bg-muted/40 p-4'>
-          {r.report?.trim() ? <Md>{r.report}</Md> : <p className='text-sm text-muted-foreground'>Rapor yok.</p>}
+          {r.report?.trim() ? <Md>{r.report}</Md> : <p className='text-sm text-muted-foreground'>{t('Rapor yok.')}</p>}
         </div>
       </section>
     </div>

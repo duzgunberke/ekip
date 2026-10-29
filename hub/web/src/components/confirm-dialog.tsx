@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useT } from '@/lib/i18n'
 
 type ConfirmDialogProps = {
   open: boolean
@@ -28,6 +29,7 @@ type ConfirmDialogProps = {
 )
 
 export function ConfirmDialog(props: ConfirmDialogProps) {
+  const t = useT()
   const {
     title,
     desc,
@@ -54,7 +56,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
         {children}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>
-            {cancelBtnText ?? 'Vazgeç'}
+            {cancelBtnText ?? t('Vazgeç')}
           </AlertDialogCancel>
           <Button
             type={form ? 'submit' : 'button'}
@@ -63,7 +65,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
             variant={destructive ? 'destructive' : 'default'}
             disabled={disabled || isLoading}
           >
-            {confirmText ?? 'Devam'}
+            {confirmText ?? t('Devam et')}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

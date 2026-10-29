@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { format, startOfDay, subDays } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { normalizeRunStatus, STATUS_LABEL } from '@/lib/format'
+import { normalizeRunStatus, statusLabel } from '@/lib/format'
+import { formatNumber, useLanguage, useT } from '@/lib/i18n'
 import type { Job, Run } from '@/lib/types'
 
 const SERIES = ['done', 'failed', 'cancelled', 'running', 'queued'] as const
@@ -16,13 +17,15 @@ const DOT: Record<string, string> = {
 }
 
 export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
+  const lang = useLanguage()
+  const t = useT()
   const data = useMemo(() => {
     const today = startOfDay(new Date())
     const days = Array.from({ length: DAYS }, (_, i) => {
       const d = subDays(today, DAYS - 1 - i)
       return {
         key: format(d, 'yyyy-MM-dd'),
-        label: format(d, 'd MMM', { locale: tr }),
+        label: format(d, 'd MMM', { locale: lang === 'tr' ? tr : enUS }),
         done: 0,
         failed: 0,
         cancelled: 0,
@@ -41,12 +44,12 @@ export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
       if (i !== undefined && status) days[i][status] += 1
     }
     return days
-  }, [jobs, runs])
+  }, [jobs, runs, lang])
 
   const total = data.reduce((n, d) => n + SERIES.reduce((m, k) => m + d[k], 0), 0)
 
   return (
-    <div className='relative h-full min-h-64 w-full' role='img' aria-label={`Son ${DAYS} günde ${total} iş`}>
+    <div className='relative h-full min-h-64 w-full' role='img' aria-label={t('Son {count} günde {total} iş', { count: DAYS, total })}>
       <ResponsiveContainer width='100%' height='100%' initialDimension={{ width: 600, height: 256 }}>
         <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke='var(--border)' />
@@ -66,6 +69,7 @@ export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
             axisLine={false}
             allowDecimals={false}
             width={40}
+            tickFormatter={(value: number) => formatNumber(value)}
           />
           <Tooltip
             cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
@@ -78,7 +82,7 @@ export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
             iconType='circle'
             iconSize={8}
             formatter={(v: string) => (
-              <span className='text-xs text-muted-foreground'>{STATUS_LABEL[v] ?? v}</span>
+              <span className='text-xs text-muted-foreground'>{statusLabel(v)}</span>
             )}
           />
           {SERIES.map((k, i) => (
@@ -97,7 +101,7 @@ export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
       {total === 0 && (
         <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
           <p className='rounded-md bg-card/80 px-3 py-1.5 text-sm text-muted-foreground'>
-            Son {DAYS} günde iş yok
+            {t('Son {count} günde iş yok', { count: DAYS })}
           </p>
         </div>
       )}
@@ -108,19 +112,20 @@ export function JobsChart({ jobs, runs }: { jobs: Job[]; runs: Run[] }) {
 type TooltipPayload = { dataKey: string; value: number; color: string }
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) {
+  const t = useT()
   if (!active || !payload?.length) return null
   const rows = payload.filter((p) => p.value > 0)
   return (
     <div className='rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md'>
       <p className='mb-1 font-medium'>{label}</p>
       {rows.length === 0 ? (
-        <p className='text-muted-foreground'>İş yok</p>
+        <p className='text-muted-foreground'>{t('İş yok')}</p>
       ) : (
         rows.map((p) => (
           <p key={p.dataKey} className='flex items-center gap-2'>
             <span className={`size-2 rounded-full ${DOT[p.dataKey] ?? 'bg-muted-foreground'}`} aria-hidden='true' />
-            <span className='text-muted-foreground'>{STATUS_LABEL[p.dataKey] ?? p.dataKey}</span>
-            <span className='ms-auto ps-4 font-medium tabular-nums'>{p.value}</span>
+            <span className='text-muted-foreground'>{statusLabel(p.dataKey)}</span>
+            <span className='ms-auto ps-4 font-medium tabular-nums'>{formatNumber(p.value)}</span>
           </p>
         ))
       )}

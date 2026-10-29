@@ -1,5 +1,6 @@
 // Thin fetch wrapper for the hub API. Session = HttpOnly cookie set by POST /login; every write
 // carries `X-Ekip-Csrf: 1` (the server rejects cookie-authenticated writes without it).
+import { translate } from '@/lib/i18n'
 
 export class ApiError extends Error {
   status: number
@@ -56,8 +57,8 @@ export async function logout() {
 
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 0) return 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.'
-    if (e.status === 429) return 'Çok fazla deneme. Biraz sonra tekrar deneyin.'
+    if (e.status === 0) return translate('Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.')
+    if (e.status === 429) return translate('Çok fazla deneme. Biraz sonra tekrar deneyin.')
     return e.message
   }
   return e instanceof Error ? e.message : String(e)

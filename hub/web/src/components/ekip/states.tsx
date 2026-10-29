@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { errorMessage } from '@/lib/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { useT } from '@/lib/i18n'
 
 export function EmptyState({
   icon: Icon,
@@ -45,15 +46,16 @@ export function QueryError({
   title?: string
   className?: string
 }) {
+  const t = useT()
   return (
     <Alert variant='destructive' className={cn('items-start', className)}>
       <AlertTriangle />
-      <AlertTitle>{title}</AlertTitle>
+      <AlertTitle>{typeof title === 'string' ? t(title) : title}</AlertTitle>
       <AlertDescription>
         <p>{errorMessage(error)}</p>
         {onRetry && (
           <Button variant='outline' size='sm' className='mt-2 text-foreground' onClick={onRetry}>
-            <RotateCw /> Tekrar dene
+            <RotateCw /> {t('Tekrar dene')}
           </Button>
         )}
       </AlertDescription>

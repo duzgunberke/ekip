@@ -9,6 +9,7 @@ import {
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ApiError, errorMessage, isUnauthorized } from '@/lib/api'
+import { translate } from '@/lib/i18n'
 import { ThemeProvider } from './context/theme-provider'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
@@ -24,7 +25,7 @@ function onUnauthorized() {
   if (pathname === '/login') return
   redirecting = true
   queryClient.clear()
-  toast.error('Oturum sona erdi, tekrar giriş yapın.')
+  toast.error(translate('Oturum sona erdi, tekrar giriş yapın.'))
   router
     .navigate({ to: '/login', search: { redirect: `${pathname}${search}` }, replace: true })
     .finally(() => {

@@ -13,7 +13,7 @@ import {
 } from '@tanstack/react-table'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { GitBranch, ListChecks, Plus } from 'lucide-react'
-import { STATUS_LABEL, VIA_LABEL, duration, firstLine } from '@/lib/format'
+import { statusLabel, viaLabel, duration, firstLine } from '@/lib/format'
 import type { Job } from '@/lib/types'
 import { useJobs } from '@/hooks/queries'
 import { useNewJob } from '@/context/new-job-provider'
@@ -24,6 +24,7 @@ import { Main } from '@/components/layout/main'
 import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { translate, useLanguage, useT } from '@/lib/i18n'
 
 const inList = (row: { getValue: (id: string) => unknown }, id: string, value: string[]) =>
   !value?.length || value.includes(String(row.getValue(id)))
@@ -71,8 +72,8 @@ const columns: ColumnDef<Job>[] = [
       const j = row.original
       return (
         <span className='text-muted-foreground'>
-          {VIA_LABEL[j.ranVia ?? j.via] ?? j.ranVia ?? j.via}
-          {j.pool === 'tdai' && ' · hafızalı'}
+          {viaLabel(j.ranVia ?? j.via)}
+          {j.pool === 'tdai' && ` · ${translate('hafızalı')}`}
         </span>
       )
     },
@@ -88,7 +89,7 @@ const columns: ColumnDef<Job>[] = [
           <span className='truncate'>{row.original.branch}</span>
         </span>
       ) : (
-        <span className='text-muted-foreground'>Yok</span>
+        <span className='text-muted-foreground'>{translate('Yok')}</span>
       ),
     meta: { className: 'hidden xl:table-cell' },
   },
@@ -105,7 +106,7 @@ const columns: ColumnDef<Job>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title='Süre' />,
     cell: ({ row }) => (
       <span className='whitespace-nowrap text-muted-foreground tabular-nums'>
-        {row.original.startedAt ? duration(row.original.startedAt, row.original.finishedAt) : 'Yok'}
+        {row.original.startedAt ? duration(row.original.startedAt, row.original.finishedAt) : translate('Yok')}
       </span>
     ),
     meta: { className: 'hidden md:table-cell' },
@@ -113,6 +114,8 @@ const columns: ColumnDef<Job>[] = [
 ]
 
 export function Jobs() {
+  const t = useT()
+  const language = useLanguage()
   const jobs = useJobs()
   const navigate = useNavigate()
   const { openNewJob } = useNewJob()
@@ -134,9 +137,10 @@ export function Jobs() {
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, _id, value) => {
-      const v = String(value).toLocaleLowerCase('tr')
+      const locale = language === 'tr' ? 'tr-TR' : 'en-US'
+      const v = String(value).toLocaleLowerCase(locale)
       const j = row.original
-      return [j.id, j.task, j.project, j.branch ?? ''].some((x) => x.toLocaleLowerCase('tr').includes(v))
+      return [j.id, j.task, j.project, j.branch ?? ''].some((x) => x.toLocaleLowerCase(locale).includes(v))
     },
     getRowId: (j) => j.id,
     autoResetPageIndex: false,
@@ -154,11 +158,11 @@ export function Jobs() {
       <AppHeader />
       <Main>
         <PageTitle
-          title='İşler'
-          description="Hub'ın sunucuda çalıştırdığı görevler. Satıra tıklayarak ayrıntı ve canlı günlüğü açın."
+          title={t('İşler')}
+          description={t("Hub'ın sunucuda çalıştırdığı görevler. Satıra tıklayarak ayrıntı ve canlı günlüğü açın.")}
           actions={
             <Button onClick={() => openNewJob()}>
-              <Plus /> Yeni iş
+              <Plus /> {t('Yeni iş')}
             </Button>
           }
         />
@@ -167,11 +171,11 @@ export function Jobs() {
         ) : !jobs.isLoading && data.length === 0 ? (
           <EmptyState
             icon={ListChecks}
-            title='Henüz iş yok'
-            description='Bir projeye görev verin; hub ayrı bir dalda çalıştırıp sonucu raporlar.'
+            title={t('Henüz iş yok')}
+            description={t('Bir projeye görev verin; hub ayrı bir dalda çalıştırıp sonucu raporlar.')}
             action={
               <Button onClick={() => openNewJob()}>
-                <Plus /> Yeni iş
+                <Plus /> {t('Yeni iş')}
               </Button>
             }
           />
@@ -179,12 +183,15 @@ export function Jobs() {
           <div className='flex flex-col gap-4'>
             <DataTableToolbar
               table={table}
-              searchPlaceholder='Görev, kimlik veya dal ara…'
+              searchPlaceholder={t('Görev, kimlik veya dal ara…')}
               filters={[
                 {
                   columnId: 'status',
                   title: 'Durum',
-                  options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+                  options: ['queued', 'running', 'done', 'failed', 'cancelled'].map((value) => ({
+                    value,
+                    label: statusLabel(value),
+                  })),
                 },
                 { columnId: 'project', title: 'Proje', options: projectOptions },
               ]}
@@ -192,7 +199,7 @@ export function Jobs() {
             <DataTable
               table={table}
               loading={jobs.isLoading}
-              empty='Filtrelere uyan iş yok.'
+              empty={t('Filtrelere uyan iş yok.')}
               onRowClick={(row) => navigate({ to: '/isler/$id', params: { id: row.original.id } })}
             />
           </div>

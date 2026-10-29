@@ -30,6 +30,7 @@ import {
 import type { RepoGraph, RepoMeta } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/context/theme-provider'
+import { useT } from '@/lib/i18n'
 import { type DirNode, buildTree, compact, findDir, langColor, topLangs } from './tree'
 
 export type Selection =
@@ -91,6 +92,7 @@ export function CodeFlow(props: Props) {
 }
 
 function FlowInner({ projectName, repos, graphs, expanded, selection, focus, onNodeClick, onToggle }: Props) {
+  const t = useT()
   const { resolvedTheme } = useTheme()
   const rf = useReactFlow()
 
@@ -191,7 +193,7 @@ function FlowInner({ projectName, repos, graphs, expanded, selection, focus, onN
         else if (n.type === 'more') onNodeClick({ kind: 'dir', repo: (n.data as MoreData).repo, path: (n.data as MoreData).path })
       }}
       className='ekip-flow'
-      aria-label='Kod haritası'
+      aria-label={t('Kod haritası')}
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
       <Controls showInteractive={false} position='bottom-left' />
@@ -203,12 +205,13 @@ function FlowInner({ projectName, repos, graphs, expanded, selection, focus, onN
 const hidden = 'opacity-0! pointer-events-none! size-1! min-w-0! min-h-0! border-0!'
 
 const ProjectNode = memo(function ProjectNode({ data }: NodeProps<Node<ProjectData>>) {
+  const t = useT()
   return (
     <div className='flex h-full w-full items-center gap-3 rounded-xl border-2 border-primary/50 bg-primary px-4 text-primary-foreground shadow-md'>
       <Network className='size-5 shrink-0' aria-hidden='true' />
       <div className='min-w-0'>
         <p className='truncate font-semibold'>{data.label}</p>
-        <p className='text-xs opacity-75'>{data.repos} depo</p>
+        <p className='text-xs opacity-75'>{t('{count} repo', { count: data.repos })}</p>
       </div>
       <Handle type='source' position={Position.Right} className={hidden} isConnectable={false} />
     </div>
@@ -216,10 +219,11 @@ const ProjectNode = memo(function ProjectNode({ data }: NodeProps<Node<ProjectDa
 })
 
 function Toggle({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) {
+  const t = useT()
   return (
     <button
       type='button'
-      aria-label={label}
+      aria-label={t(label)}
       aria-expanded={open}
       onClick={(e) => {
         e.stopPropagation()
@@ -233,6 +237,7 @@ function Toggle({ open, onClick, label }: { open: boolean; onClick: () => void; 
 }
 
 function RepoNodeView({ data, id, onToggle }: NodeProps<Node<RepoData>> & { onToggle: (k: string) => void }) {
+  const t = useT()
   const r = data.repo
   const color = langColor(r.language, r.languages?.[0]?.color)
   return (
@@ -250,9 +255,9 @@ function RepoNodeView({ data, id, onToggle }: NodeProps<Node<RepoData>> & { onTo
           {data.label}
         </p>
         {data.loading ? (
-          <Loader2 className='size-4 animate-spin text-muted-foreground' aria-label='yükleniyor' />
+          <Loader2 className='size-4 animate-spin text-muted-foreground' aria-label={t('yükleniyor')} />
         ) : data.failed ? (
-          <TriangleAlert className='size-4 text-destructive' aria-label='yapı alınamadı' />
+          <TriangleAlert className='size-4 text-destructive' aria-label={t('yapı alınamadı')} />
         ) : null}
         <Toggle open={data.expanded} onClick={() => onToggle(id)} label={data.expanded ? 'Klasörleri gizle' : 'Klasörleri göster'} />
       </div>
@@ -262,16 +267,16 @@ function RepoNodeView({ data, id, onToggle }: NodeProps<Node<RepoData>> & { onTo
         <div className='flex items-center gap-3 text-xs text-muted-foreground'>
           <span className='flex min-w-0 items-center gap-1'>
             <GitBranch className='size-3 shrink-0' aria-hidden='true' />
-            <span className='truncate font-mono'>{r.defaultBranch ?? 'Yok'}</span>
+            <span className='truncate font-mono'>{r.defaultBranch ?? t('Yok')}</span>
             {r.branchCount != null && r.branchCount > 1 && <span>+{r.branchCount - 1}</span>}
           </span>
-          <span className='flex items-center gap-1' title='Açık PR'>
+          <span className='flex items-center gap-1' title={t('Açık PR')}>
             <GitPullRequest className='size-3' aria-hidden='true' />
             {r.openPrs ?? 0}
           </span>
           {r.codeGraph && (
-            <span className='ms-auto flex items-center gap-1 text-violet-600 dark:text-violet-300' title='Kod grafiği bağlı'>
-              <Layers className='size-3' aria-hidden='true' /> graf
+            <span className='ms-auto flex items-center gap-1 text-violet-600 dark:text-violet-300' title={t('Kod grafiği bağlı')}>
+              <Layers className='size-3' aria-hidden='true' /> {t('graf')}
             </span>
           )}
         </div>
@@ -282,6 +287,7 @@ function RepoNodeView({ data, id, onToggle }: NodeProps<Node<RepoData>> & { onTo
 }
 
 function DirNodeView({ data, id, onToggle }: NodeProps<Node<DirData>> & { onToggle: (k: string) => void }) {
+  const t = useT()
   const d = data.dir
   const lang = topLangs(d.langs, 1)[0]
   const Icon = data.expanded ? FolderOpen : Folder
@@ -302,7 +308,7 @@ function DirNodeView({ data, id, onToggle }: NodeProps<Node<DirData>> & { onTogg
           {lang && (
             <span className='size-1.5 shrink-0 rounded-full' style={{ backgroundColor: langColor(lang.name) }} aria-hidden='true' />
           )}
-          {d.count} dosya{lang ? ` · ${lang.name}` : ''}
+          {t('{count} dosya', { count: d.count })}{lang ? ` · ${lang.name}` : ''}
         </p>
       </div>
       {d.dirs.length > 0 && (
@@ -314,10 +320,11 @@ function DirNodeView({ data, id, onToggle }: NodeProps<Node<DirData>> & { onTogg
 }
 
 const MoreNode = memo(function MoreNode({ data }: NodeProps<Node<MoreData>>) {
+  const t = useT()
   return (
     <div className='flex h-full w-full items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/40 text-xs text-muted-foreground hover:text-foreground'>
       <Handle type='target' position={Position.Left} className={hidden} isConnectable={false} />
-      <MoreHorizontal className='size-3.5' aria-hidden='true' />+{data.hidden} klasör
+      <MoreHorizontal className='size-3.5' aria-hidden='true' />{t('+{count} klasör', { count: data.hidden })}
     </div>
   )
 })

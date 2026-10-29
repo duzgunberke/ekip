@@ -34,18 +34,9 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useT } from '@/lib/i18n'
 
-const schema = z.object({
-  project: z.string().min(1, 'Bir proje seçin.'),
-  task: z
-    .string()
-    .trim()
-    .min(1, 'Görevi yazın.')
-    .max(50_000, 'Görev en fazla 50.000 karakter olabilir.'),
-  via: z.enum(['auto', 'copilot', 'free']),
-  push: z.boolean(),
-})
-type Values = z.infer<typeof schema>
+type Values = { project: string; task: string; via: 'auto' | 'copilot' | 'free'; push: boolean }
 
 type Props = {
   open: boolean
@@ -54,6 +45,17 @@ type Props = {
 }
 
 export function NewJobDialog({ open, onOpenChange, project }: Props) {
+  const t = useT()
+  const schema = z.object({
+    project: z.string().min(1, t('Bir proje seçin.')),
+    task: z
+      .string()
+      .trim()
+      .min(1, t('Görevi yazın.'))
+      .max(50_000, t('Görev en fazla 50.000 karakter olabilir.')),
+    via: z.enum(['auto', 'copilot', 'free']),
+    push: z.boolean(),
+  })
   const navigate = useNavigate()
   const projects = useProjects()
   const status = useStatus()
@@ -77,7 +79,7 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
     create.mutate(v, {
       onSuccess: (job) => {
         onOpenChange(false)
-        toast.success('İş kuyruğa eklendi', { description: `${job.project} · ${job.id}` })
+        toast.success(t('İş kuyruğa eklendi'), { description: `${job.project} · ${job.id}` })
         navigate({ to: '/isler/$id', params: { id: job.id } })
       },
       onError: (e) => form.setError('root', { message: errorMessage(e) }),
@@ -89,9 +91,9 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
     <Dialog open={open} onOpenChange={(o) => !create.isPending && onOpenChange(o)}>
       <DialogContent className='sm:max-w-xl'>
         <DialogHeader className='text-start'>
-          <DialogTitle>Yeni iş</DialogTitle>
+          <DialogTitle>{t('Yeni iş')}</DialogTitle>
           <DialogDescription>
-            Hub projeyi klonlar, ayrı bir dalda çalıştırır ve isterseniz dalı GitHub'a gönderir.
+            {t("Hub projeyi klonlar, ayrı bir dalda çalıştırır ve isterseniz dalı GitHub'a gönderir.")}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -101,19 +103,19 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
               name='project'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Proje</FormLabel>
+                  <FormLabel>{t('Proje')}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger className='w-full'>
                         <SelectValue
-                          placeholder={projects.isLoading ? 'Yükleniyor…' : 'Proje seçin'}
+                          placeholder={projects.isLoading ? t('Yükleniyor…') : t('Proje seçin')}
                         />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
                       {names.length === 0 && (
                         <div className='px-2 py-1.5 text-sm text-muted-foreground'>
-                          Kayıtlı proje yok.
+                          {t('Kayıtlı proje yok.')}
                         </div>
                       )}
                       {names.map((n) => (
@@ -132,16 +134,16 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
               name='task'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Görev</FormLabel>
+                  <FormLabel>{t('Görev')}</FormLabel>
                   <FormControl>
                     <Textarea
                       rows={6}
                       className='max-h-72 min-h-32 resize-y'
-                      placeholder="Örn. README'ye kurulum bölümü ekle"
+                      placeholder={t("Örn. README'ye kurulum bölümü ekle")}
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>İlk satır işin başlığı olarak görünür.</FormDescription>
+                  <FormDescription>{t('İlk satır işin başlığı olarak görünür.')}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -152,7 +154,7 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
                 name='via'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Model yolu</FormLabel>
+                    <FormLabel>{t('Model yolu')}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger className='w-full'>
@@ -160,17 +162,17 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value='auto'>Otomatik</SelectItem>
+                        <SelectItem value='auto'>{t('Otomatik')}</SelectItem>
                         <SelectItem value='copilot' disabled={!copilot}>
-                          Copilot{!copilot && ' (kapalı)'}
+                          Copilot{!copilot && ` (${t('kapalı')})`}
                         </SelectItem>
-                        <SelectItem value='free'>Ücretsiz havuz</SelectItem>
+                        <SelectItem value='free'>{t('Ücretsiz havuz')}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
                       {copilot
-                        ? 'Otomatik: önce Copilot, olmazsa ücretsiz havuz.'
-                        : "Copilot için hub'da COPILOT_GITHUB_TOKEN gerekli."}
+                        ? t('Otomatik: önce Copilot, olmazsa ücretsiz havuz.')
+                        : t("Copilot için hub'da COPILOT_GITHUB_TOKEN gerekli.")}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -182,8 +184,8 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
                 render={({ field }) => (
                   <FormItem className='flex flex-row items-start justify-between gap-3 rounded-lg border p-3 sm:mt-5.5'>
                     <div className='grid gap-1'>
-                      <FormLabel>Dalı gönder (push)</FormLabel>
-                      <FormDescription>Değişiklik varsa dal GitHub'a gönderilir.</FormDescription>
+                      <FormLabel>{t('Dalı gönder (push)')}</FormLabel>
+                      <FormDescription>{t("Değişiklik varsa dal GitHub'a gönderilir.")}</FormDescription>
                     </div>
                     <FormControl>
                       <Switch checked={field.value} onCheckedChange={field.onChange} />
@@ -201,11 +203,11 @@ export function NewJobDialog({ open, onOpenChange, project }: Props) {
         </Form>
         <DialogFooter>
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={create.isPending}>
-            Vazgeç
+            {t('Vazgeç')}
           </Button>
           <Button type='submit' form='new-job-form' disabled={create.isPending}>
             {create.isPending ? <Loader2 className='animate-spin' /> : <Send />}
-            Kuyruğa ekle
+            {t('Kuyruğa ekle')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { DataTableFacetedFilter } from './faceted-filter'
 import { DataTableViewOptions } from './view-options'
+import { useT } from '@/lib/i18n'
 
 type DataTableToolbarProps<TData> = {
   table: Table<TData>
@@ -26,6 +27,7 @@ export function DataTableToolbar<TData>({
   searchKey,
   filters = [],
 }: DataTableToolbarProps<TData>) {
+  const t = useT()
   const isFiltered =
     table.getState().columnFilters.length > 0 || table.getState().globalFilter
 
@@ -34,7 +36,7 @@ export function DataTableToolbar<TData>({
       <div className='flex min-w-0 flex-1 flex-col-reverse items-stretch gap-y-2 sm:flex-row sm:items-center sm:space-x-2'>
         {searchKey ? (
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={t(searchPlaceholder)}
             value={
               (table.getColumn(searchKey)?.getFilterValue() as string) ?? ''
             }
@@ -45,7 +47,7 @@ export function DataTableToolbar<TData>({
           />
         ) : (
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={t(searchPlaceholder)}
             value={table.getState().globalFilter ?? ''}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
             className='h-8 w-full sm:w-50 lg:w-62.5'
@@ -74,7 +76,7 @@ export function DataTableToolbar<TData>({
             }}
             className='h-8 px-2 lg:px-3'
           >
-            Sıfırla
+            {t('Sıfırla')}
             <Cross2Icon className='ms-2 h-4 w-4' />
           </Button>
         )}

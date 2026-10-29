@@ -1,9 +1,11 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 /** GitHub-flavoured markdown; raw HTML is not rendered (react-markdown's default). */
 export function Md({ children, className }: { children: string; className?: string }) {
+  const t = useT()
   return (
     <div
       className={cn(
@@ -26,7 +28,7 @@ export function Md({ children, className }: { children: string; className?: stri
               <table {...props} />
             </div>
           ),
-          img: ({ node: _n, alt }) => <span className='text-muted-foreground'>[görsel: {alt}]</span>,
+          img: ({ node: _n, alt }) => <span className='text-muted-foreground'>[{t('Görsel')}: {alt}]</span>,
         }}
       >
         {children}

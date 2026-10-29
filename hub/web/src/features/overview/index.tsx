@@ -29,10 +29,12 @@ import { Main } from '@/components/layout/main'
 import { PoolBadge, StatusBadge, StatusDot, ToneBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { formatNumber, useT } from '@/lib/i18n'
 import { ActiveTasksMini } from '@/features/tasks/mini'
 import { JobsChart } from './jobs-chart'
 
 export function Overview() {
+  const t = useT()
   const status = useStatus()
   const projects = useProjects()
   const jobs = useJobs()
@@ -51,11 +53,11 @@ export function Overview() {
       <AppHeader />
       <Main>
         <PageTitle
-          title='Genel bakış'
-          description='Hub, iş kuyruğu ve model havuzlarının anlık durumu.'
+          title={t('Genel bakış')}
+          description={t('Hub, iş kuyruğu ve model havuzlarının anlık durumu.')}
           actions={
             <Button onClick={() => openNewJob()}>
-              <Plus /> Yeni iş
+              <Plus /> {t('Yeni iş')}
             </Button>
           }
         />
@@ -71,39 +73,39 @@ export function Overview() {
 
         <div className='grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
           <Kpi
-            title='Kayıtlı proje'
+            title={t('Kayıtlı proje')}
             icon={FolderGit2}
             loading={projects.isLoading}
-            value={projects.data?.length ?? 'Yok'}
-            hint={`${memoryLinked} tanesi hafızaya bağlı`}
+            value={projects.data ? formatNumber(projects.data.length) : t('Yok')}
+            hint={t('{count} tanesi hafızaya bağlı', { count: memoryLinked })}
             to='/projeler'
           />
           <Kpi
-            title='Çalışan / kuyrukta iş'
+            title={t('Çalışan / kuyrukta iş')}
             icon={ListChecks}
             loading={status.isLoading}
             value={
               s ? (
                 <>
-                  {s.queue.running ?? 0}
-                  <span className='text-muted-foreground'> / {s.queue.queued ?? 0}</span>
+                  {formatNumber(s.queue.running ?? 0)}
+                  <span className='text-muted-foreground'> / {formatNumber(s.queue.queued ?? 0)}</span>
                 </>
               ) : (
                 '-'
               )
             }
-            hint={s ? `${s.workers.length} işçi slotu · ${s.queue.done ?? 0} bitti` : undefined}
+            hint={s ? t('{count} işçi slotu · {done} bitti', { count: s.workers.length, done: s.queue.done ?? 0 }) : undefined}
             to='/isler'
           />
           <Kpi
-            title='Sağlıklı sağlayıcı'
+            title={t('Sağlıklı sağlayıcı')}
             icon={ServerCog}
             loading={status.isLoading && limits.isLoading}
             value={
               s || limits.data ? (
                 <>
-                  {healthy}
-                  <span className='text-muted-foreground'> / {providers.length}</span>
+                  {formatNumber(healthy)}
+                  <span className='text-muted-foreground'> / {formatNumber(providers.length)}</span>
                 </>
               ) : (
                 '-'
@@ -113,30 +115,30 @@ export function Overview() {
               !s
                 ? undefined
                 : !s.freellmapi.configured
-                  ? 'freellmapi ayarlı değil'
+                  ? t('freellmapi ayarlı değil')
                   : s.freellmapi.ready
-                    ? 'freellmapi hazır'
+                    ? t('freellmapi hazır')
                     : s.freellmapi.up
-                      ? 'freellmapi hazır değil'
-                      : 'freellmapi kapalı'
+                      ? t('freellmapi hazır değil')
+                      : t('freellmapi kapalı')
             }
             to='/havuzlar'
           />
           <Kpi
-            title='Mac son görülme'
+            title={t('Mac son görülme')}
             icon={Laptop}
             loading={status.isLoading}
-            value={lastClient ? <TimeAgo iso={lastClient.lastSeen} /> : 'sinyal yok'}
+            value={lastClient ? <TimeAgo iso={lastClient.lastSeen} /> : t('sinyal yok')}
             valueClassName='text-xl'
-            hint={lastClient ? [lastClient.client, lastClient.host].filter(Boolean).join(' · ') : 'Mac henüz heartbeat göndermedi'}
+            hint={lastClient ? [lastClient.client, lastClient.host].filter(Boolean).join(' · ') : t('Mac henüz heartbeat göndermedi')}
           />
         </div>
 
         <div className='mt-5 grid min-w-0 gap-4 lg:grid-cols-7'>
           <Card className='lg:col-span-4'>
             <CardHeader>
-              <CardTitle>Günlük işler</CardTitle>
-              <CardDescription>VPS + Mac işleri · son 14 gün, duruma göre</CardDescription>
+              <CardTitle>{t('Günlük işler')}</CardTitle>
+              <CardDescription>{t('VPS + Mac işleri · son 14 gün, duruma göre')}</CardDescription>
             </CardHeader>
             <CardContent className='flex flex-1 flex-col ps-2'>
               {jobs.isLoading || runs.isLoading ? (
@@ -158,12 +160,12 @@ export function Overview() {
 
           <Card className='lg:col-span-3'>
             <CardHeader>
-              <CardTitle>Havuz sağlığı</CardTitle>
-              <CardDescription>freellmapi sağlayıcıları ve hafıza</CardDescription>
+              <CardTitle>{t('Havuz sağlığı')}</CardTitle>
+              <CardDescription>{t('freellmapi sağlayıcıları ve hafıza')}</CardDescription>
               <CardAction>
                 <Button variant='ghost' size='sm' asChild>
                   <Link to='/havuzlar'>
-                    Tümü <ArrowRight />
+                    {t('Tümü')} <ArrowRight />
                   </Link>
                 </Button>
               </CardAction>
@@ -174,8 +176,8 @@ export function Overview() {
               ) : !s && !limits.data ? null : providers.length === 0 ? (
                 <EmptyState
                   icon={ServerCog}
-                  title='Sağlayıcı yok'
-                  description={s?.freellmapi.authError ?? s?.freellmapi.reason ?? 'freellmapi sağlayıcı bildirmedi.'}
+                  title={t('Sağlayıcı yok')}
+                  description={s?.freellmapi.authError ?? s?.freellmapi.reason ?? t('freellmapi sağlayıcı bildirmedi.')}
                   className='py-8'
                 />
               ) : (
@@ -185,7 +187,7 @@ export function Overview() {
                       <div className='min-w-0'>
                         <p className='truncate text-sm font-medium'>{p.name}</p>
                         <p className='text-xs text-muted-foreground'>
-                          {p.platform} · {p.keys} anahtar
+                          {p.platform} · {formatNumber(p.keys)} {t('anahtar')}
                         </p>
                       </div>
                       <PoolBadge status={p.status} />
@@ -193,7 +195,7 @@ export function Overview() {
                   ))}
                   {providers.length > 6 && (
                     <li className='pt-2.5 text-xs text-muted-foreground'>
-                      +{providers.length - 6} sağlayıcı daha
+                      {t('+{count} sağlayıcı daha', { count: providers.length - 6 })}
                     </li>
                   )}
                 </ul>
@@ -202,10 +204,10 @@ export function Overview() {
                 <div className='mt-4 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2.5'>
                   <span className='flex items-center gap-2 text-sm'>
                     <Brain className='size-4 text-muted-foreground' aria-hidden='true' />
-                    Hafıza (TDAI)
+                    {t('Hafıza (TDAI)')}
                   </span>
                   <ToneBadge tone={!s.tdai.configured ? 'off' : s.tdai.up ? 'ok' : 'bad'}>
-                    {!s.tdai.configured ? 'ayarlı değil' : s.tdai.up ? 'açık' : 'kapalı'}
+                    {!s.tdai.configured ? t('ayarlı değil') : s.tdai.up ? t('açık') : t('kapalı')}
                   </ToneBadge>
                 </div>
               )}
@@ -217,9 +219,9 @@ export function Overview() {
           <RecentJobs className='lg:col-span-4' />
           <Card className='lg:col-span-3'>
             <CardHeader>
-              <CardTitle>İşçi slotları</CardTitle>
+              <CardTitle>{t('İşçi slotları')}</CardTitle>
               <CardDescription>
-                {s ? `${s.workers.filter((w) => w.jobId).length} / ${s.workers.length} meşgul` : 'Yükleniyor…'}
+                {s ? t('{count} / {total} meşgul', { count: s.workers.filter((w) => w.jobId).length, total: s.workers.length }) : t('Yükleniyor…')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -295,6 +297,7 @@ function Kpi({
 }
 
 function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null; since: string | null }) {
+  const t = useT()
   const jobs = useJobs()
   const job = jobId ? jobs.data?.find((j) => j.id === jobId) : undefined
   return (
@@ -303,7 +306,7 @@ function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null;
         <Cpu className='size-4' aria-hidden='true' />
       </div>
       <div className='min-w-0 flex-1'>
-        <p className='text-sm font-medium'>Slot #{slot}</p>
+        <p className='text-sm font-medium'>Slot #{formatNumber(slot)}</p>
         {jobId ? (
           <Link
             to='/isler/$id'
@@ -313,7 +316,7 @@ function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null;
             {job ? `${job.project} · ${firstLine(job.task)}` : jobId}
           </Link>
         ) : (
-          <p className='text-xs text-muted-foreground'>boşta</p>
+          <p className='text-xs text-muted-foreground'>{t('boşta')}</p>
         )}
       </div>
       {jobId ? (
@@ -329,6 +332,7 @@ function WorkerRow({ slot, jobId, since }: { slot: number; jobId: string | null;
 }
 
 function RecentJobs({ className }: { className?: string }) {
+  const t = useT()
   const jobs = useJobs()
   const navigate = useNavigate()
   const { openNewJob } = useNewJob()
@@ -336,12 +340,12 @@ function RecentJobs({ className }: { className?: string }) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>Son işler</CardTitle>
-        <CardDescription>Hub'da çalışan son görevler</CardDescription>
+        <CardTitle>{t('Son işler')}</CardTitle>
+        <CardDescription>{t("Hub'da çalışan son görevler")}</CardDescription>
         <CardAction>
           <Button variant='ghost' size='sm' asChild>
             <Link to='/isler'>
-              Tümü <ArrowRight />
+              {t('Tümü')} <ArrowRight />
             </Link>
           </Button>
         </CardAction>
@@ -354,11 +358,11 @@ function RecentJobs({ className }: { className?: string }) {
         ) : list.length === 0 ? (
           <EmptyState
             icon={ListChecks}
-            title='Henüz iş yok'
-            description='Bir projeye görev verin; hub ayrı bir dalda çalıştırsın.'
+            title={t('Henüz iş yok')}
+            description={t('Bir projeye görev verin; hub ayrı bir dalda çalıştırsın.')}
             action={
               <Button size='sm' onClick={() => openNewJob()}>
-                <Plus /> Yeni iş
+                <Plus /> {t('Yeni iş')}
               </Button>
             }
             className='py-8'

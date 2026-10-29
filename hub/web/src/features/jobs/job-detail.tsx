@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiError, errorMessage } from '@/lib/api'
-import { VIA_LABEL, dateTime, duration, firstLine } from '@/lib/format'
+import { viaLabel, dateTime, duration, firstLine } from '@/lib/format'
 import { compareUrl } from '@/lib/repo'
 import { cn } from '@/lib/utils'
 import { useCancelJob, useJob, useProjects } from '@/hooks/queries'
@@ -31,10 +31,12 @@ import { Md } from '@/components/ekip/markdown'
 import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { formatNumber, useT } from '@/lib/i18n'
 
 const route = getRouteApi('/_authenticated/isler/$id')
 
 export function JobDetail() {
+  const t = useT()
   const { id } = route.useParams()
   const job = useJob(id)
   const projects = useProjects()
@@ -47,6 +49,9 @@ export function JobDetail() {
   const project = projects.data?.find((p) => p.name === j?.project)
   const compare = j?.pushed ? compareUrl(project?.repo, j.baseBranch, j.branch) : null
   const currentTab = tab ?? (j && !active && j.report ? 'report' : 'log')
+  useEffect(() => {
+    document.title = `${j ? firstLine(j.task) || j.id : t('İş bulunamadı')} · ekip`
+  }, [j, t])
 
   return (
     <>
@@ -54,7 +59,7 @@ export function JobDetail() {
       <Main>
         <Button variant='ghost' size='sm' className='-ms-2 mb-3 text-muted-foreground' asChild>
           <Link to='/isler'>
-            <ArrowLeft /> İşler
+            <ArrowLeft /> {t('İşler')}
           </Link>
         </Button>
 
@@ -64,11 +69,11 @@ export function JobDetail() {
           job.error instanceof ApiError && job.error.status === 404 ? (
             <EmptyState
               icon={SearchX}
-              title='İş bulunamadı'
-              description={`"${id}" kimlikli bir iş yok; silinmiş olabilir.`}
+              title={t('İş bulunamadı')}
+              description={t('"{id}" kimlikli bir iş yok; silinmiş olabilir.', { id })}
               action={
                 <Button variant='outline' asChild>
-                  <Link to='/isler'>İşlere dön</Link>
+                  <Link to='/isler'>{t('İşlere dön')}</Link>
                 </Button>
               }
             />
@@ -86,7 +91,7 @@ export function JobDetail() {
                   </Badge>
                   {active && (
                     <span className='flex items-center gap-1 text-xs text-muted-foreground'>
-                      <Loader2 className='size-3 animate-spin' aria-hidden='true' /> 3 sn'de bir güncelleniyor
+                      <Loader2 className='size-3 animate-spin' aria-hidden='true' /> {t("3 sn'de bir güncelleniyor")}
                     </span>
                   )}
                 </div>
@@ -97,21 +102,21 @@ export function JobDetail() {
                   <Link to='/projeler' search={{ p: j.project }} className='font-medium text-foreground hover:underline'>
                     {j.project}
                   </Link>{' '}
-                  · <TimeAgo iso={j.createdAt} /> oluşturuldu
+                  · <TimeAgo iso={j.createdAt} /> {t('oluşturuldu')}
                 </p>
               </div>
               <div className='flex flex-wrap gap-2'>
                 {compare && (
                   <Button variant='outline' asChild>
                     <a href={compare} target='_blank' rel='noopener noreferrer'>
-                      <GitBranch /> GitHub'da karşılaştır <ExternalLink className='opacity-60' />
+                      <GitBranch /> {t("GitHub'da karşılaştır")} <ExternalLink className='opacity-60' />
                     </a>
                   </Button>
                 )}
                 {active && (
                   <Button variant='destructive' onClick={() => setConfirm(true)} disabled={cancel.isPending}>
                     {cancel.isPending ? <Loader2 className='animate-spin' /> : <Ban />}
-                    İptal et
+                    {t('İptal et')}
                   </Button>
                 )}
               </div>
@@ -119,7 +124,7 @@ export function JobDetail() {
 
             {j.error && (
               <div role='alert' className='mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive'>
-                <span className='font-medium'>Hata: </span>
+                <span className='font-medium'>{t('Hata: ')} </span>
                 {j.error}
               </div>
             )}
@@ -129,13 +134,13 @@ export function JobDetail() {
                 <Tabs value={currentTab} onValueChange={setTab}>
                   <TabsList className='w-full sm:w-auto'>
                     <TabsTrigger value='log'>
-                      <ScrollText /> Günlük
+                      <ScrollText /> {t('Günlük')}
                     </TabsTrigger>
                     <TabsTrigger value='report'>
-                      <FileText /> Rapor
+                      <FileText /> {t('Rapor')}
                     </TabsTrigger>
                     <TabsTrigger value='diff'>
-                      <FileDiff /> Değişiklikler
+                      <FileDiff /> {t('Değişiklikler')}
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value='log' className='mt-2'>
@@ -149,8 +154,8 @@ export function JobDetail() {
                         ) : (
                           <EmptyState
                             icon={FileText}
-                            title={active ? 'Rapor bekleniyor' : 'Rapor yok'}
-                            description={active ? 'İş bittiğinde ajanın raporu burada görünür.' : 'Bu iş rapor üretmedi.'}
+                            title={active ? t('Rapor bekleniyor') : t('Rapor yok')}
+                            description={active ? t('İş bittiğinde ajanın raporu burada görünür.') : t('Bu iş rapor üretmedi.')}
                             className='border-0 py-8'
                           />
                         )}
@@ -165,8 +170,8 @@ export function JobDetail() {
                         ) : (
                           <EmptyState
                             icon={FileDiff}
-                            title={active ? 'Henüz değişiklik yok' : 'Değişiklik yok'}
-                            description={active ? 'İş bitince değişen dosyalar listelenir.' : 'Bu iş dosya değiştirmedi.'}
+                            title={active ? t('Henüz değişiklik yok') : t('Değişiklik yok')}
+                            description={active ? t('İş bitince değişen dosyalar listelenir.') : t('Bu iş dosya değiştirmedi.')}
                             className='border-0 py-8'
                           />
                         )}
@@ -179,18 +184,18 @@ export function JobDetail() {
               <div className='order-1 grid content-start gap-4 lg:order-2'>
                 <Card className='gap-4'>
                   <CardHeader>
-                    <CardTitle className='text-base'>Ayrıntılar</CardTitle>
+                    <CardTitle className='text-base'>{t('Ayrıntılar')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm'>
                       <Row k='Model yolu'>
-                        {VIA_LABEL[j.via] ?? j.via}
+                        {viaLabel(j.via)}
                         {j.ranVia && j.ranVia !== j.via && (
-                          <span className='text-muted-foreground'> → {VIA_LABEL[j.ranVia] ?? j.ranVia}</span>
+                          <span className='text-muted-foreground'> → {viaLabel(j.ranVia)}</span>
                         )}
                       </Row>
                       <Row k='Havuz'>
-                        {j.pool ? (j.pool === 'tdai' ? 'TDAI proxy (hafızalı)' : 'freellmapi (doğrudan)') : 'Yok'}
+                        {j.pool ? (j.pool === 'tdai' ? t('TDAI proxy (hafızalı)') : t('freellmapi (doğrudan)')) : t('Yok')}
                       </Row>
                       {j.model && <Row k='Model'><span className='font-mono text-xs'>{j.model}</span></Row>}
                       <Row k='Dal'>
@@ -200,18 +205,18 @@ export function JobDetail() {
                             {j.baseBranch && <span className='text-muted-foreground'>← {j.baseBranch}</span>}
                           </span>
                         ) : (
-                          'Yok'
+                          t('Yok')
                         )}
                       </Row>
                       <Row k='Push'>
-                        {!j.push ? 'kapalı' : j.pushed ? 'gönderildi' : j.pushed === false ? 'başarısız' : 'bekliyor'}
+                        {!j.push ? t('kapalı') : j.pushed ? t('gönderildi') : j.pushed === false ? t('başarısız') : t('bekliyor')}
                       </Row>
                       <Row k='Süre'>
                         <span className='tabular-nums'>
-                          {j.startedAt ? duration(j.startedAt, j.finishedAt) : 'başlamadı'}
+                          {j.startedAt ? duration(j.startedAt, j.finishedAt) : t('başlamadı')}
                         </span>
                       </Row>
-                      {j.worker != null && <Row k='İşçi'>Slot #{j.worker}</Row>}
+                      {j.worker != null && <Row k='İşçi'>Slot #{formatNumber(j.worker)}</Row>}
                       <Row k='Oluşturuldu'>{dateTime(j.createdAt)}</Row>
                       {j.startedAt && <Row k='Başladı'>{dateTime(j.startedAt)}</Row>}
                       {j.finishedAt && <Row k='Bitti'>{dateTime(j.finishedAt)}</Row>}
@@ -220,7 +225,7 @@ export function JobDetail() {
                 </Card>
                 <Card className='gap-3'>
                   <CardHeader>
-                    <CardTitle className='text-base'>Görev</CardTitle>
+                    <CardTitle className='text-base'>{t('Görev')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <pre className='max-h-72 overflow-auto font-sans text-sm whitespace-pre-wrap text-muted-foreground'>
@@ -234,21 +239,21 @@ export function JobDetail() {
             <ConfirmDialog
               open={confirm}
               onOpenChange={setConfirm}
-              title='İş iptal edilsin mi?'
+              title={t('İş iptal edilsin mi?')}
               desc={
                 j.status === 'running'
-                  ? 'Çalışan ajan durdurulur ve çalışma dalı silinir. Bu geri alınamaz.'
-                  : 'İş kuyruktan çıkarılır.'
+                  ? t('Çalışan ajan durdurulur ve çalışma dalı silinir. Bu geri alınamaz.')
+                  : t('İş kuyruktan çıkarılır.')
               }
-              confirmText='İptal et'
-              cancelBtnText='Vazgeç'
+              confirmText={t('İptal et')}
+              cancelBtnText={t('Vazgeç')}
               destructive
               isLoading={cancel.isPending}
               handleConfirm={() =>
                 cancel.mutate(j.id, {
                   onSuccess: () => {
                     setConfirm(false)
-                    toast.success('İş iptal edildi.')
+                    toast.success(t('İş iptal edildi.'))
                   },
                   onError: (e) => {
                     setConfirm(false)
@@ -265,15 +270,17 @@ export function JobDetail() {
 }
 
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
+  const t = useT()
   return (
     <>
-      <dt className='text-muted-foreground'>{k}</dt>
+      <dt className='text-muted-foreground'>{t(k)}</dt>
       <dd className='min-w-0 text-end sm:text-start'>{children}</dd>
     </>
   )
 }
 
 function LogTail({ text, live }: { text: string; live: boolean }) {
+  const t = useT()
   const ref = useRef<HTMLPreElement>(null)
   const [follow, setFollow] = useState(true)
 
@@ -298,16 +305,16 @@ function LogTail({ text, live }: { text: string; live: boolean }) {
     <Card className='gap-0 overflow-hidden py-0'>
       <div className='flex items-center justify-between gap-3 border-b px-4 py-2.5'>
         <span className='flex items-center gap-2 text-sm font-medium'>
-          Günlük (son kısım)
+          {t('Günlük (son kısım)')}
           {live && (
             <span className='flex items-center gap-1.5 text-xs font-normal text-status-running'>
-              <span className='size-1.5 animate-pulse rounded-full bg-status-running' aria-hidden='true' /> canlı
+              <span className='size-1.5 animate-pulse rounded-full bg-status-running' aria-hidden='true' /> {t('canlı')}
             </span>
           )}
         </span>
         <div className='flex items-center gap-2'>
           <Label htmlFor='follow' className='text-xs font-normal text-muted-foreground'>
-            Otomatik kaydır
+            {t('Otomatik kaydır')}
           </Label>
           <Switch id='follow' checked={follow} onCheckedChange={setFollow} />
         </div>
@@ -315,13 +322,13 @@ function LogTail({ text, live }: { text: string; live: boolean }) {
       <pre
         ref={ref}
         tabIndex={0}
-        aria-label='İş günlüğü'
+        aria-label={t('İş günlüğü')}
         className={cn(
           'log-view h-[min(32rem,60svh)] overflow-auto bg-muted/30 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all',
           !text && 'flex items-center justify-center text-muted-foreground'
         )}
       >
-        {text || (live ? 'Günlük bekleniyor…' : 'Günlük boş.')}
+        {text || (live ? t('Günlük bekleniyor…') : t('Günlük boş.'))}
       </pre>
     </Card>
   )

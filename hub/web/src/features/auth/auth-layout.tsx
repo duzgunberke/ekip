@@ -1,6 +1,8 @@
 import { Logo } from '@/assets/logo'
+import { useT } from '@/lib/i18n'
 
 export function AuthLayout({ children }: { children: React.ReactNode }) {
+  const t = useT()
   return (
     <div className='relative grid min-h-svh place-items-center overflow-hidden bg-background px-4 py-10'>
       <div
@@ -14,7 +16,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
           </span>
           <div className='leading-tight'>
             <p className='text-2xl font-semibold tracking-tight'>ekip</p>
-            <p className='mt-1 text-sm text-muted-foreground'>Bir lider. Koca bir ekip.</p>
+            <p className='mt-1 text-sm text-muted-foreground'>{t('Bir lider. Koca bir ekip.')}</p>
           </div>
         </div>
         {children}

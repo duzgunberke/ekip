@@ -14,8 +14,10 @@ import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ActiveTaskCard } from './active-card'
 import { StepList, elapsed } from './parts'
+import { formatNumber, useT } from '@/lib/i18n'
 
 export function Tasks() {
+  const t = useT()
   const tasks = useTasks()
   const now = useNow(1000)
   const list = tasks.data ?? []
@@ -27,13 +29,13 @@ export function Tasks() {
       <AppHeader />
       <Main>
         <PageTitle
-          title='Görevler'
-          description="Mac'teki ekip'e verdiğiniz isteklerin canlı ilerlemesi."
+          title={t('Görevler')}
+          description={t("Mac'teki ekip'e verdiğiniz isteklerin canlı ilerlemesi.")}
           actions={
             active.length > 0 && (
               <span className='flex items-center gap-2 text-sm text-muted-foreground'>
                 <Loader2 className='size-4 animate-spin text-status-running motion-reduce:animate-none' aria-hidden='true' />
-                {active.length} görev çalışıyor
+                {t('{count} görev çalışıyor', { count: active.length })}
               </span>
             )
           }
@@ -49,18 +51,18 @@ export function Tasks() {
         ) : list.length === 0 ? (
           <EmptyState
             icon={ListTodo}
-            title='Henüz görev yok'
-            description="Mac'teki ekip bir isteği işlemeye başladığında ilerlemesi burada canlı görünür."
+            title={t('Henüz görev yok')}
+            description={t("Mac'teki ekip bir isteği işlemeye başladığında ilerlemesi burada canlı görünür.")}
           />
         ) : (
           <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8'>
             <section aria-labelledby='active-h' aria-live='polite'>
               <h2 id='active-h' className='sr-only'>
-                Aktif görevler
+                {t('Aktif görevler')}
               </h2>
               {active.length === 0 ? (
                 <div className='rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-8 text-center text-sm text-muted-foreground'>
-                  Şu an çalışan görev yok.
+                  {t('Şu an çalışan görev yok.')}
                 </div>
               ) : (
                 <div className='grid grid-cols-[minmax(0,1fr)] gap-4'>
@@ -73,7 +75,7 @@ export function Tasks() {
             {finished.length > 0 && (
               <section aria-labelledby='done-h'>
                 <h2 id='done-h' className='mb-3 text-sm font-medium text-muted-foreground'>
-                  Biten görevler ({finished.length})
+                  {t('Biten görevler ({count})', { count: finished.length })}
                 </h2>
                 <Card className='gap-0 divide-y p-0'>
                   {finished.map((t) => (
@@ -90,6 +92,7 @@ export function Tasks() {
 }
 
 function FinishedRow({ task: t, now }: { task: Task; now: number }) {
+  const translate = useT()
   const [open, setOpen] = useState(false)
   const result = t.notes[t.notes.length - 1]?.text
   const panelId = `task-${t.id}`
@@ -123,7 +126,7 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
       {open && (
         <div id={panelId} className='grid gap-5 border-t bg-muted/15 px-4 py-4 sm:px-11 lg:grid-cols-2'>
           <section>
-            <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Adımlar</h3>
+            <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{translate('Adımlar')}</h3>
             <StepList task={t} now={now} />
           </section>
           <section className='min-w-0'>
@@ -133,11 +136,11 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
               <Badge variant='outline' className='sm:hidden'>
                 {elapsed(t.createdAt, t.endedAt ?? t.updatedAt, now)}
               </Badge>
-              {t.workers.length > 0 && <Badge variant='outline'>{t.workers.length} ajan</Badge>}
+              {t.workers.length > 0 && <Badge variant='outline'>{formatNumber(t.workers.length)} {translate('ajan')}</Badge>}
             </div>
-            <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Notlar</h3>
+            <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{translate('Notlar')}</h3>
             {t.notes.length === 0 ? (
-              <p className='text-sm text-muted-foreground'>Not yok.</p>
+              <p className='text-sm text-muted-foreground'>{translate('Not yok.')}</p>
             ) : (
               <ol className='grid gap-2 border-s ps-3'>
                 {t.notes.map((n, i) => (

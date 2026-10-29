@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination } from './pagination'
+import { useT } from '@/lib/i18n'
 
 type DataTableProps<TData> = {
   table: TTable<TData>
@@ -30,6 +31,7 @@ export function DataTable<TData>({
   renderExpanded,
   className,
 }: DataTableProps<TData>) {
+  const t = useT()
   const cols = table.getVisibleLeafColumns()
   const rows = table.getRowModel().rows
   return (
@@ -103,7 +105,7 @@ export function DataTable<TData>({
             ) : (
               <TableRow className='hover:bg-transparent'>
                 <TableCell colSpan={cols.length} className='h-32 text-center text-muted-foreground'>
-                  {empty}
+                  {typeof empty === 'string' ? t(empty) : empty}
                 </TableCell>
               </TableRow>
             )}

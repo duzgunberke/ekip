@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
-import { POOL_LABEL, STATUS_LABEL } from '@/lib/format'
+import { poolLabel, statusLabel } from '@/lib/format'
+import { useT } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 
 const STATUS_CLS: Record<string, string> = {
@@ -30,10 +31,11 @@ export function StatusDot({ status, className }: { status: string; className?: s
 }
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
+  const t = useT()
   return (
     <Badge variant='outline' className={cn('gap-1.5 font-medium', STATUS_CLS[status], className)}>
       <StatusDot status={status} />
-      {STATUS_LABEL[status] ?? status}
+      {t(statusLabel(status))}
     </Badge>
   )
 }
@@ -54,10 +56,11 @@ const POOL_DOT: Record<string, string> = {
 }
 
 export function PoolBadge({ status, className }: { status: string; className?: string }) {
+  const t = useT()
   return (
     <Badge variant='outline' className={cn('gap-1.5', POOL_CLS[status] ?? POOL_CLS.unknown, className)}>
       <span className={cn('size-1.5 rounded-full', POOL_DOT[status] ?? POOL_DOT.unknown)} aria-hidden='true' />
-      {POOL_LABEL[status] ?? status}
+      {t(poolLabel(status))}
     </Badge>
   )
 }

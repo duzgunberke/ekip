@@ -1,5 +1,5 @@
 import { Brain, GitPullRequest, KeyRound, ServerCog } from 'lucide-react'
-import { POOL_LABEL, shortTime } from '@/lib/format'
+import { poolLabel, shortTime } from '@/lib/format'
 import { poolProviders } from '@/lib/pools'
 import { useLimits, useStatus } from '@/hooks/queries'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +10,7 @@ import { Main } from '@/components/layout/main'
 import { PoolBadge, ToneBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { formatNumber, formatPercent, translate, useT } from '@/lib/i18n'
 
 const ORDER: Record<string, number> = { healthy: 0, rate_limited: 1, no_models: 2, unknown: 3, invalid: 4 }
 const WORKER_LABEL: Record<string, string> = {
@@ -32,10 +33,14 @@ function resetCountdown(iso: string | null | undefined) {
   const timestamp = Date.parse(iso)
   if (!Number.isFinite(timestamp)) return null
   const hours = Math.max(0, Math.ceil((timestamp - Date.now()) / 3_600_000))
-  return `${Math.floor(hours / 24)} gün ${hours % 24} sa sonra açılır`
+  return translate('{days} gün {hours} sa sonra açılır', {
+    days: Math.floor(hours / 24),
+    hours: hours % 24,
+  })
 }
 
 export function Pools() {
+  const t = useT()
   const status = useStatus()
   const limits = useLimits()
   const s = status.data
@@ -53,15 +58,15 @@ export function Pools() {
     <>
       <AppHeader />
       <Main>
-        <PageTitle title='Havuzlar' description='Model sağlayıcıları, hafıza proxysi ve GitHub erişimi.' />
+        <PageTitle title={t('Havuzlar')} description={t('Model sağlayıcıları, hafıza proxysi ve GitHub erişimi.')} />
         {status.isError && <QueryError className='mb-4' error={status.error} onRetry={() => status.refetch()} />}
         {limits.isError && <QueryError className='mb-4' error={limits.error} onRetry={() => limits.refetch()} />}
 
         <div className='grid gap-4 lg:grid-cols-2'>
           <Card>
             <CardHeader>
-              <CardTitle>İşçi havuzları</CardTitle>
-              <CardDescription>Mac'te kurulu çalışanlar ve kotaları</CardDescription>
+              <CardTitle>{t('İşçi havuzları')}</CardTitle>
+              <CardDescription>{t("Mac'te kurulu çalışanlar ve kotaları")}</CardDescription>
             </CardHeader>
             <CardContent>
               {limits.isLoading && !snapshot ? (
@@ -69,7 +74,7 @@ export function Pools() {
                   {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className='h-12' />)}
                 </div>
               ) : workers.length === 0 ? (
-                <EmptyState icon={ServerCog} title='İşçi bilgisi yok' description='Henüz limit anlık görüntüsü alınmadı.' className='py-6' />
+                <EmptyState icon={ServerCog} title={t('İşçi bilgisi yok')} description={t('Henüz limit anlık görüntüsü alınmadı.')} className='py-6' />
               ) : (
                 <ul className='divide-y'>
                   {workers.map((worker) => (
@@ -82,9 +87,9 @@ export function Pools() {
                         )}
                       </div>
                       <div className='shrink-0 text-end'>
-                        <ToneBadge tone={WORKER_TONE[worker.status] ?? 'off'}>{WORKER_LABEL[worker.status] ?? worker.status}</ToneBadge>
+                        <ToneBadge tone={WORKER_TONE[worker.status] ?? 'off'}>{t(WORKER_LABEL[worker.status] ?? worker.status)}</ToneBadge>
                         <p className='mt-1 text-xs tabular-nums text-muted-foreground'>
-                          {worker.runs} iş · {worker.successRate == null ? 'başarı oranı yok' : `%${worker.successRate} başarı`}
+                          {t('{count} iş', { count: worker.runs })} · {worker.successRate == null ? t('başarı oranı yok') : `${formatPercent(worker.successRate)} ${t('başarı')}`}
                         </p>
                       </div>
                     </li>
@@ -96,20 +101,20 @@ export function Pools() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Şimdi bir iş gelse</CardTitle>
-              <CardDescription>Çalışan seçimi ve profil başına ilk modeller</CardDescription>
+              <CardTitle>{t('Şimdi bir iş gelse')}</CardTitle>
+              <CardDescription>{t('Çalışan seçimi ve profil başına ilk modeller')}</CardDescription>
             </CardHeader>
             <CardContent>
               {!route ? (
-                <EmptyState icon={ServerCog} title='Yönlendirme bilgisi yok' description='Henüz limit anlık görüntüsü alınmadı.' className='py-6' />
+                <EmptyState icon={ServerCog} title={t('Yönlendirme bilgisi yok')} description={t('Henüz limit anlık görüntüsü alınmadı.')} className='py-6' />
               ) : (
                 <div className='grid min-w-0 gap-4'>
                   <div>
-                    <p className='text-xs text-muted-foreground'>İşçi</p>
-                    <p className='text-2xl font-semibold'>{route.worker || 'Yok'}</p>
+                    <p className='text-xs text-muted-foreground'>{t('İşçi')}</p>
+                    <p className='text-2xl font-semibold'>{route.worker || t('Yok')}</p>
                   </div>
                   <div>
-                    <p className='mb-2 text-sm font-medium'>Sıra</p>
+                    <p className='mb-2 text-sm font-medium'>{t('Sıra')}</p>
                     <ol className='flex min-w-0 flex-wrap gap-x-2 gap-y-1'>
                       {route.order.map((name, i) => {
                         const limited = workers.some((worker) => worker.name === name && worker.status === 'limited')
@@ -127,10 +132,10 @@ export function Pools() {
                       <div key={name} className='border-t pt-3'>
                         <p className='text-sm font-medium'>{name}</p>
                         <p className='mt-1 break-all text-xs text-muted-foreground'>
-                          {profile.next.length ? profile.next.join(' → ') : 'Model yok'}
+                          {profile.next.length ? profile.next.join(' → ') : t('Model yok')}
                         </p>
                         <p className='mt-1 text-xs text-muted-foreground'>
-                          Soğumada {profile.cooling}/{profile.models}
+                          {t('Soğumada {current}/{total}', { current: profile.cooling, total: profile.models })}
                         </p>
                       </div>
                     ))}
@@ -145,21 +150,21 @@ export function Pools() {
           <Card className='lg:col-span-2'>
             <CardHeader>
               <CardTitle className='flex items-center gap-2'>
-                <ServerCog className='size-4 text-muted-foreground' aria-hidden='true' /> Ücretsiz havuz (freellmapi)
+                <ServerCog className='size-4 text-muted-foreground' aria-hidden='true' /> {t('Ücretsiz havuz (freellmapi)')}
               </CardTitle>
               <CardDescription>
                 {!f
-                  ? 'Yükleniyor…'
+                  ? t('Yükleniyor…')
                   : !f.configured
-                    ? 'FREELLMAPI_URL ayarlı değil.'
-                    : `${providers.length} sağlayıcı · ${Object.entries(counts)
-                        .map(([k, n]) => `${n} ${POOL_LABEL[k] ?? k}`)
-                        .join(', ') || 'durum yok'}`}
+                    ? t('FREELLMAPI_URL ayarlı değil.')
+                    : `${t('{count} sağlayıcı', { count: providers.length })} · ${Object.entries(counts)
+                        .map(([k, n]) => `${n} ${poolLabel(k)}`)
+                        .join(', ') || t('durum yok')}`}
               </CardDescription>
               {f && (
                 <CardAction>
                   <ToneBadge tone={!f.configured ? 'off' : f.ready ? 'ok' : f.up ? 'warn' : 'bad'}>
-                    {!f.configured ? 'ayarlı değil' : f.ready ? 'hazır' : f.up ? 'hazır değil' : 'kapalı'}
+                    {!f.configured ? t('ayarlı değil') : f.ready ? t('hazır') : f.up ? t('hazır değil') : t('çevrimdışı')}
                   </ToneBadge>
                 </CardAction>
               )}
@@ -167,17 +172,17 @@ export function Pools() {
             <CardContent>
               {freeError && (
                 <p role='alert' className='mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive'>
-                  Ücretsiz havuz durumu alınamadı: {freeError}
+                  {t('Ücretsiz havuz durumu alınamadı: {error}', { error: freeError })}
                 </p>
               )}
               {f?.authError && (
                 <p role='alert' className='mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive'>
-                  FREELLMAPI_KEY reddedildi; sağlayıcı listesi alınamıyor.
+                  {t('FREELLMAPI_KEY reddedildi; sağlayıcı listesi alınamıyor.')}
                 </p>
               )}
               {f && !f.ready && f.reason && (
                 <p className='mb-3 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground'>
-                  Neden: <span className='font-mono text-xs'>{f.reason}</span>
+                  {t('Neden:')} <span className='font-mono text-xs'>{f.reason}</span>
                 </p>
               )}
               {status.isLoading && limits.isLoading ? (
@@ -185,18 +190,18 @@ export function Pools() {
                   {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className='h-9' />)}
                 </div>
               ) : providers.length === 0 ? (
-                <EmptyState icon={ServerCog} title='Sağlayıcı yok' description='freellmapi sağlayıcı bildirmedi.' className='py-8' />
+                <EmptyState icon={ServerCog} title={t('Sağlayıcı yok')} description={t('freellmapi sağlayıcı bildirmedi.')} className='py-8' />
               ) : (
                 <div className='overflow-x-auto rounded-md border'>
                   <Table>
                     <TableHeader>
                       <TableRow className='hover:bg-transparent'>
-                        <TableHead>Sağlayıcı</TableHead>
-                        <TableHead>Durum</TableHead>
-                        <TableHead className='text-end'>Anahtar</TableHead>
-                        <TableHead>Modeller</TableHead>
-                        <TableHead>24 sa</TableHead>
-                        <TableHead className='hidden sm:table-cell'>Devam</TableHead>
+                        <TableHead>{t('Sağlayıcı')}</TableHead>
+                        <TableHead>{t('Durum')}</TableHead>
+                        <TableHead className='text-end'>{t('Anahtar')}</TableHead>
+                        <TableHead>{t('Modeller')}</TableHead>
+                        <TableHead>{t('24 sa')}</TableHead>
+                        <TableHead className='hidden sm:table-cell'>{t('Devam')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -209,12 +214,12 @@ export function Pools() {
                             </div>
                           </TableCell>
                           <TableCell><PoolBadge status={p.status} /></TableCell>
-                          <TableCell className='text-end tabular-nums'>{p.keys}</TableCell>
+                          <TableCell className='text-end tabular-nums'>{formatNumber(p.keys)}</TableCell>
                           <TableCell className='text-xs tabular-nums'>
-                            {typeof p.models === 'number' ? `${Math.max(0, p.models - (p.cooling ?? 0))}/${p.models} açık` : 'Veri yok'}
+                            {typeof p.models === 'number' ? t('{count} açık', { count: formatNumber(Math.max(0, p.models - (p.cooling ?? 0))) }) : t('Veri yok')}
                           </TableCell>
                           <TableCell className='text-xs tabular-nums'>
-                            {typeof p.ok24 === 'number' ? `${p.ok24} başarılı, ${p.fail24} hata` : 'Veri yok'}
+                            {typeof p.ok24 === 'number' ? t('{ok} başarılı, {fail} hata', { ok: p.ok24, fail: p.fail24 ?? 0 }) : t('Veri yok')}
                           </TableCell>
                           <TableCell className='hidden text-muted-foreground sm:table-cell'>
                             {p.resumeAt ? (
@@ -222,7 +227,7 @@ export function Pools() {
                                 <TimeAgo iso={p.resumeAt} />
                               </span>
                             ) : (
-                              'Yok'
+                              t('Yok')
                             )}
                           </TableCell>
                         </TableRow>
@@ -238,10 +243,10 @@ export function Pools() {
             <Card>
               <CardHeader>
                 <CardTitle className='flex items-center gap-2'>
-                  <Brain className='size-4 text-muted-foreground' aria-hidden='true' /> Hafıza (TDAI proxy)
+                  <Brain className='size-4 text-muted-foreground' aria-hidden='true' /> {t('Hafıza (TDAI proxy)')}
                 </CardTitle>
                 <CardDescription>
-                  {s?.tdai.up ? 'İşler proje hafızasıyla çalışır.' : "Kapalıyken işler doğrudan freellmapi'ye gider."}
+                  {s?.tdai.up ? t('İşler proje hafızasıyla çalışır.') : t("Kapalıyken işler doğrudan freellmapi'ye gider.")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -249,17 +254,17 @@ export function Pools() {
                   <Skeleton className='h-20' />
                 ) : (
                   <dl className='grid grid-cols-[1fr_auto] items-center gap-y-3 text-sm'>
-                    <dt className='text-muted-foreground'>Durum</dt>
+                    <dt className='text-muted-foreground'>{t('Durum')}</dt>
                     <dd>
                       <ToneBadge tone={!s.tdai.configured ? 'off' : s.tdai.up ? 'ok' : 'bad'}>
-                        {!s.tdai.configured ? 'ayarlı değil' : s.tdai.up ? 'açık' : 'kapalı'}
+                        {!s.tdai.configured ? t('ayarlı değil') : s.tdai.up ? t('açık') : t('kapalı')}
                       </ToneBadge>
                     </dd>
-                    <dt className='text-muted-foreground'>Sürüm</dt>
-                    <dd className='font-mono text-xs'>{s.tdai.version ?? 'Yok'}</dd>
-                    <dt className='text-muted-foreground'>Kullanıcı anahtarı</dt>
+                    <dt className='text-muted-foreground'>{t('Sürüm')}</dt>
+                    <dd className='font-mono text-xs'>{s.tdai.version ?? t('Yok')}</dd>
+                    <dt className='text-muted-foreground'>{t('Kullanıcı anahtarı')}</dt>
                     <dd>
-                      <ToneBadge tone={s.tdai.memory ? 'ok' : 'off'}>{s.tdai.memory ? 'var' : 'yok'}</ToneBadge>
+                      <ToneBadge tone={s.tdai.memory ? 'ok' : 'off'}>{s.tdai.memory ? t('var') : t('yok')}</ToneBadge>
                     </dd>
                   </dl>
                 )}
@@ -270,7 +275,7 @@ export function Pools() {
                 <CardTitle className='flex items-center gap-2'>
                   <GitPullRequest className='size-4 text-muted-foreground' aria-hidden='true' /> GitHub
                 </CardTitle>
-                <CardDescription>Repo erişimi ve Copilot CLI</CardDescription>
+                <CardDescription>{t('Repo erişimi ve Copilot CLI')}</CardDescription>
               </CardHeader>
               <CardContent>
                 {!s ? (
@@ -281,13 +286,13 @@ export function Pools() {
                       <KeyRound className='size-3.5' aria-hidden='true' /> GITHUB_TOKEN
                     </dt>
                     <dd>
-                      <ToneBadge tone={s.github.token ? 'ok' : 'warn'}>{s.github.token ? 'var' : 'yok'}</ToneBadge>
+                      <ToneBadge tone={s.github.token ? 'ok' : 'warn'}>{s.github.token ? t('var') : t('yok')}</ToneBadge>
                     </dd>
                     <dt className='flex items-center gap-2 text-muted-foreground'>
                       <KeyRound className='size-3.5' aria-hidden='true' /> COPILOT_GITHUB_TOKEN
                     </dt>
                     <dd>
-                      <ToneBadge tone={s.github.copilot ? 'ok' : 'off'}>{s.github.copilot ? 'var' : 'yok'}</ToneBadge>
+                      <ToneBadge tone={s.github.copilot ? 'ok' : 'off'}>{s.github.copilot ? t('var') : t('yok')}</ToneBadge>
                     </dd>
                   </dl>
                 )}
@@ -297,7 +302,7 @@ export function Pools() {
         </div>
         {snapshot?.at && (
           <p className='mt-3 text-xs text-muted-foreground'>
-            Güncellendi: <TimeAgo iso={snapshot.at} /> · {snapshot.host || 'Host bilgisi yok'}
+            {t('Güncellendi:')} <TimeAgo iso={snapshot.at} /> · {snapshot.host || t('Host bilgisi yok')}
           </p>
         )}
       </Main>

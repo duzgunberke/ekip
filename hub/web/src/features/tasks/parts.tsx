@@ -2,6 +2,7 @@ import { Check, Circle, Minus, Play, X } from 'lucide-react'
 import { clock, span } from '@/lib/format'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { formatPercent, translate, useT } from '@/lib/i18n'
 
 export function ProgressBar({
   value,
@@ -43,11 +44,15 @@ export function etaText(t: Task, now: number) {
   const ms = Date.parse(t.eta) - now
   if (Number.isNaN(ms)) return null
   return ms > 0
-    ? `tahmini bitiş ${clock(t.eta)} · ${ms < 60_000 ? '1 dk’dan az' : span(Math.ceil(ms / 60_000) * 60_000)} kaldı` : `tahmini bitiş ${clock(t.eta)} · süre aşıldı`
+    ? translate('tahmini bitiş {time} · {remaining} kaldı', {
+        time: clock(t.eta),
+        remaining: ms < 60_000 ? translate('1 dk’dan az') : span(Math.ceil(ms / 60_000) * 60_000),
+      })
+    : translate('tahmini bitiş {time} · süre aşıldı', { time: clock(t.eta) })
 }
 
 export const elapsed = (from: string | null | undefined, to: string | null | undefined, now: number) =>
-  from ? span((to ? Date.parse(to) : now) - Date.parse(from)) : 'Yok'
+  from ? span((to ? Date.parse(to) : now) - Date.parse(from)) : translate('Yok')
 
 const STEP_ICON = {
   done: { icon: Check, cls: 'bg-status-done/15 text-status-done', label: 'tamamlandı' },
@@ -58,7 +63,8 @@ const STEP_ICON = {
 } as const
 
 export function StepList({ task, now, compact }: { task: Task; now: number; compact?: boolean }) {
-  if (!task.steps.length) return <p className='text-sm text-muted-foreground'>Adım bilgisi yok.</p>
+  const t = useT()
+  if (!task.steps.length) return <p className='text-sm text-muted-foreground'>{t('Adım bilgisi yok.')}</p>
   return (
     <ol className='grid gap-1'>
       {task.steps.map((s, i) => {
@@ -75,7 +81,7 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
           >
             <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full', m.cls)}>
               <Icon className={cn('size-3', s.status === 'pending' && 'size-3.5', running && 'fill-current')} aria-hidden='true' />
-              <span className='sr-only'>{m.label}</span>
+              <span className='sr-only'>{t(m.label)}</span>
             </span>
             <div className='min-w-0 flex-1'>
               <div className='flex items-baseline justify-between gap-3'>
@@ -91,14 +97,14 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
                 </span>
                 {!compact && (s.startedAt || running) && (
                   <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
-                    {running && s.pct != null ? `%${Math.round(s.pct)} · ` : ''}
+                    {running && s.pct != null ? `${formatPercent(Math.round(s.pct))} · ` : ''}
                     {elapsed(s.startedAt, s.endedAt, now)}
                   </span>
                 )}
               </div>
               {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && (
                 <p className='mt-1 text-xs font-medium text-destructive'>
-                  {elapsed(s.progressAt, null, now)}dır ilerleme yok
+                  {t('{duration}dır ilerleme yok', { duration: elapsed(s.progressAt, null, now) })}
                 </p>
               )}
               {running && s.detail && <p className='mt-0.5 text-xs text-muted-foreground'>{s.detail}</p>}

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { formatNumber, useT } from '@/lib/i18n'
 
 type DataTablePaginationProps<TData> = {
   table: Table<TData>
@@ -24,6 +25,7 @@ export function DataTablePagination<TData>({
   table,
   className,
 }: DataTablePaginationProps<TData>) {
+  const t = useT()
   const currentPage = table.getState().pagination.pageIndex + 1
   const totalPages = table.getPageCount()
   const pageNumbers = getPageNumbers(currentPage, totalPages)
@@ -39,7 +41,7 @@ export function DataTablePagination<TData>({
     >
       <div className='flex w-full items-center justify-between'>
         <div className='flex w-25 items-center justify-center text-sm font-medium @2xl/content:hidden'>
-          Sayfa {currentPage} / {totalPages}
+          {t('Sayfa {current} / {total}', { current: formatNumber(currentPage), total: formatNumber(totalPages) })}
         </div>
         <div className='flex items-center gap-2 @max-2xl/content:flex-row-reverse'>
           <Select
@@ -59,13 +61,13 @@ export function DataTablePagination<TData>({
               ))}
             </SelectContent>
           </Select>
-          <p className='hidden text-sm font-medium sm:block'>Sayfa başına</p>
+          <p className='hidden text-sm font-medium sm:block'>{t('Sayfa başına')}</p>
         </div>
       </div>
 
       <div className='flex items-center sm:space-x-6 lg:space-x-8'>
         <div className='flex w-25 items-center justify-center text-sm font-medium @max-3xl/content:hidden'>
-          Sayfa {currentPage} / {totalPages}
+          {t('Sayfa {current} / {total}', { current: formatNumber(currentPage), total: formatNumber(totalPages) })}
         </div>
         <div className='flex items-center space-x-2'>
           <Button
@@ -74,7 +76,7 @@ export function DataTablePagination<TData>({
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className='sr-only'>İlk sayfa</span>
+            <span className='sr-only'>{t('İlk sayfa')}</span>
             <DoubleArrowLeftIcon className='h-4 w-4' />
           </Button>
           <Button
@@ -83,7 +85,7 @@ export function DataTablePagination<TData>({
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className='sr-only'>Önceki sayfa</span>
+            <span className='sr-only'>{t('Önceki sayfa')}</span>
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
@@ -98,8 +100,8 @@ export function DataTablePagination<TData>({
                   className='h-8 min-w-8 px-2'
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
-                  <span className='sr-only'>Sayfa {pageNumber}</span>
-                  {pageNumber}
+                  <span className='sr-only'>{t('Sayfa {current}', { current: formatNumber(pageNumber as number) })}</span>
+                  {formatNumber(pageNumber as number)}
                 </Button>
               )}
             </div>
@@ -111,7 +113,7 @@ export function DataTablePagination<TData>({
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
-            <span className='sr-only'>Sonraki sayfa</span>
+            <span className='sr-only'>{t('Sonraki sayfa')}</span>
             <ChevronRightIcon className='h-4 w-4' />
           </Button>
           <Button
@@ -120,7 +122,7 @@ export function DataTablePagination<TData>({
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >
-            <span className='sr-only'>Son sayfa</span>
+            <span className='sr-only'>{t('Son sayfa')}</span>
             <DoubleArrowRightIcon className='h-4 w-4' />
           </Button>
         </div>

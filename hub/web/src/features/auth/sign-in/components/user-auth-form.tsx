@@ -9,19 +9,19 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { PasswordInput } from '@/components/password-input'
+import { useT } from '@/lib/i18n'
 
-const formSchema = z.object({
-  password: z.string().min(1, 'Parolayı girin.'),
-})
-type Values = z.infer<typeof formSchema>
+type Values = { password: string }
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
 }
 
 export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
+  const t = useT()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const formSchema = z.object({ password: z.string().min(1, t('Parolayı girin.')) })
   const form = useForm<Values>({ resolver: zodResolver(formSchema), defaultValues: { password: '' } })
 
   const mutation = useMutation({
@@ -32,7 +32,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     },
     onError: (e) => {
       const msg =
-        e instanceof ApiError && e.status === 401 ? 'Parola yanlış.' : errorMessage(e)
+        e instanceof ApiError && e.status === 401 ? t('Parola yanlış.') : errorMessage(e)
       form.setError('password', { message: msg })
       form.setFocus('password')
     },
@@ -50,7 +50,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Parola</FormLabel>
+              <FormLabel>{t('Parola')}</FormLabel>
               <FormControl>
                 <PasswordInput autoComplete='current-password' autoFocus placeholder='••••••••••' {...field} />
               </FormControl>
@@ -60,7 +60,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
         />
         <Button className='mt-2' disabled={mutation.isPending}>
           {mutation.isPending ? <Loader2 className='animate-spin' /> : <LogIn />}
-          Giriş yap
+          {t('Giriş yap')}
         </Button>
       </form>
     </Form>

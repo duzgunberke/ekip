@@ -8,8 +8,10 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Button } from '../ui/button'
+import { useT } from '@/lib/i18n'
 
 export function AppTitle() {
+  const t = useT()
   const { setOpenMobile } = useSidebar()
   return (
     <SidebarMenu>
@@ -25,8 +27,8 @@ export function AppTitle() {
               onClick={() => setOpenMobile(false)}
               className='grid flex-1 text-start text-sm leading-tight'
             >
-              <span className='truncate font-bold'>Shadcn-Admin</span>
-              <span className='truncate text-xs'>Vite + ShadcnUI</span>
+              <span className='truncate font-bold'>ekip</span>
+              <span className='truncate text-xs'>{t('iş kontrol paneli')}</span>
             </Link>
             <ToggleSidebar />
           </div>
@@ -42,6 +44,7 @@ function ToggleSidebar({
   ...props
 }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
+  const t = useT()
 
   return (
     <Button
@@ -58,7 +61,7 @@ function ToggleSidebar({
     >
       <X className='md:hidden' />
       <Menu className='max-md:hidden' />
-      <span className='sr-only'>Toggle Sidebar</span>
+      <span className='sr-only'>{t('Toggle Sidebar')}</span>
     </Button>
   )
 }

@@ -13,10 +13,12 @@ import { Main } from '@/components/layout/main'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { CodeFlow, type GraphState, type Selection, dirId, repoId } from './flow'
 import { DetailPanel } from './panel'
+import { formatNumber, useT } from '@/lib/i18n'
 
 const route = getRouteApi('/_authenticated/kod-haritasi')
 
 export function CodeMap() {
+  const t = useT()
   const projects = useProjects()
   const { proje } = route.useSearch()
   const navigate = route.useNavigate()
@@ -33,12 +35,12 @@ export function CodeMap() {
       <AppHeader />
       <Main fluid className='flex flex-col'>
         <PageTitle
-          title='Kod haritası'
-          description='Projenin depoları, dalları ve klasör yapısı. Depoya tıklayın; klasörleri açın, dosyaları inceleyin.'
+          title={t('Kod haritası')}
+          description={t('Projenin depoları, dalları ve klasör yapısı. Depoya tıklayın; klasörleri açın, dosyaları inceleyin.')}
           actions={
             <Select value={name ?? ''} onValueChange={(v) => navigate({ search: { proje: v } })} disabled={!list.length}>
-              <SelectTrigger className='w-56' aria-label='Proje'>
-                <SelectValue placeholder={projects.isLoading ? 'Yükleniyor…' : 'Proje seçin'} />
+              <SelectTrigger className='w-56' aria-label={t('Proje')}>
+                <SelectValue placeholder={projects.isLoading ? t('Yükleniyor…') : t('Proje seçin')} />
               </SelectTrigger>
               <SelectContent>
                 {list.map((p) => (
@@ -55,7 +57,7 @@ export function CodeMap() {
         ) : projects.isLoading ? (
           <Skeleton className='h-[60svh] rounded-xl' />
         ) : !name ? (
-          <EmptyState icon={Network} title='Kayıtlı proje yok' description='Önce Mac tarafı projeleri hub’a göndermeli.' />
+          <EmptyState icon={Network} title={t('Kayıtlı proje yok')} description={t('Önce Mac tarafı projeleri hub’a göndermeli.')} />
         ) : (
           <ProjectMap key={name} name={name} />
         )}
@@ -65,6 +67,7 @@ export function CodeMap() {
 }
 
 function ProjectMap({ name }: { name: string }) {
+  const t = useT()
   const qc = useQueryClient()
   const repos = useProjectRepos(name)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -128,7 +131,7 @@ function ProjectMap({ name }: { name: string }) {
 
   if (repos.isError) return <QueryError error={repos.error} onRetry={() => repos.refetch()} />
   if (!repos.isLoading && list.length === 0)
-    return <EmptyState icon={Network} title='Bu projenin deposu yok' description='Proje kaydında repo ya da repos alanı boş.' />
+    return <EmptyState icon={Network} title={t('Bu projenin deposu yok')} description={t('Proje kaydında repo ya da repos alanı boş.')} />
 
   return (
     <div className='flex flex-1 flex-col gap-4'>
@@ -137,10 +140,10 @@ function ProjectMap({ name }: { name: string }) {
           <Skeleton className='h-5 w-80' />
         ) : (
           <>
-            <Metric icon={Layers} value={totals.repos} label='depo' />
-            <Metric icon={GitBranch} value={totals.branches} label='dal' />
-            <Metric icon={GitPullRequest} value={totals.prs} label='açık PR' />
-            <Metric icon={Network} value={`${totals.graphs}/${totals.repos}`} label='kod grafiği' />
+            <Metric icon={Layers} value={totals.repos} label={t('depo')} />
+            <Metric icon={GitBranch} value={totals.branches} label={t('dal')} />
+            <Metric icon={GitPullRequest} value={totals.prs} label={t('açık PR')} />
+            <Metric icon={Network} value={`${totals.graphs}/${totals.repos}`} label={t('kod grafiği')} />
           </>
         )}
         <Button
@@ -150,14 +153,14 @@ function ProjectMap({ name }: { name: string }) {
           disabled={repos.isFetching}
           onClick={() => qc.invalidateQueries({ queryKey: ['codemap', name] })}
         >
-          <RefreshCw className={repos.isFetching ? 'animate-spin' : undefined} /> Yenile
+          <RefreshCw className={repos.isFetching ? 'animate-spin' : undefined} /> {t('Yenile')}
         </Button>
       </div>
       <div className='grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]'>
         <Card className='relative h-[60svh] min-h-[420px] overflow-hidden p-0 lg:h-[calc(100svh-15rem)] lg:min-h-[560px]'>
           {repos.isLoading ? (
             <div className='flex h-full items-center justify-center text-sm text-muted-foreground'>
-              GitHub’dan depo bilgileri alınıyor…
+              {t('GitHub’dan depo bilgileri alınıyor…')}
             </div>
           ) : (
             <CodeFlow
@@ -194,7 +197,7 @@ function Metric({ icon: Icon, value, label }: { icon: React.ElementType; value: 
   return (
     <span className='flex items-center gap-1.5'>
       <Icon className='size-4 text-muted-foreground' aria-hidden='true' />
-      <span className='font-semibold tabular-nums'>{value}</span>
+      <span className='font-semibold tabular-nums'>{typeof value === 'number' ? formatNumber(value) : value}</span>
       <span className='text-muted-foreground'>{label}</span>
     </span>
   )

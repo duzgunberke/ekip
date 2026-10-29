@@ -19,10 +19,12 @@ import {
 import { Md } from '@/components/ekip/markdown'
 import { EmptyState } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
+import { useT } from '@/lib/i18n'
 
 type Props = { project?: Project; open: boolean; onOpenChange: (o: boolean) => void }
 
 export function ProjectSheet({ project, open, onOpenChange }: Props) {
+  const t = useT()
   // Keep showing the last project while the sheet animates closed.
   const [shown, setShown] = useState(project)
   if (project && project !== shown) setShown(project)
@@ -39,13 +41,13 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
                 {p.name}
                 {p.tdai?.teamId && (
                   <Badge variant='outline' className='border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300'>
-                    <Brain /> hafıza bağlı
+                    <Brain /> {t('hafıza bağlı')}
                   </Badge>
                 )}
               </SheetTitle>
-              <SheetDescription>{stripMd(p.summary) || 'Özet yok.'}</SheetDescription>
+              <SheetDescription>{stripMd(p.summary) || t('Özet yok.')}</SheetDescription>
               <p className='text-xs text-muted-foreground'>
-                güncellendi <TimeAgo iso={p.updatedAt} />
+                {t('güncellendi')} <TimeAgo iso={p.updatedAt} />
               </p>
             </SheetHeader>
 
@@ -53,7 +55,7 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
               {repos.length > 0 && (
                 <section aria-labelledby='repos-h' className='mb-5'>
                   <h3 id='repos-h' className='mb-2 text-sm font-medium'>
-                    Repolar <span className='text-muted-foreground'>({repos.length})</span>
+                    {t('Repolar')} <span className='text-muted-foreground'>({repos.length})</span>
                   </h3>
                   <ul className='grid gap-1.5'>
                     {repos.map((r) => (
@@ -79,7 +81,7 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
               )}
               {p.tdai?.teamId && (
                 <section aria-labelledby='tdai-h' className='mb-5'>
-                  <h3 id='tdai-h' className='mb-2 text-sm font-medium'>Hafıza kimlikleri</h3>
+                  <h3 id='tdai-h' className='mb-2 text-sm font-medium'>{t('Hafıza kimlikleri')}</h3>
                   <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs'>
                     {(['teamId', 'agentId', 'wikiId', 'codeGraphId'] as const).map((k) =>
                       p.tdai?.[k] ? (
@@ -96,14 +98,14 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
               {p.card?.trim() ? (
                 <Md>{p.card}</Md>
               ) : (
-                <EmptyState icon={FileText} title='Proje kartı yok' description='Bu proje için kart gönderilmemiş.' />
+                <EmptyState icon={FileText} title={t('Proje kartı yok')} description={t('Bu proje için kart gönderilmemiş.')} />
               )}
             </div>
 
             <SheetFooter className='border-t px-6 py-4 sm:flex-row sm:justify-end'>
               <Button variant='outline' asChild>
                 <Link to='/kod-haritasi' search={{ proje: p.name }}>
-                  <Network /> Kod haritası
+                  <Network /> {t('Kod haritası')}
                 </Link>
               </Button>
               <Button
@@ -112,7 +114,7 @@ export function ProjectSheet({ project, open, onOpenChange }: Props) {
                   openNewJob(p.name)
                 }}
               >
-                <Send /> Bu projeye iş ver
+                <Send /> {t('Bu projeye iş ver')}
               </Button>
             </SheetFooter>
           </>

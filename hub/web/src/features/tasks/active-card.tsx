@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { StatusDot } from '@/components/ekip/status-badge'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ProgressBar, StepList, currentStep, elapsed, etaText } from './parts'
+import { formatNumber, formatPercent, useT } from '@/lib/i18n'
 
 const WORKER_STATUS: Record<string, string> = {
   running: 'çalışıyor',
@@ -15,6 +16,7 @@ const WORKER_STATUS: Record<string, string> = {
 }
 
 export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
+  const translate = useT()
   const cur = currentStep(t)
   const eta = etaText(t, now)
   const workers = t.workers.filter((w) => w.status === 'running' || (!w.endedAt && w.status !== 'done' && w.status !== 'failed'))
@@ -26,7 +28,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
           <div className='min-w-0 flex-[1_1_16rem]'>
             <div className='mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
               <span className='flex items-center gap-1.5 font-medium text-status-running'>
-                <StatusDot status='running' /> Çalışıyor
+                <StatusDot status='running' /> {translate('Çalışıyor')}
               </span>
               {t.project && <Badge variant='secondary'>{t.project}</Badge>}
               {t.host && (
@@ -39,24 +41,24 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
           </div>
           <div className='text-end'>
             <p className='text-4xl font-semibold tracking-tight tabular-nums'>
-              %{Math.round(t.pct)}
+              {formatPercent(Math.round(t.pct))}
             </p>
             {cur && (
               <p className='text-xs text-muted-foreground'>
-                Adım {cur.index + 1}/{t.steps.length}
+                {translate('Adım {current}/{total}', { current: cur.index + 1, total: t.steps.length })}
               </p>
             )}
           </div>
         </div>
-        <ProgressBar value={t.pct} className='h-3' label={`${t.title} ilerlemesi`} />
+        <ProgressBar value={t.pct} className='h-3' label={translate('{name} ilerlemesi', { name: t.title })} />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground'>
           {cur && (
             <span className='min-w-0 truncate'>
-              Şu an: <span className='font-medium text-foreground'>{cur.step.title}</span>
+              {translate('Şu an:')} <span className='font-medium text-foreground'>{cur.step.title}</span>
             </span>
           )}
           <span className='flex items-center gap-1.5 tabular-nums'>
-            <Clock className='size-3.5' aria-hidden='true' /> {elapsed(t.createdAt, null, now)} geçti
+            <Clock className='size-3.5' aria-hidden='true' /> {elapsed(t.createdAt, null, now)} {translate('geçti')}
           </span>
           {eta ? (
             <span className='flex items-center gap-1.5 tabular-nums'>
@@ -64,32 +66,32 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
             </span>
           ) : (
             <span className='flex items-center gap-1.5'>
-              <Timer className='size-3.5' aria-hidden='true' /> tahmin yok
+              <Timer className='size-3.5' aria-hidden='true' /> {translate('tahmin yok')}
             </span>
           )}
         </div>
       </CardHeader>
       <CardContent className='grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'>
-        <section aria-label='Adımlar'>
-          <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Adımlar</h3>
+        <section aria-label={translate('Adımlar')}>
+          <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{translate('Adımlar')}</h3>
           <StepList task={t} now={now} />
         </section>
         <div className='grid content-start gap-5'>
-          <section aria-label='Çalışan ajanlar'>
+          <section aria-label={translate('Çalışan ajanlar')}>
             <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>
-              Çalışan ajanlar ({workers.length})
+              {translate('Çalışan ajanlar')} ({formatNumber(workers.length)})
             </h3>
             {workers.length === 0 ? (
-              <p className='text-sm text-muted-foreground'>Şu an çalışan ajan yok.</p>
+              <p className='text-sm text-muted-foreground'>{translate('Şu an çalışan ajan yok.')}</p>
             ) : (
               <ul className='grid gap-1.5'>
                 {workers.map((w, i) => (
                   <li key={w.runId ?? i} className='flex items-center gap-2.5 rounded-lg bg-muted/35 px-2.5 py-2'>
                     <Bot className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
                     <div className='min-w-0 flex-1'>
-                      <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? 'ajan'}</p>
+                      <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? translate('ajan')}</p>
                       <p className='truncate text-xs text-muted-foreground'>
-                        {[w.via, w.status && (WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
+                        {[w.via && translate(w.via), w.status && translate(WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                     <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{elapsed(w.startedAt, w.endedAt, now)}</span>
@@ -99,8 +101,8 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
             )}
           </section>
           {note && (
-            <section aria-label='Son not'>
-              <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>Son not</h3>
+            <section aria-label={translate('Son not')}>
+              <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{translate('Son not')}</h3>
               <div className='flex gap-2.5 rounded-lg bg-muted/45 px-3 py-2.5'>
                 <MessageSquareText className='mt-0.5 size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
                 <div className='min-w-0'>

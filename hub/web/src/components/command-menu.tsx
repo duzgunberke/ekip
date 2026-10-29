@@ -28,8 +28,10 @@ import {
   CommandShortcut,
 } from '@/components/ui/command'
 import { navGroups } from './layout/nav'
+import { useT } from '@/lib/i18n'
 
 export function CommandMenu() {
+  const t = useT()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { setTheme } = useTheme()
@@ -52,37 +54,37 @@ export function CommandMenu() {
       modal
       open={open}
       onOpenChange={setOpen}
-      title='Komut paleti'
-      description='Sayfaya git, iş başlat veya tema değiştir'
+      title={t('Komut paleti')}
+      description={t('Sayfaya git, iş başlat veya tema değiştir')}
     >
-      <CommandInput placeholder='Komut yazın veya arayın…' />
+      <CommandInput placeholder={t('Komut yazın veya arayın…')} />
       <CommandList className='max-h-[min(24rem,70svh)]'>
-        <CommandEmpty>Sonuç yok.</CommandEmpty>
-        <CommandGroup heading='Eylemler'>
-          <CommandItem value='yeni iş başlat' onSelect={() => run(() => openNewJob())}>
+        <CommandEmpty>{t('Sonuç yok.')}</CommandEmpty>
+        <CommandGroup heading={t('Eylemler')}>
+          <CommandItem value={t('yeni iş başlat')} onSelect={() => run(() => openNewJob())}>
             <Plus />
-            Yeni iş
+            {t('Yeni iş')}
           </CommandItem>
           <CommandItem
-            value='verileri yenile'
+            value={t('verileri yenile')}
             onSelect={() => run(() => qc.invalidateQueries())}
           >
             <RefreshCw />
-            Verileri yenile
+            {t('Verileri yenile')}
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />
         {navGroups.map((group) => (
-          <CommandGroup key={group.title} heading={group.title}>
+          <CommandGroup key={group.title} heading={t(group.title)}>
             {group.items.map((item) =>
               item.url ? (
                 <CommandItem
                   key={String(item.url)}
-                  value={`git ${item.title}`}
+                  value={`${t('git')} ${t(item.title)}`}
                   onSelect={() => run(() => navigate({ to: item.url }))}
                 >
                   {item.icon ? <item.icon /> : <ArrowRight />}
-                  {item.title}
+                  {t(item.title)}
                 </CommandItem>
               ) : null
             )}
@@ -91,16 +93,16 @@ export function CommandMenu() {
         {!!projects.data?.length && (
           <>
             <CommandSeparator />
-            <CommandGroup heading='Projeler'>
+            <CommandGroup heading={t('Projeler')}>
               {projects.data.map((p) => (
                 <CommandItem
                   key={p.name}
-                  value={`proje ${p.name}`}
+                  value={`${t('proje')} ${p.name}`}
                   onSelect={() => run(() => navigate({ to: '/projeler', search: { p: p.name } }))}
                 >
                   <FolderGit2 />
                   {p.name}
-                  <CommandShortcut className='tracking-normal'>kartı aç</CommandShortcut>
+                  <CommandShortcut className='tracking-normal'>{t('kartı aç')}</CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -109,7 +111,7 @@ export function CommandMenu() {
         {!!status.data?.links.length && (
           <>
             <CommandSeparator />
-            <CommandGroup heading='Paneller'>
+            <CommandGroup heading={t('Paneller')}>
               {status.data.links.map((l) => (
                 <CommandItem
                   key={l.url}
@@ -124,21 +126,21 @@ export function CommandMenu() {
           </>
         )}
         <CommandSeparator />
-        <CommandGroup heading='Tema'>
-          <CommandItem value='tema açık' onSelect={() => run(() => setTheme('light'))}>
-            <Sun /> Açık
+        <CommandGroup heading={t('Tema')}>
+          <CommandItem value={t('tema açık')} onSelect={() => run(() => setTheme('light'))}>
+            <Sun /> {t('Açık')}
           </CommandItem>
-          <CommandItem value='tema koyu' onSelect={() => run(() => setTheme('dark'))}>
-            <Moon /> Koyu
+          <CommandItem value={t('tema koyu')} onSelect={() => run(() => setTheme('dark'))}>
+            <Moon /> {t('Koyu')}
           </CommandItem>
-          <CommandItem value='tema sistem' onSelect={() => run(() => setTheme('system'))}>
-            <Laptop /> Sistem
+          <CommandItem value={t('tema sistem')} onSelect={() => run(() => setTheme('system'))}>
+            <Laptop /> {t('Sistem')}
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading='Oturum'>
-          <CommandItem value='çıkış yap' onSelect={() => run(signOut)}>
-            <LogOut /> Çıkış yap
+        <CommandGroup heading={t('Oturum')}>
+          <CommandItem value={t('çıkış yap')} onSelect={() => run(signOut)}>
+            <LogOut /> {t('Çıkış yap')}
           </CommandItem>
         </CommandGroup>
       </CommandList>

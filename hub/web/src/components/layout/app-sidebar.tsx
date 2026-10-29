@@ -16,8 +16,10 @@ import { Logo } from '@/assets/logo'
 import { navGroups } from './nav'
 import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
+import { formatNumber, useT } from '@/lib/i18n'
 
 export function AppSidebar() {
+  const t = useT()
   const { collapsible, variant } = useLayout()
   const { setOpenMobile } = useSidebar()
   const { data: status } = useStatus()
@@ -29,9 +31,9 @@ export function AppSidebar() {
     ...g,
     items: g.items.map((it) =>
       it.url === '/isler' && active > 0
-        ? { ...it, badge: String(active) }
+        ? { ...it, badge: formatNumber(active) }
         : it.url === '/' && runningTasks > 0
-          ? { ...it, badge: String(runningTasks) }
+          ? { ...it, badge: formatNumber(runningTasks) }
           : it
     ),
   }))
@@ -48,7 +50,7 @@ export function AppSidebar() {
                 </span>
                 <div className='grid flex-1 text-start text-sm leading-tight'>
                   <span className='truncate text-base font-semibold tracking-tight'>ekip</span>
-                  <span className='truncate text-xs text-muted-foreground'>iş kontrol paneli</span>
+                  <span className='truncate text-xs text-muted-foreground'>{t('iş kontrol paneli')}</span>
                 </div>
               </Link>
             </SidebarMenuButton>

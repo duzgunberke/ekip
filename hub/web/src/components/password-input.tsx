@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
+import { useT } from '@/lib/i18n'
 
 type PasswordInputProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -17,6 +18,7 @@ export function PasswordInput({
   ...props
 }: PasswordInputProps) {
   const [showPassword, setShowPassword] = React.useState(false)
+  const t = useT()
 
   return (
     <div className={cn('relative rounded-md', className)}>
@@ -37,7 +39,7 @@ export function PasswordInput({
       >
         {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
         <span className='sr-only'>
-          {showPassword ? 'Parolayı gizle' : 'Parolayı göster'}
+          {t(showPassword ? 'Parolayı gizle' : 'Parolayı göster')}
         </span>
       </Button>
     </div>
