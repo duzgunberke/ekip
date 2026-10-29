@@ -212,7 +212,7 @@ function parseWorkerJson(out) {
 async function askWorker(project, prompt) {
   const cli = path.join(REPO, "plugin/bin/ekip.js");
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [cli, "run", "--via", "auto", "--cwd", project.path, "--label", "skill-learn", "--no-watch", "-"], {
+    const child = spawn(process.execPath, [cli, "run", "--allow-nested", "--via", "auto", "--cwd", project.path, "--label", "skill-learn", "--no-watch", "-"], {
       stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, EKIP_IDLE_MIN: "8", EKIP_TIMEOUT_MIN: "30" },
     });
     let stdout = "", stderr = "";

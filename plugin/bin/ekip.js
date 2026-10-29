@@ -448,6 +448,7 @@ export async function reconcileRuns() {
 }
 
 async function runOneInner(o, via, id) {
+  process.env.EKIP_PARENT_RUN = id;
   const logFile = path.join(RUNS, `${id}.log`);
   if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, model: o.model ?? null, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
@@ -501,7 +502,20 @@ function markLogsSynced(ids) {
 }
 
 async function run(args) {
+  const allowNested = args.includes("--allow-nested");
+  args = args.filter((a) => a !== "--allow-nested");
+  const depth = Number(process.env.EKIP_RUN_DEPTH ?? 0);
+  if (depth >= 2 && !allowNested) die("İç içe işçi sınırı: --allow-nested ile açıkça izin verin.");
+  if (depth > 0 && !allowNested) {
+    const parent = process.env.EKIP_PARENT_RUN ?? "unknown"; const f = path.join(HOME, "run-children", `${parent}.count`);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    let count = 0; try { count = Number(fs.readFileSync(f, "utf8")) || 0; } catch {}
+    if (count >= Number(SETTINGS.maxChildRuns ?? 6)) die("Bu üst işçi için çocuk çalıştırma sınırı doldu; testleri --dry-run veya mock ile yapın.");
+    fs.writeFileSync(f, String(count + 1));
+  }
   const o = parseRun(args);
+  process.env.EKIP_RUN_DEPTH = String(depth + 1);
+  process.env.EKIP_PARENT_RUN = process.env.EKIP_PARENT_RUN || `${Date.now()}-${process.pid}`;
   await reconcileRuns().catch(() => {});
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
   if (o.vias.length === 1) {

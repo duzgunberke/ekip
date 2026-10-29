@@ -162,7 +162,7 @@ function runCommand(repo, name) {
 
 function worker(project, via, brief, taskId, label) {
   return new Promise((resolve) => {
-    const args = [EKIP, "run", "--via", via, "--project", project, "--no-watch", "--label", label];
+    const args = [EKIP, "run", "--allow-nested", "--via", via, "--project", project, "--no-watch", "--label", label];
     if (taskId) args.push("--task", taskId);
     args.push("-");
     const child = spawn(process.execPath, args);
