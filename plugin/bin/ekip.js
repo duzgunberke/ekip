@@ -22,6 +22,7 @@ import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---- key wizard: opens each provider's key page, you paste the key -----------------------------
 
@@ -746,6 +747,14 @@ sender with send_message (reply_to the message id): what you changed, how you ve
 
 const HOPTELL_MCP = JSON.stringify({ mcpServers: { hoptell: { command: "hoptell", args: ["mcp"] } } });
 
+// Tells the hub this Mac is alive (the panel's "Mac last seen"). Sent when the lead starts and by
+// `ekip doctor`, which launchd runs every 30 minutes.
+async function heartbeat() {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
+  await fetch(`${SETTINGS.hubUrl}/api/heartbeat`, { method: "POST", signal: AbortSignal.timeout(4000), headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
+    body: JSON.stringify({ client: "mac", host: os.hostname(), agents: autoOrder() }) }).catch(() => {});
+}
+
 async function lead(args) {
   let free = false, member = false;
   while (args[0] === "--free" || args[0] === "--member") {
@@ -776,9 +785,8 @@ async function lead(args) {
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
   if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
-  if (SETTINGS.hubUrl && SETTINGS.hubToken && !member) {
-    fetch(`${SETTINGS.hubUrl}/api/heartbeat`, { method: "POST", signal: AbortSignal.timeout(4000), headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ client: "mac", host: os.hostname(), agents: autoOrder() }) }).catch(() => {});
-  }
+  // awaited: spawnSync below blocks the event loop, so a request still in flight would never leave
+  if (!member) await heartbeat();
   const r = spawnSync("claude", argv, { stdio: "inherit", env });
   return r.status ?? 1;
 }
@@ -1191,7 +1199,39 @@ ${c.bold("Kurulum")}
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `.split("\n").map((line) => fit(line)).join("\n");
 
-const [cmd, ...rest] = process.argv.slice(2);
+// ekip's own commands, read from the dispatch below so the list never goes stale.
+const COMMANDS = [...new Set([...fs.readFileSync(fileURLToPath(import.meta.url), "utf8").matchAll(/case "([a-z][a-z-]*)":/g)].map((m) => m[1]))];
+
+// Claude Code's own flags (from `claude --help`, cached for a day): those go to the lead session
+// even when they look like an ekip command (`--agents`, `--debug`).
+function claudeFlags() {
+  const file = path.join(HOME, "claude-flags.json");
+  try { const c = JSON.parse(fs.readFileSync(file, "utf8")); if (Date.now() - c.at < 86400_000) return new Set(c.flags); } catch { /* refresh */ }
+  const out = spawnSync("claude", ["--help"], { encoding: "utf8", timeout: 10000 }).stdout ?? "";
+  const flags = [...new Set([...out.matchAll(/(?:^|[\s,])--?([a-zA-Z][\w-]*)/gm)].map((m) => m[1]))];
+  try { fs.writeFileSync(file, JSON.stringify({ at: Date.now(), flags })); } catch { /* read-only data dir */ }
+  return new Set(flags);
+}
+
+const distance = (a, b) => {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+};
+const nearest = (word) => COMMANDS.map((x) => [x, distance(word, x)]).filter(([x, n]) => n <= Math.max(1, Math.floor(x.length / 3))).sort((a, b) => a[1] - b[1])[0]?.[0];
+
+// `ekip -help`, `ekip --status`, `ekip -doctor`: a dashed ekip command runs that command; a dashed
+// word close to one (`--stats`) gets a suggestion instead of a Claude "unknown option" error.
+let [cmd, ...rest] = process.argv.slice(2);
+if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "-h", "--help"].includes(cmd)) {
+  const word = cmd.replace(/^-+/, "").split("=")[0];
+  const flags = claudeFlags();
+  // Claude's long flags always take two dashes, so `-status` / `-help` can only mean ekip.
+  const ours = !cmd.startsWith("--") && word.length > 1;
+  if (COMMANDS.includes(word) && (ours || !flags.has(word))) cmd = word;
+  else if ((ours || !flags.has(word)) && nearest(word)) die(`${cmd} tanınmadı. Bunu mu demek istedin: ekip ${nearest(word)}  (tüm komutlar: ekip help)`);
+}
 let code = 0;
 switch (cmd) {
   case "run": code = await run(rest); break;
@@ -1214,6 +1254,7 @@ switch (cmd) {
     // task states the hub missed
     await (await import("../lib/limits.js")).push().catch(() => {});
     await (await import("../lib/tasks.js")).syncHub().catch(() => {});
+    await heartbeat();
     await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
   case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/savings.js")).report(rest); break;
@@ -1255,7 +1296,7 @@ switch (cmd) {
   case "help": case "-h": case "--help": process.stdout.write(HELP()); break;
   default:
     // Only flags (or nothing) start the lead session; an unknown word is a typo, not a prompt.
-    if (cmd && !cmd.startsWith("-")) die(`unknown command ${cmd} (ekip help)`);
+    if (cmd && !cmd.startsWith("-")) die(nearest(cmd) ? `bilinmeyen komut: ${cmd}. Bunu mu demek istedin: ekip ${nearest(cmd)}  (tüm komutlar: ekip help)` : `bilinmeyen komut: ${cmd}  (tüm komutlar: ekip help)`);
     code = await lead(cmd ? [cmd, ...rest] : []);
 }
 // Let hub pushes started by this command finish (task updates, run reports) before exiting.

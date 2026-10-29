@@ -41,7 +41,7 @@ export function percent(t) {
 export function eta(t) {
   const p = percent(t);
   // no guess until there is a real basis: a stalled step or early progress gives absurd numbers
-  if (t.status !== "running" || p < 15 || t.steps.some((s) => s.status === "running" && stalledFor(s))) return null;
+  if (t.status !== "running" || p < 15 || t.steps.some((s) => s.status === "running" && stalledFor(s, t))) return null;
   const p0 = t.p0 ?? 0, since = Date.now() - Date.parse(t.p0At ?? t.createdAt);
   if (p <= p0 || since < 5 * 60_000) return null;
   return new Date(Date.now() + since * (100 - p) / (p - p0)).toISOString();
@@ -160,7 +160,13 @@ function bar(p, cells = 20) { return progress(p, cells); }
 
 // a running step whose pct/detail has not moved for 15 min is stalled, whatever its label says
 const STALL_MS = 15 * 60 * 1000;
-const stalledFor = (s) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS ? Date.now() - Date.parse(s.progressAt) : 0);
+// A running step with no update for STALL_MS, unless one of the task's workers is still writing
+// its log: a long worker step only reports at its end, and that is not a stall.
+const workerActive = (t) => (t?.workers ?? []).some((w) => {
+  if (w.status !== "running" || !w.log) return false;
+  try { return Date.now() - fs.statSync(w.log).mtimeMs < STALL_MS; } catch { return false; }
+});
+const stalledFor = (s, t) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS && !workerActive(t) ? Date.now() - Date.parse(s.progressAt) : 0);
 
 function render(t) {
   const p = percent(t);
@@ -173,8 +179,8 @@ function render(t) {
     const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
     const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? (lang === "en" ? ` · ${s.pct}%` : ` · %${s.pct}`) : ""})`) : "";
-    const stall = stalledFor(s);
-    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`)}` : "";
+    const stall = stalledFor(s, t);
+    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`)}` : "";
     const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
     return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`);
   });
@@ -194,7 +200,7 @@ function renderCompact(t) {
   const p = percent(t);
   const e = eta(t);
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
+  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s, t); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
   const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";

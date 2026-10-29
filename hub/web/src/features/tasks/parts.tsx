@@ -68,6 +68,8 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
   return (
     <ol className='grid gap-1'>
       {task.steps.map((s, i) => {
+        // a long worker step only reports at its end: a running worker is not a stall
+        const workerRunning = (task.workers ?? []).some((w) => w.status === 'running')
         const m = STEP_ICON[s.status] ?? STEP_ICON.pending
         const Icon = m.icon
         const running = s.status === 'running'
@@ -102,9 +104,9 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
                   </span>
                 )}
               </div>
-              {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && (
+              {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && !workerRunning && (
                 <p className='mt-1 text-xs font-medium text-destructive'>
-                  {t('{duration}dır ilerleme yok', { duration: elapsed(s.progressAt, null, now) })}
+                  {t('{duration} boyunca ilerleme yok', { duration: elapsed(s.progressAt, null, now) })}
                 </p>
               )}
               {running && s.detail && <p className='mt-0.5 text-xs text-muted-foreground'>{s.detail}</p>}

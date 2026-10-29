@@ -411,7 +411,7 @@ const en: Record<string, string> = Object.fromEntries([
   ["yenile", "refresh"],
   ["Dalı gönder (push)", "Push branch"],
   ["Kapalıyken işler doğrudan freellmapi’ ye gider.", "When off, jobs go directly to freellmapi."],
-  ["{duration}dır ilerleme yok", "stalled for {duration}"],
+  ["{duration} boyunca ilerleme yok", "stalled for {duration}"],
   ["{name} ilerlemesi", "{name} progress"],
   ["Step {current}/{total}", "Step {current}/{total}"],
   ["Filtreleri temizle", "Clear filters"],
