@@ -281,14 +281,16 @@ function scope(p) {
 }
 
 // L1 memories (extracted facts) first, then raw conversation hits (L0, includes fresh notes).
-export async function recall(project, query, limit = 5, { timeoutMs = 10000 } = {}) {
+// facts: L1 only (distilled facts and decisions). Searching L0 too means a vector scan over every
+// stored message, which is what makes a full recall take seconds; per-message hooks skip it.
+export async function recall(project, query, limit = 5, { timeoutMs = 10000, factsOnly = false } = {}) {
   const p = resolve(project);
   await identity();
   const s = scope(p);
   const q = String(query).slice(0, 2048);
   const [l1, l0] = await Promise.allSettled([
     coreData("/atomic/search", { ...s, query: q, limit }, timeoutMs),
-    coreData("/conversation/search", { ...s, query: q, limit }, timeoutMs),
+    factsOnly ? Promise.resolve(null) : coreData("/conversation/search", { ...s, query: q, limit }, timeoutMs),
   ]);
   const out = [];
   for (const m of l1.value?.items ?? []) out.push({ layer: "L1", type: m.type, content: m.content, score: m.score, at: m.updated_at });
