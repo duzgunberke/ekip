@@ -51,6 +51,8 @@ Setup
   ekip up|down|logs
 ```
 
+On first lead start, ekip greets you and suggests missing setup steps. `ekip doctor` lists the same gaps under Kurulum.
+
 ### Worker runs and review
 
 `ekip run` sends a worker brief; use `-` to read it from standard input. `--via auto` chooses among tested, eligible pools. A comma-separated list such as `--via agy,codex` races workers in separate Git worktrees and branches. `--worktree` gives one worker its own worktree. Child runs are capped; `--allow-nested` is an internal override for bounded nested work, not a general way to remove the cap.

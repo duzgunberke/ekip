@@ -6,6 +6,7 @@ import path from "node:path";
 import { HOME } from "./core.js";
 import { lang } from "./i18n.js";
 import { findProject } from "./projects.js";
+import { setupGaps } from "./onboarding.js";
 
 const CARD_LINES = 80;
 
@@ -28,13 +29,14 @@ const logErr = (e) => {
 
 export async function sessionStartContext(cwd) {
   const p = findProject(cwd);
-  if (!p) return null;
-  const parts = [`# ekip ${lang === "en" ? "project" : "projesi"}: ${p.name} (${p.path})`];
-  if (p.card && fs.existsSync(p.card)) {
+  const parts = p ? [`# ekip ${lang === "en" ? "project" : "projesi"}: ${p.name} (${p.path})`] : [`# ekip ${lang === "en" ? "project setup" : "proje kurulumu"}`];
+  const gaps = await setupGaps({ cwd });
+  if (gaps.length) parts.push(`# ${lang === "en" ? "Setup gaps" : "Kurulum eksikleri"}\n${gaps.map((g) => `- ${g.title} — ${g.why} — ${g.command}`).join("\n")}\nOffer the most useful one to the user once, in a single short sentence, at a natural moment (start of the session or when it is relevant to their request), e.g. 'Bu projeyi henüz indekslemedik, işçiler bağlamı bilerek başlasın diye şimdi yapayım mı?'. If they say yes, run it and track it as a task. Do not repeat an offer they declined in this session; do not block their request for it.`);
+  if (p?.card && fs.existsSync(p.card)) {
     const lines = fs.readFileSync(p.card, "utf8").trim().split("\n");
     parts.push(lines.slice(0, CARD_LINES).join("\n") + (lines.length > CARD_LINES ? `\n…(${lang === "en" ? "card trimmed; full card: project_card tool or" : "kart kısaltıldı; tümü için project_card aracı veya"} ${p.card})` : ""));
   }
-  if (p.tdai?.agentId) {
+  if (p?.tdai?.agentId) {
     try {
       const mem = await import("./memory.js");
       const q = `${p.name} ${p.summary ?? ""} decisions conventions gotchas recent work`.slice(0, 300);
@@ -42,7 +44,7 @@ export async function sessionStartContext(cwd) {
       if (hits.length) parts.push(`## ${lang === "en" ? "Recalled memories" : "Hatırlanan anılar"}\n${hits.map((h) => `- ${h.content.replace(/\s+/g, " ").slice(0, 300)}`).join("\n")}`);
     } catch (e) { logErr(e); }
   }
-  parts.push(lang === "en" ? "ekip MCP tools are available for this project: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (TDAI graph of the GitHub repo); the local `codegraph` CLI/index (.codegraph/) is there too." : "ekip MCP araçları bu proje için kullanılabilir: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (GitHub deposunun TDAI grafiği); yerel `codegraph` CLI/dizini (.codegraph/) de kullanılabilir.");
+  if (p) parts.push(lang === "en" ? "ekip MCP tools are available for this project: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (TDAI graph of the GitHub repo); the local `codegraph` CLI/index (.codegraph/) is there too." : "ekip MCP araçları bu proje için kullanılabilir: project_card, memory_search, memory_remember, wiki_search, wiki_read, code_graph (GitHub deposunun TDAI grafiği); yerel `codegraph` CLI/dizini (.codegraph/) de kullanılabilir.");
   return parts.join("\n\n");
 }
 

@@ -56,3 +56,6 @@ export function banner(stream = process.stdout) {
   return `\n${lines.join("\n")}\n`;
 }
 export const mark = (stream = process.stdout) => `${c.rgb(LEAD[2], "❯", stream)} ${c.bold(c.rgb(TEAM, "ekip", stream), stream)}`;
+export function welcome(stream = process.stdout) {
+  return `${banner(stream)}${mark(stream)}  ${c.bold(t("tek Claude lead’in işleri kendi kotalarındaki işçilere dağıtır."), stream)}\n  ${c.cyan("1", stream)} ${t("Claude’a her zamanki gibi isteğini söyle; ekip işi böler ve diğer kotalardaki işçilere verir.")}\n  ${c.cyan("2", stream)} ${t("İlerlemeyi alttaki bölmede ve web panelinde izle.")}\n  ${c.cyan("3", stream)} ${t("Durum ve yardım için ekip status / ekip help.")}`;
+}

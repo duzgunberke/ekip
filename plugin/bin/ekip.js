@@ -16,7 +16,7 @@ import {
 } from "../lib/core.js";
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
-import { banner, c, dot, mark, rows, say, title, warn, fit } from "../lib/ui.js";
+import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/ui.js";
 import { lang, t } from "../lib/i18n.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
@@ -784,6 +784,7 @@ function markRunSynced(id) {
 // ---- the lead session -------------------------------------------------------------------------
 
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
+When SessionStart provides setup gaps, offer the most useful one once at a natural moment; if accepted, run it as a tracked task. Respect a declined offer for this session and never block the user's request.
 
 ## Public repository rules
 Before committing in a public repo or one with scripts/privacy-check.sh, run that check. Never seed public code briefs with personal project names, hosts, or IDs; describe them as runtime config.
@@ -912,6 +913,13 @@ async function lead(args) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
     console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
+    const onboarding = await import("../lib/onboarding.js");
+    const gaps = await onboarding.setupGaps({ cwd: process.cwd() });
+    onboarding.printGaps(gaps, { limit: 3 });
+    const welcomeFile = path.join(HOME, "onboarding.json");
+    let welcomed = false;
+    try { welcomed = !!JSON.parse(fs.readFileSync(welcomeFile, "utf8")).welcomedAt; } catch { /* first start */ }
+    if (!welcomed) { console.log(welcome()); fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(welcomeFile, JSON.stringify({ welcomedAt: new Date().toISOString() }, null, 2)); }
     console.log("");
     // Tasks, workers and their logs are visible under the lead from the start, not only after its
     // first task ("taskPane": false in data/config.json turns this off).
@@ -944,6 +952,7 @@ function findOldNode() {
 const step = (n, t) => console.log(`\n${c.magenta(`━━ ${n}.`)} ${c.bold(t)}`);
 
 async function init({ skipKeys = false } = {}) {
+  if (process.platform === "darwin" && has("brew") && !has("terminal-notifier")) spawnSync("brew", ["install", "terminal-notifier"], { stdio: "ignore", timeout: 120_000 });
   const self = fs.realpathSync(process.argv[1]);
   step(1, "prerequisites");
   const need = ["git", "claude", "sqlite3", "tmux", "docker"];
@@ -1008,6 +1017,8 @@ async function init({ skipKeys = false } = {}) {
     await (await import("../lib/projects.js")).main(["scan", "--days", "30", "--yes"]);
   }
   console.log("\nDone. Open a new terminal and run: ekip");
+  const onboarding = await import("../lib/onboarding.js");
+  onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd(), refresh: true }), { heading: true });
 }
 
 // ---- TencentDB Agent Memory ---------------------------------------------------------------------

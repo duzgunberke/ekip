@@ -40,6 +40,9 @@ export async function main(args = []) {
   console.log(`${mark()}  ${c.gray(fix ? t("doktor · onarım modu") : t("doktor · sadece kontrol (onarmak için --fix)"))}`);
   let problems = 0;
 
+  const onboarding = await import("./onboarding.js");
+  onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd() }), { heading: true });
+
   console.log(title(t("Bağlantı")));
   if (REMOTE) {
     const t = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
