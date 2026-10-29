@@ -42,6 +42,17 @@ lider › 3 görev · videolar → Antigravity + film becerisi · storefront dü
         diff'leri ve render'ları inceler, nelerin teslim edildiğini, doğrulandığını ve kaldığını bildirir
 ```
 
+### Mesai modu: bütün havuzlar aynı anda çalışır
+
+Birkaç havuzda oturum açıksa `ekip mesai on` mesaiyi başlatır: lider her isteği havuzların
+kaldırabileceği kadar bağımsız parçaya böler, parçaları paralel dağıtır, emin olmadıklarını yarıştırır;
+kendi Claude'u yalnızca planlar ve inceler. Her havuzun bir kapasitesi vardır (codex, copilot ve agy 2,
+qwen, opencode ve grok 1, free 3; `data/config.json` içindeki `poolConcurrency` ile değişir).
+`--via auto` dolu ya da kotası bitmiş havuzları atlar, böylece paralel işler kendiliğinden dağılır.
+`ekip mesai status` her havuzun çalışan/kapasite ve başarı oranını gösterir; `ekip mesai all "iş"` bir işi
+boş yeri olan her havuzda, her biri kendi dalında çalıştırır. Başsız Claude havuzu yalnızca
+`--include-claude` ile katılır.
+
 ## Devam eden projelere katılır
 
 Sıfırdan başlamazsınız. ekip bir projeyi kaydettiğinde o projeye ait **eski Claude Code oturumlarınızı** içe aktarır, kodu bir grafiğe indeksler, dokümanlarından bir **wiki** oluşturur ve **becerileri** çıkarır (projenin nasıl derlendiği, yayınlandığı ve sık karşılaşılan sorunların nasıl çözüldüğü). Verdiğiniz ilk görev bile daha önce aldığınız tüm kararları hesaba katar.

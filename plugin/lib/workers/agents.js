@@ -113,17 +113,92 @@ export function lastQuotaHit(via) {
   return null;
 }
 
+// How many workers each pool takes at once (mesai modu keeps them all busy); "poolConcurrency" in
+// data/config.json overrides a pool. The headless Claude pool stays at 0 unless mesai includes it.
+export const POOL_CONCURRENCY = { agy: 2, codex: 2, gemini: 1, copilot: 2, qwen: 1, opencode: 1, grok: 1, free: 3, claude: 0 };
+
+export function poolCapacity(via) {
+  const own = SETTINGS.poolConcurrency?.[via];
+  if (via === "claude" && own == null) return SETTINGS.mesai && SETTINGS.mesaiClaude ? 1 : 0;
+  return Math.max(0, Number(own ?? POOL_CONCURRENCY[via] ?? 1));
+}
+
+// `ekip run` writes this line into its log each time it starts a pool, so a running `--via auto`
+// log says which pool it is on.
+export const poolMark = (via) => `[ekip pool ${via}]\n`;
+const MARK_RE = /^\[ekip pool ([\w.-]+)\]$/gm;
+
+// The pool in a log name without a mark: "<time>Z-codex.log", or "<time>Z-codex+agy-codex.log" for a race.
+const poolFromName = (f) => {
+  const v = f.slice(0, -4).split("Z-")[1] ?? "";
+  const last = v.includes("-") ? v.slice(v.lastIndexOf("-") + 1) : v;
+  return last && !last.includes("+") && last !== "auto" ? last : null;
+};
+
+/**
+ * Workers running right now, per pool: run logs (data/runs) that end without an [exit] line and
+ * whose `ekip run` process is still alive (logs without a pid count while written to recently).
+ */
+export function runningByPool(dir = path.join(HOME, "runs")) {
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+  const counts = {};
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".log")); } catch { return counts; }
+  for (const f of files) {
+    const file = path.join(dir, f);
+    let st;
+    try { st = fs.statSync(file); } catch { continue; }
+    if (Date.now() - st.mtimeMs > 6 * 3600_000) continue;
+    let text;
+    try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
+    if (/\n\[exit -?\d+\][^\n]*\s*$/.test(text)) continue;
+    const pid = Number(text.match(/^pid: (\d+)$/m)?.[1]) || null;
+    if (pid ? !alive(pid) : Date.now() - st.mtimeMs > 15 * 60_000) continue;
+    const via = [...text.matchAll(MARK_RE)].at(-1)?.[1] ?? poolFromName(f);
+    if (via) counts[via] = (counts[via] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Running workers and capacity for every pool ekip can use (worker CLIs, free, claude). */
+export function poolLoad(running = runningByPool()) {
+  const names = [...Object.keys(AGENTS).filter((n) => !AGENTS[n].hidden?.()), "free", "claude"];
+  return Object.fromEntries(names.map((n) => [n, { running: running[n] ?? 0, capacity: poolCapacity(n) }]));
+}
+
+/** Pools that are signed in, tested and not out of quota (ignores how busy they are). */
+export function readyPools() {
+  const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
+  return order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok && !lastQuotaHit(n));
+}
+
 /**
  * Agents for --via auto: those that passed `ekip agents test`, in the configured order, re-ranked
  * by their real success rate; a pool that failed in the last 15 minutes goes to the back, and one
- * whose quota ran out is left out until it resets. The free pool is always last.
+ * whose quota ran out is left out until it resets. The free pool is always last. A pool already
+ * running as many workers as its capacity is skipped, so parallel `ekip run --via auto` calls
+ * spread over the pools (the free pool stays as the last fallback); when every pool is full, the
+ * least busy ones come first.
  */
 export function autoOrder() {
-  const order = SETTINGS.autoOrder ?? ["agy", "codex", "gemini", "copilot", "qwen", "opencode", "grok"];
-  const ok = order.filter((n) => AGENTS[n] && !AGENTS[n].hidden?.() && has(AGENTS[n].bin) && state()[n]?.ok && !lastQuotaHit(n));
-  const ranked = ok.map((n, i) => ({ n, i, ...poolScore(n) }))
-    .sort((a, b) => (a.cooling - b.cooling) || (Math.round((b.rate - a.rate) * 5) - Math.round((a.rate - b.rate) * 5)) / 2 || a.i - b.i);
-  return [...ranked.map((x) => x.n), "free"];
+  const ranked = readyPools().map((n, i) => ({ n, i, ...poolScore(n) }))
+    .sort((a, b) => (a.cooling - b.cooling) || (Math.round((b.rate - a.rate) * 5) - Math.round((a.rate - b.rate) * 5)) / 2 || a.i - b.i)
+    .map((x) => x.n);
+  // mesai --include-claude: the headless Claude joins as the last real pool before the free one
+  const all = [...ranked, ...(poolCapacity("claude") > 0 ? ["claude"] : []), "free"];
+  const running = runningByPool();
+  const open = all.filter((n) => (running[n] ?? 0) < poolCapacity(n));
+  // the free pool stays the last resort even when full: it is only reached when the others fail
+  if (open.length) return open.includes("free") ? open : [...open, "free"];
+  const load = (n) => (running[n] ?? 0) / Math.max(1, poolCapacity(n));
+  return all.filter((n) => n !== "claude").map((n, i) => ({ n, i })).sort((a, b) => load(a.n) - load(b.n) || a.i - b.i).map((x) => x.n);
+}
+
+/** Ready pools with a free slot right now (for `ekip mesai all`): worker CLIs, then claude, then free. */
+export function freePools() {
+  const running = runningByPool();
+  const pools = [...readyPools(), "claude", "free"];
+  return pools.filter((n) => (running[n] ?? 0) < poolCapacity(n));
 }
 
 export async function main([sub = "ls", ...names]) {

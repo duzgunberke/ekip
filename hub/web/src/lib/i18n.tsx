@@ -601,6 +601,7 @@ const en: Record<string, string> = Object.fromEntries([
   ["Çalışan seçimi ve profil başına ilk modeller", "Worker selection and first model per profile"],
   ["Yönlendirme bilgisi yok", "No routing information"],
   ["başarı oranı yok", "no success rate"],
+  ["{running}/{capacity} çalışıyor", "{running}/{capacity} running"],
   ["başarı", "success"],
   ["Soğumada {current}/{total}", "Cooling down {current}/{total}"],
   ["FREELLMAPI_URL ayarlı değil.", "FREELLMAPI_URL is not configured."],
