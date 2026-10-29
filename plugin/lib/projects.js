@@ -137,7 +137,9 @@ export function generateCard(p, { via = process.env.EKIP_CARD_VIA ?? "auto" } = 
     child.stdin.end(CARD_BRIEF(p.name));
     child.on("close", (code) => {
       const body = out.replace(/^\[ekip worker:[^\]]*\]\n/, "");
-      const at = body.search(new RegExp(`^# `, "m"));
+      // Some pools echo the brief (which itself shows "# NAME") and their transcript before the
+      // answer: the card is the last "# NAME" heading to the end.
+      const at = `\n${body}`.lastIndexOf(`\n# ${p.name}\n`);
       if (code !== 0 || at < 0) return resolve({ ok: false, error: (err.trim().split("\n").pop() || body.slice(0, 300)) });
       let card = body.slice(at).replace(/\n```\s*$/, "").trim();
       fs.mkdirSync(CARDS, { recursive: true });
