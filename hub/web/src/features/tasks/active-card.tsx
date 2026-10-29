@@ -1,6 +1,8 @@
-import { Bot, Clock, Laptop, MessageSquareText, Timer } from 'lucide-react'
+import { Clock, Laptop, MessageSquareText, Timer } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
+import { ProviderLogo } from '@/components/provider-logo'
+import { RunLogButton } from '@/components/run-log-button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { StatusDot } from '@/components/ekip/status-badge'
 import { TimeAgo } from '@/components/ekip/time-ago'
@@ -87,13 +89,14 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
               <ul className='grid gap-1.5'>
                 {workers.map((w, i) => (
                   <li key={w.runId ?? i} className='flex items-center gap-2.5 rounded-lg bg-muted/35 px-2.5 py-2'>
-                    <Bot className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                    <ProviderLogo id={w.via ?? 'unknown'} modelId={w.model} className='size-4 shrink-0' />
                     <div className='min-w-0 flex-1'>
                       <p className='truncate text-sm font-medium'>{w.label ?? w.runId ?? translate('ajan')}</p>
-                      <p className='truncate text-xs text-muted-foreground'>
-                        {[w.via && translate(w.via), w.status && translate(WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
+                      <p className='text-xs text-muted-foreground' title={w.model ?? undefined}>
+                        {[w.via && translate(w.via), w.model && `${translate('via')} · ${w.model}`, w.status && translate(WORKER_STATUS[w.status] ?? w.status)].filter(Boolean).join(' · ')}
                       </p>
                     </div>
+                    {w.runId && <RunLogButton id={w.runId} failed={w.status === 'failed'} />}
                     <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>{elapsed(w.startedAt, w.endedAt, now)}</span>
                   </li>
                 ))}

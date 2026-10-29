@@ -11,6 +11,8 @@ import { PoolBadge, ToneBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { formatNumber, formatPercent, translate, useT } from '@/lib/i18n'
+import { ProviderLogo } from '@/components/provider-logo'
+import { useNow } from '@/hooks/use-now'
 
 const ORDER: Record<string, number> = { healthy: 0, rate_limited: 1, no_models: 2, unknown: 3, invalid: 4 }
 const WORKER_LABEL: Record<string, string> = {
@@ -43,6 +45,7 @@ export function Pools() {
   const t = useT()
   const status = useStatus()
   const limits = useLimits()
+  const now = useNow(30_000)
   const s = status.data
   const f = s?.freellmapi
   const snapshot = limits.data
@@ -80,14 +83,16 @@ export function Pools() {
                   {workers.map((worker) => (
                     <li key={worker.name} className='flex items-start justify-between gap-3 py-3'>
                       <div className='min-w-0'>
-                        <p className='font-medium'>{worker.name}</p>
+                        <p className='flex items-center gap-2 font-medium'><ProviderLogo id={worker.name} />{worker.name}</p>
                         <p className='text-xs text-muted-foreground'>{worker.quota}</p>
-                        {worker.status === 'limited' && worker.limit?.resetAt && (
+                        {worker.status === 'limited' && worker.limit?.resetAt && Date.parse(worker.limit.resetAt) >= now && (
                           <p className='mt-1 text-xs text-muted-foreground'>{resetCountdown(worker.limit.resetAt) ?? shortTime(worker.limit.resetAt)}</p>
                         )}
                       </div>
                       <div className='shrink-0 text-end'>
-                        <ToneBadge tone={WORKER_TONE[worker.status] ?? 'off'}>{t(WORKER_LABEL[worker.status] ?? worker.status)}</ToneBadge>
+                        {worker.status === 'limited' && worker.limit?.resetAt && Date.parse(worker.limit.resetAt) < now ? (
+                          <ToneBadge tone='ok'>{t('açılmış olmalı')}</ToneBadge>
+                        ) : <ToneBadge tone={WORKER_TONE[worker.status] ?? 'off'}>{t(WORKER_LABEL[worker.status] ?? worker.status)}</ToneBadge>}
                         <p className='mt-1 text-xs tabular-nums text-muted-foreground'>
                           {t('{count} iş', { count: worker.runs })} · {worker.successRate == null ? t('başarı oranı yok') : `${formatPercent(worker.successRate)} ${t('başarı')}`}
                         </p>
@@ -117,11 +122,11 @@ export function Pools() {
                     <p className='mb-2 text-sm font-medium'>{t('Sıra')}</p>
                     <ol className='flex min-w-0 flex-wrap gap-x-2 gap-y-1'>
                       {route.order.map((name, i) => {
-                        const limited = workers.some((worker) => worker.name === name && worker.status === 'limited')
-                        const skipped = route.skipped.includes(name)
+                        const limited = workers.some((worker) => worker.name === name && worker.status === 'limited' && (!worker.limit?.resetAt || Date.parse(worker.limit.resetAt) >= now))
+                        const skipped = limited && route.skipped.includes(name)
                         return (
                           <li key={`${name}-${i}`} className={limited || skipped ? 'text-sm text-muted-foreground line-through' : 'text-sm'}>
-                            {name}{i < route.order.length - 1 ? ' →' : ''}
+                            <span className='inline-flex items-center gap-1'><ProviderLogo id={name} />{name}</span>{i < route.order.length - 1 ? ' →' : ''}
                           </li>
                         )
                       })}
@@ -130,9 +135,9 @@ export function Pools() {
                   <div className='grid gap-3'>
                     {Object.entries(route.profiles).map(([name, profile]) => (
                       <div key={name} className='border-t pt-3'>
-                        <p className='text-sm font-medium'>{name}</p>
+                        <p className='flex items-center gap-2 text-sm font-medium'><ProviderLogo id={name} />{name}</p>
                         <p className='mt-1 break-all text-xs text-muted-foreground'>
-                          {profile.next.length ? profile.next.join(' → ') : t('Model yok')}
+                          {profile.next.length ? profile.next.map((model, i) => <span key={model} className='inline-flex items-center gap-1'><ProviderLogo id='free' modelId={model} className='size-3.5' />{model}{i < profile.next.length - 1 ? ' → ' : ''}</span>) : t('Model yok')}
                         </p>
                         <p className='mt-1 text-xs text-muted-foreground'>
                           {t('Soğumada {current}/{total}', { current: profile.cooling, total: profile.models })}
@@ -164,7 +169,7 @@ export function Pools() {
               {f && (
                 <CardAction>
                   <ToneBadge tone={!f.configured ? 'off' : f.ready ? 'ok' : f.up ? 'warn' : 'bad'}>
-                    {!f.configured ? t('ayarlı değil') : f.ready ? t('hazır') : f.up ? t('hazır değil') : t('çevrimdışı')}
+                    {!f.configured ? t('ayarlı değil') : f.ready ? t('çalışıyor') : f.up ? t('hazır değil') : t('çevrimdışı')}
                   </ToneBadge>
                 </CardAction>
               )}
@@ -209,11 +214,11 @@ export function Pools() {
                         <TableRow key={`${p.platform}-${p.name}`}>
                           <TableCell>
                             <div className='grid'>
-                              <span className='font-medium'>{p.name}</span>
+                              <span className='flex items-center gap-2 font-medium'><ProviderLogo id={p.platform} />{p.name}</span>
                               <span className='font-mono text-[11px] text-muted-foreground'>{p.platform}</span>
                             </div>
                           </TableCell>
-                          <TableCell><PoolBadge status={p.status} /></TableCell>
+                        <TableCell>{p.status === 'rate_limited' && p.resumeAt && Date.parse(p.resumeAt) < now ? <ToneBadge tone='ok'>{t('açılmış olmalı')}</ToneBadge> : <PoolBadge status={p.status} />}</TableCell>
                           <TableCell className='text-end tabular-nums'>{formatNumber(p.keys)}</TableCell>
                           <TableCell className='text-xs tabular-nums'>
                             {typeof p.models === 'number' ? t('{count} açık', { count: formatNumber(Math.max(0, p.models - (p.cooling ?? 0))) }) : t('Veri yok')}
@@ -222,7 +227,9 @@ export function Pools() {
                             {typeof p.ok24 === 'number' ? t('{ok} başarılı, {fail} hata', { ok: p.ok24, fail: p.fail24 ?? 0 }) : t('Veri yok')}
                           </TableCell>
                           <TableCell className='hidden text-muted-foreground sm:table-cell'>
-                            {p.resumeAt ? (
+                            {p.resumeAt && Date.parse(p.resumeAt) < now ? (
+                              <span className='text-emerald-700 dark:text-emerald-400'>{t('açılmış olmalı')}</span>
+                            ) : p.resumeAt ? (
                               <span title={shortTime(p.resumeAt)}>
                                 <TimeAgo iso={p.resumeAt} />
                               </span>
@@ -302,7 +309,10 @@ export function Pools() {
         </div>
         {snapshot?.at && (
           <p className='mt-3 text-xs text-muted-foreground'>
-            {t('Güncellendi:')} <TimeAgo iso={snapshot.at} /> · {snapshot.host || t('Host bilgisi yok')}
+            <span className={now - Date.parse(snapshot.receivedAt ?? snapshot.at) > 35 * 60_000 ? 'text-amber-700 dark:text-amber-400' : ''}>
+              {t('Güncellendi:')} <TimeAgo iso={snapshot.receivedAt ?? snapshot.at} /> · {snapshot.host || t('Host bilgisi yok')}
+              {now - Date.parse(snapshot.receivedAt ?? snapshot.at) > 35 * 60_000 && <span className='ms-2'>{t("Mac'ten güncelleme gelmiyor")}</span>}
+            </span>
           </p>
         )}
       </Main>

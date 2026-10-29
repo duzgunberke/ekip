@@ -33,6 +33,8 @@ import { formatNumber, useT } from '@/lib/i18n'
 import { ActiveTasksMini } from '@/features/tasks/mini'
 import { JobsChart } from './jobs-chart'
 import { SavingsChart } from './savings-chart'
+import { ProviderLogo } from '@/components/provider-logo'
+import { useNow } from '@/hooks/use-now'
 
 export function Overview() {
   const t = useT()
@@ -43,10 +45,11 @@ export function Overview() {
   const limits = useLimits()
   const savings = useSavings()
   const { openNewJob } = useNewJob()
+  const now = useNow(30_000)
 
   const s = status.data
   const providers = poolProviders(limits.data, s?.freellmapi.providers)
-  const healthy = providers.filter((p) => p.status === 'healthy').length
+  const healthy = providers.filter((p) => p.status === 'healthy' || (p.status === 'rate_limited' && !!p.resumeAt && Date.parse(p.resumeAt) < now)).length
   const lastClient = s?.clients[0]
   const memoryLinked = projects.data?.filter((p) => p.tdai?.teamId).length ?? 0
 
@@ -110,15 +113,12 @@ export function Overview() {
             to='/jobs'
           />
           <Kpi
-            title={t('Sağlıklı sağlayıcı')}
+            title={t('Ücretsiz havuz')}
             icon={ServerCog}
             loading={status.isLoading && limits.isLoading}
             value={
               s || limits.data ? (
-                <>
-                  {formatNumber(healthy)}
-                  <span className='text-muted-foreground'> / {formatNumber(providers.length)}</span>
-                </>
+                <span className='text-[1.25rem] font-semibold'>{t('{open}/{total} sağlayıcı açık', { open: formatNumber(healthy), total: formatNumber(providers.length) })}</span>
               ) : (
                 '-'
               )
@@ -129,7 +129,7 @@ export function Overview() {
                 : !s.freellmapi.configured
                   ? t('freellmapi ayarlı değil')
                   : s.freellmapi.ready
-                    ? t('freellmapi hazır')
+                    ? t('freellmapi çalışıyor')
                     : s.freellmapi.up
                       ? t('freellmapi hazır değil')
                       : t('freellmapi kapalı')
@@ -140,9 +140,9 @@ export function Overview() {
             title={t('Mac son görülme')}
             icon={Laptop}
             loading={status.isLoading}
-            value={lastClient ? <TimeAgo iso={lastClient.lastSeen} /> : t('sinyal yok')}
+            value={lastClient ? <span className='text-[1.15rem]'>{<TimeAgo iso={lastClient.lastSeen} />}{lastClient.host ? ` · ${lastClient.host}` : ''}</span> : t('Henüz sinyal yok')}
             valueClassName='text-xl'
-            hint={lastClient ? [lastClient.client, lastClient.host].filter(Boolean).join(' · ') : t('Mac henüz heartbeat göndermedi')}
+            hint={lastClient ? undefined : t("Mac'te ekip ya da ekip doctor çalışınca görünür")}
           />
         </div>
 
@@ -197,12 +197,12 @@ export function Overview() {
                   {providers.slice(0, 6).map((p) => (
                     <li key={`${p.platform}-${p.name}`} className='flex items-center justify-between gap-3 py-2.5'>
                       <div className='min-w-0'>
-                        <p className='truncate text-sm font-medium'>{p.name}</p>
+                        <p className='flex items-center gap-2 truncate text-sm font-medium'><ProviderLogo id={p.platform} />{p.name}</p>
                         <p className='text-xs text-muted-foreground'>
                           {p.platform} · {formatNumber(p.keys)} {t('anahtar')}
                         </p>
                       </div>
-                      <PoolBadge status={p.status} />
+                      {p.status === 'rate_limited' && p.resumeAt && Date.parse(p.resumeAt) < now ? <ToneBadge tone='ok'>{t('açılmış olmalı')}</ToneBadge> : <PoolBadge status={p.status} />}
                     </li>
                   ))}
                   {providers.length > 6 && (

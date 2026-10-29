@@ -25,6 +25,8 @@ import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { translate, useLanguage, useT } from '@/lib/i18n'
+import { ProviderLogo } from '@/components/provider-logo'
+import { RunLogButton } from '@/components/run-log-button'
 
 const inList = (row: { getValue: (id: string) => unknown }, id: string, value: string[]) =>
   !value?.length || value.includes(String(row.getValue(id)))
@@ -71,8 +73,10 @@ const columns: ColumnDef<Job>[] = [
     cell: ({ row }) => {
       const j = row.original
       return (
-        <span className='text-muted-foreground'>
+        <span className='inline-flex items-center gap-1.5 text-muted-foreground'>
+          <ProviderLogo id={j.ranVia ?? j.via} modelId={j.model} />
           {viaLabel(j.ranVia ?? j.via)}
+          {j.model && <span className='text-xs'>via · {j.model}</span>}
           {j.pool === 'tdai' && ` · ${translate('hafızalı')}`}
         </span>
       )
@@ -110,6 +114,14 @@ const columns: ColumnDef<Job>[] = [
       </span>
     ),
     meta: { className: 'hidden md:table-cell' },
+  },
+  {
+    id: 'log',
+    header: () => <span>{translate('Log')}</span>,
+    cell: ({ row }) => <RunLogButton id={row.original.id} failed={row.original.status === 'failed'} />,
+    enableSorting: false,
+    enableHiding: false,
+    meta: { className: 'w-24' },
   },
 ]
 

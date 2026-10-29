@@ -232,6 +232,11 @@ const publicJob = (j) => {
 };
 
 const runsCap = 2000, jobsCap = 2000, tasksCap = 500;
+const runLogsDir = path.join(DATA, "runs");
+const cleanLog = (s) => {
+  const clean = String(s).replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/(?:Bearer\s+|(?:api[_-]?key|token|secret|password)\s*[:=]\s*)(?:"[^"\n]+"|'[^'\n]+'|[^\s,;]+)/gi, "****").replace(/(?:sk-[A-Za-z0-9_-]{12,}|(?:gh[pousr]_|github_pat_|gsk_|hf_|nvapi-)[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16})/gi, "****");
+  return Buffer.from(clean).subarray(-64_000).toString("utf8");
+};
 
 // ---- tasks (live progress of user requests, pushed by the Mac) ------------------------------------
 
@@ -272,6 +277,7 @@ function cleanTask(b) {
     workers: arr(b.workers, 100, "workers").map((w, i) => ({
       runId: str(w.runId, 128, `workers[${i}].runId`) ?? null,
       via: str(w.via, 40, `workers[${i}].via`) ?? null,
+      model: str(w.model, 200, `workers[${i}].model`) ?? null,
       label: str(w.label, 200, `workers[${i}].label`) ?? null,
       status: str(w.status, 40, `workers[${i}].status`) ?? null,
       startedAt: ts(w.startedAt, `workers[${i}].startedAt`),
@@ -479,6 +485,7 @@ async function api(req, res, url) {
     const run = {
       id,
       via: str(b.via, 40, "via") ?? null,
+      model: str(b.model, 200, "model") ?? null,
       project: str(b.project, 128, "project") ?? null,
       task: str(b.task, 50_000, "task") ?? "",
       status: str(b.status, 40, "status") ?? null,
@@ -498,6 +505,28 @@ async function api(req, res, url) {
     const limit = Math.min(num(url.searchParams.get("limit"), 100), 1000);
     const list = [...store.runs.data].sort((a, b) => String(b.startedAt ?? b.receivedAt).localeCompare(String(a.startedAt ?? a.receivedAt))).slice(0, limit);
     return send(res, 200, list);
+  }
+  if ((match = p.match(/^\/api\/runs\/([\w.:-]{1,128})\/log$/))) {
+    const id = match[1];
+    if (m === "PUT") {
+      const body = await readJson(req, 300_000, { allowEmpty: false });
+      if (typeof body.log !== "string") bad("log must be a string");
+      fs.mkdirSync(runLogsDir, { recursive: true });
+      fs.writeFileSync(path.join(runLogsDir, `${id}.log`), cleanLog(body.log), { mode: 0o600 });
+      const files = fs.readdirSync(runLogsDir).filter((f) => f.endsWith(".log")).map((f) => ({ f, m: fs.statSync(path.join(runLogsDir, f)).mtimeMs })).sort((a, b) => b.m - a.m);
+      for (const old of files.slice(300)) fs.rmSync(path.join(runLogsDir, old.f), { force: true });
+      return send(res, 200, { ok: true });
+    }
+    if (m === "GET") {
+      const file = path.join(runLogsDir, `${id}.log`);
+      let log = "";
+      try { log = fs.readFileSync(file, "utf8"); } catch {
+        const job = store.jobs.data.find((j) => j.id === id);
+        if (job) { try { log = worker.tail(id, 64_000); } catch { /* missing job log */ } }
+      }
+      if (!log) return send(res, 404, { error: "no log available" });
+      return send(res, 200, { log: cleanLog(log).split("\n").slice(-400).join("\n") });
+    }
   }
 
   if (p === "/api/tasks" && m === "PUT") {

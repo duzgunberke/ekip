@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { formatNumber, formatPercent, useLanguage, useT } from '@/lib/i18n'
 import type { SavingsSnapshot } from '@/lib/types'
+import { ProviderLogo } from '@/components/provider-logo'
 
 const SERIES = {
   claude: 'var(--brand-lead)',
@@ -61,8 +62,8 @@ export function SavingsChart({
       </div>
 
       <div className='mb-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground'>
-        <LegendItem color={SERIES.claude} label={t('Claude')} />
-        <LegendItem color={SERIES.other} label={t('Diğer kotalar')} />
+        <LegendItem color={SERIES.claude} label={t('Claude')} id='claude' />
+        <LegendItem color={SERIES.other} label={t('Diğer kotalar')} id='codex' />
       </div>
 
       <div
@@ -161,7 +162,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   )
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
+function LegendItem({ color, label, id }: { color: string; label: string; id: string }) {
   return (
     <span className='inline-flex items-center gap-2'>
       <span
@@ -169,6 +170,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
         style={{ backgroundColor: color }}
         aria-hidden='true'
       />
+      <ProviderLogo id={id} />
       {label}
     </span>
   )

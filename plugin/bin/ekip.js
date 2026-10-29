@@ -235,8 +235,10 @@ function runStream(cmd, argv, opts, logFile, kind) {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n\n`);
     const child = spawn(cmd, argv, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
-    let buf = "", raw = "", final = "", lastStep = -1, steps = new Map();
+    let buf = "", raw = "", final = "", lastStep = -1, steps = new Map(), loggedModel = false;
     const onEvent = (e) => {
+      const reportedModel = e.model ?? e.response?.model ?? e.message?.model ?? e.data?.model;
+      if (!loggedModel && typeof reportedModel === "string" && reportedModel.length < 200) { log.write(`model: ${reportedModel}\n`); loggedModel = true; }
       if (kind === "agy" && e.event === "step_update") {
         const u = e.step_update;
         if (u.step_type === "tool" && u.state === "ACTIVE" && u.tool_name) log.write(`\n▸ ${u.tool_name}: ${brief(u.tool_info?.parameters)}\n`);
@@ -357,7 +359,7 @@ async function runOne(o, via, id) {
   const r = await runOneInner(o, via, id);
   activeRuns.delete(id);
   recordStat(r.via ?? via, r.ok, Date.now() - t0);
-  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu");
+  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
   return r;
 }
 
@@ -372,6 +374,7 @@ function onStop() {
     for (const [id, r] of activeRuns) {
       try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
       await postRun({ ...r, status: "cancelled", report: "durduruldu", finishedAt: new Date().toISOString() });
+      await uploadRunLog(id, path.join(RUNS, `${id}.log`));
     }
     const { pending } = await import("../lib/tasks.js");
     await Promise.race([Promise.allSettled([...pending]), sleep(4000)]);
@@ -399,7 +402,7 @@ export async function reconcileRuns() {
     const id = f.slice(0, -4);
     fs.appendFileSync(file, "\n[exit 143] durduruldu (süreç kayıp)\n");
     const project = head.match(/^project: (.*)$/m)?.[1];
-    await postRun({ id, via: id.split("Z-")[1] ?? null, project: project && project !== "-" ? project : null,
+    await postRun({ id, via: id.split("Z-")[1] ?? null, model: modelFromLog(file), project: project && project !== "-" ? project : null,
       task: head.split("\ntask:\n")[1]?.split("\n\n")[0] ?? "", status: "cancelled", report: "durduruldu (süreç kayıp)", finishedAt: st.mtime.toISOString() });
     n++;
   }
@@ -408,14 +411,16 @@ export async function reconcileRuns() {
 
 async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
-  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile, pid: process.pid });
+  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, model: o.model ?? null, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
   if (o.project) {
     const { SETTINGS } = await import("../lib/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
   }
-  await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
-  activeRuns.set(id, { id, via, project: o.project, task: o.task });
+  await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
+  activeRuns.set(id, { id, via, project: o.project, task: o.task, model: o.model ?? null, logFile });
+  const upload = () => uploadRunLog(id, logFile);
+  const uploadTimer = setInterval(upload, 60_000); uploadTimer.unref();
   onStop();
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
@@ -424,10 +429,24 @@ async function runOneInner(o, via, id) {
   for (const v of order) {
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
-    if (!failed(last)) return { ok: true, via: v, out: last.out.trim(), logFile };
+    if (!failed(last)) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
   }
-  return { ok: false, via, out: last?.out.trim() ?? "", logFile };
+  clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload();
+  return { ok: false, via, out: last?.out.trim() ?? "", logFile, model };
+}
+
+function modelFromLog(file) {
+  try { return fs.readFileSync(file, "utf8").match(/^\s*model\s*:\s*([^\r\n]{1,160})/im)?.[1]?.trim() ?? fs.readFileSync(file, "utf8").match(/"model"\s*:\s*"([^"\r\n]{1,160})"/)?.[1] ?? null; } catch { return null; }
+}
+async function uploadRunLog(id, file) {
+  if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
+  try {
+    const st = fs.statSync(file), len = Math.min(st.size, 64 * 1024), fd = fs.openSync(file, "r"), b = Buffer.alloc(len);
+    fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd);
+    const log = b.toString("utf8").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/(?:Bearer\s+|(?:api[_-]?key|token|secret|password)\s*[:=]\s*)(?:"[^"\n]+"|'[^'\n]+'|[^\s,;]+)/gi, "****").replace(/(?:sk-[A-Za-z0-9_-]{12,}|(?:gh[pousr]_|github_pat_|gsk_|hf_|nvapi-)[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16})/gi, "****");
+    await fetch(`${SETTINGS.hubUrl}/api/runs/${encodeURIComponent(id)}/log`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ log }), signal: AbortSignal.timeout(8000) }).catch(() => {});
+  } catch { /* log delivery is best effort */ }
 }
 
 async function run(args) {
@@ -437,7 +456,7 @@ async function run(args) {
   if (o.vias.length === 1) {
     const r = await runOne(o, o.vias[0], id);
     process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${r.out}\n`);
-    await report({ id, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+    await report({ id, via: r.via, model: r.model, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
     return r.ok ? 0 : 1;
   }
   // Several pools on the same task: each gets its own git worktree and branch, so they cannot
@@ -460,7 +479,7 @@ async function run(args) {
   }));
   for (const r of results) {
     process.stdout.write(`\n=== ${r.via} (${r.ok ? "done" : "FAILED"}) branch ${r.branch}${r.dir ? `, worktree ${r.dir}` : ""}\n${r.stat || "(no changes)"}\n--- report\n${r.out.slice(-3000)}\n`);
-    await report({ id: `${id}-${r.via}`, via: r.via, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
+    await report({ id: `${id}-${r.via}`, via: r.via, model: r.model, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
   }
   process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
   return results.some((r) => r.ok) ? 0 : 1;
@@ -790,6 +809,7 @@ async function lead(args) {
   if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
   // awaited: spawnSync below blocks the event loop, so a request still in flight would never leave
   if (!member) await heartbeat();
+  if (!member) await (await import("../lib/limits.js")).push().catch(() => {});
   const r = spawnSync("claude", argv, { stdio: "inherit", env });
   return r.status ?? 1;
 }
@@ -1237,7 +1257,7 @@ if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "-h", "--help"].in
 }
 let code = 0;
 switch (cmd) {
-  case "run": code = await run(rest); break;
+  case "run": code = await run(rest); await (await import("../lib/limits.js")).push().catch(() => {}); break;
   case "review": code = await (await import("../lib/review.js")).main(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
@@ -1265,7 +1285,7 @@ switch (cmd) {
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
     try { t.reapStale(); } catch { /* never block a task command */ }
-    if (cmd === "tasks" && rest[0] === "sync") { console.log(`${await t.syncHub()} görev panele gönderildi`); break; }
+    if (cmd === "tasks" && rest[0] === "sync") { console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/limits.js")).push().catch(() => {}); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);

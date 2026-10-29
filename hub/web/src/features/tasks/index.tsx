@@ -15,6 +15,8 @@ import { TimeAgo } from '@/components/ekip/time-ago'
 import { ActiveTaskCard } from './active-card'
 import { StepList, elapsed } from './parts'
 import { formatNumber, useT } from '@/lib/i18n'
+import { ProviderLogo } from '@/components/provider-logo'
+import { RunLogButton } from '@/components/run-log-button'
 
 export function Tasks() {
   const t = useT()
@@ -139,6 +141,13 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
               {t.workers.length > 0 && <Badge variant='outline'>{formatNumber(t.workers.length)} {translate('ajan')}</Badge>}
             </div>
             <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>{translate('Notlar')}</h3>
+            {t.workers.length > 0 && <ul className='mb-4 grid gap-2'>
+              {t.workers.map((w, i) => <li key={w.runId ?? i} className='flex items-center gap-2 rounded-lg bg-muted/35 px-2.5 py-2'>
+                <ProviderLogo id={w.via ?? 'unknown'} modelId={w.model} />
+                <span className='min-w-0 flex-1 truncate text-sm'>{w.label ?? w.via ?? translate('ajan')}{w.model && <span className='ms-2 text-xs text-muted-foreground'>via · {w.model}</span>}</span>
+                {w.runId && <RunLogButton id={w.runId} failed={w.status === 'failed'} />}
+              </li>)}
+            </ul>}
             {t.notes.length === 0 ? (
               <p className='text-sm text-muted-foreground'>{translate('Not yok.')}</p>
             ) : (

@@ -27,6 +27,8 @@ import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { translate, useLanguage, useT } from '@/lib/i18n'
+import { ProviderLogo } from '@/components/provider-logo'
+import { RunLogButton } from '@/components/run-log-button'
 
 const when = (r: Run) => r.finishedAt ?? r.startedAt ?? r.receivedAt
 const inList = (row: { getValue: (id: string) => unknown }, id: string, value: string[]) =>
@@ -81,10 +83,18 @@ const columns: ColumnDef<Run>[] = [
   },
   {
     id: 'via',
-    accessorFn: (r) => r.via ?? translate('Yok'),
+    accessorFn: (r) => [r.via, r.model].filter(Boolean).join(' '),
     header: ({ column }) => <DataTableColumnHeader column={column} title='Yol' />,
-    cell: ({ getValue }) => <span className='text-muted-foreground'>{getValue<string>()}</span>,
+    cell: ({ row }) => <span className='flex items-center gap-1.5 text-muted-foreground'><ProviderLogo id={row.original.via ?? 'unknown'} modelId={row.original.model} />{row.original.via ?? translate('Yok')}{row.original.model && <span className='text-xs'>via · {row.original.model}</span>}</span>,
     meta: { className: 'hidden md:table-cell' },
+  },
+  {
+    id: 'log',
+    header: () => <span>{translate('Log')}</span>,
+    cell: ({ row }) => <RunLogButton id={row.original.id} failed={row.original.status === 'failed'} />,
+    enableSorting: false,
+    enableHiding: false,
+    meta: { className: 'w-28' },
   },
   {
     id: 'host',
@@ -216,7 +226,7 @@ function RunDetail({ run: r }: { run: Run }) {
           <dt className='text-muted-foreground'>{t('Proje')}</dt>
           <dd>{r.project ?? t('Yok')}</dd>
           <dt className='text-muted-foreground'>{t('Yol')}</dt>
-          <dd>{r.via ?? t('Yok')}</dd>
+          <dd className='flex items-center gap-2'><ProviderLogo id={r.via ?? 'unknown'} modelId={r.model} />{r.via ?? t('Yok')}{r.model && <span className='text-muted-foreground'>via · {r.model}</span>}</dd>
           <dt className='text-muted-foreground'>{t('Makine')}</dt>
           <dd className='font-mono'>{r.host ?? t('Yok')}</dd>
           <dt className='text-muted-foreground'>{t('Durum (ham)')}</dt>

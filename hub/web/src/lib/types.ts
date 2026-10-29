@@ -49,6 +49,7 @@ export type Job = {
 export type Run = {
   id: string
   via: string | null
+  model?: string | null
   project: string | null
   task: string
   status: string | null
@@ -199,7 +200,7 @@ export type Task = {
   updatedAt: string | null
   endedAt: string | null
   steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null }[]
-  workers: { runId: string | null; via: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null }[]
+  workers: { runId: string | null; via: string | null; model?: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null }[]
   notes: { at: string | null; text: string }[]
   pct: number
   eta: string | null
