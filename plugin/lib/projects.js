@@ -130,7 +130,7 @@ Your final answer must be ONLY the card markdown, starting with the line "# ${na
 
 export function generateCard(p, { via = process.env.EKIP_CARD_VIA ?? "auto" } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [EKIP_JS, "run", "--via", via, "--cwd", p.path, "--label", `proje kartı: ${p.name}`, "-"], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [EKIP_JS, "run", "--allow-nested", "--via", via, "--cwd", p.path, "--label", `proje kartı: ${p.name}`, "-"], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     child.stdout.on("data", (d) => { out += d; });
     child.stderr.on("data", (d) => { err += d; });
@@ -228,9 +228,100 @@ export function scan(days = 30, root = PROJECTS_ROOT) {
 const flag = (args, f, def) => { const i = args.indexOf(f); if (i < 0) return def; const v = args[i + 1]; args.splice(i, 2); return v; };
 const bool = (args, f) => { const i = args.indexOf(f); if (i < 0) return false; args.splice(i, 1); return true; };
 
+const under = (p, root) => p === root || p.startsWith(`${root}${path.sep}`);
+const encodeHistory = (p) => p.replace(/[^A-Za-z0-9]/g, "-");
+
+// Collect worktrees before the directory moves so external links can be repaired afterward.
+function reposAtDepth(root) {
+  const found = [];
+  const visit = (dir, depth) => {
+    if (isRepo(dir)) found.push(dir);
+    if (depth >= 2) return;
+    let entries = []; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) if (e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules") visit(path.join(dir, e.name), depth + 1);
+  };
+  visit(root, 0);
+  return found;
+}
+
+function rewritePathFile(file, oldPath, newPath) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+  const before = fs.readFileSync(file, "utf8");
+  const after = before.replace(new RegExp(`${oldPath.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?![\\w.-])`, "g"), newPath);
+  if (after === before) return false;
+  fs.writeFileSync(file, after); return true;
+}
+
+function rewriteFiles(patterns, oldPath, newPath) {
+  const changed = [];
+  for (const entry of patterns) {
+    const abs = path.resolve(entry);
+    if (!entry.includes("*") && !entry.includes("?")) { if (rewritePathFile(abs, oldPath, newPath)) changed.push(abs); continue; }
+    const base = path.resolve(entry.slice(0, Math.max(entry.lastIndexOf("/"), entry.lastIndexOf(path.sep))));
+    const pattern = entry.slice(base.length + 1).replace(/[.+^${}()|[\\]\\\\]/g, "\\\\$&").replace(/\\*/g, ".*").replace(/\\?/g, ".");
+    const re = new RegExp(`^${pattern}$`);
+    let names = []; try { names = fs.readdirSync(base); } catch { continue; }
+    for (const name of names) if (re.test(name) && rewritePathFile(path.join(base, name), oldPath, newPath)) changed.push(path.join(base, name));
+  }
+  return changed;
+}
+
+export function moveProject(identifier, destination, { dryRun = false } = {}) {
+  const list = listProjects();
+  const project = list.find((p) => p.name === identifier || path.resolve(p.path) === path.resolve(identifier));
+  if (!project) throw new Error(`kayıtlı proje bulunamadı: ${identifier}`);
+  const oldPath = path.resolve(project.path), newPath = path.resolve(destination);
+  if (newPath === oldPath) throw new Error("hedef mevcut proje klasörüyle aynı");
+  if (fs.existsSync(newPath)) throw new Error(`hedef zaten var: ${newPath}`);
+  const lsof = spawnSync("sh", ["-c", "command -v lsof"], { stdio: "ignore" });
+  if (lsof.status === 0) {
+    const open = spawnSync("lsof", ["+D", oldPath], { encoding: "utf8", timeout: 10000 });
+    if (open.status === 0 && open.stdout.trim().split("\\n").length > 1) throw new Error("eski klasörde açık dosyalar var; önce kullanan süreçleri kapatın");
+  }
+  const repos = reposAtDepth(oldPath).map((repo) => ({ repo, worktrees: git(repo, "worktree", "list", "--porcelain").stdout.split("\\n").filter((x) => x.startsWith("worktree ")).map((x) => x.slice(9)) }));
+  const historyRoot = path.join(os.homedir(), ".claude/projects");
+  const oldEncoded = encodeHistory(oldPath), newEncoded = encodeHistory(newPath);
+  const historyMoves = [];
+  const collectHistory = (oldE, newE) => { if (!fs.existsSync(historyRoot)) return; for (const n of fs.readdirSync(historyRoot)) if (n === oldE || n.startsWith(`${oldE}-`)) historyMoves.push([path.join(historyRoot, n), path.join(historyRoot, `${newE}${n.slice(oldE.length)}`)]); };
+  collectHistory(oldEncoded, newEncoded);
+  for (const d of fs.readdirSync(os.homedir(), { withFileTypes: true })) if (d.isSymbolicLink()) {
+    const link = path.join(os.homedir(), d.name); let real; try { real = fs.realpathSync(link); } catch { continue; }
+    if (under(oldPath, real)) collectHistory(encodeHistory(path.join(link, path.relative(real, oldPath))), encodeHistory(path.join(link, path.relative(real, newPath))));
+  }
+  const plan = { oldPath, newPath, repos, historyMoves: historyMoves.map(([a, b]) => [path.basename(a), path.basename(b)]) };
+  if (dryRun) return plan;
+  fs.renameSync(oldPath, newPath);
+  for (const { repo, worktrees } of repos) {
+    const nextRepo = path.join(newPath, path.relative(oldPath, repo));
+    for (const wt of worktrees) {
+      const nextWt = under(path.resolve(wt), oldPath) ? path.join(newPath, path.relative(oldPath, path.resolve(wt))) : wt;
+      git(nextRepo, "worktree", "repair", nextWt);
+    }
+  }
+  save(list.map((p) => under(path.resolve(p.path), oldPath) ? { ...p, path: path.join(newPath, path.relative(oldPath, path.resolve(p.path))) } : p));
+  for (const [src, dst] of historyMoves) {
+    fs.mkdirSync(dst, { recursive: true });
+    if (fs.existsSync(src)) for (const f of fs.readdirSync(src)) { const from = path.join(src, f), to = path.join(dst, f); if (!fs.existsSync(to)) fs.renameSync(from, to); }
+    try { fs.rmdirSync(src); } catch { /* merged target may have retained files */ }
+  }
+  const state = path.join(HOME, "memory-state/asset-import.json");
+  try { const data = JSON.parse(fs.readFileSync(state, "utf8")); data.done = (data.done ?? []).map((k) => String(k).replaceAll(oldEncoded, newEncoded)); fs.writeFileSync(state, `${JSON.stringify(data, null, 2)}\\n`); } catch { /* no history state yet */ }
+  const rewrite = [path.join(CARDS, "*.md"), path.join(HOME, "config.json"), ...(SETTINGS.moveRewrite ?? [])];
+  plan.rewritten = rewriteFiles(rewrite, oldPath, newPath);
+  return plan;
+}
+
 export async function main(argv) {
   const args = [...argv];
   const sub = args.shift();
+  if (sub === "move") {
+    const dryRun = bool(args, "--dry-run");
+    if (!args[0] || !args[1]) die("kullanım: ekip project move <ad|eski-yol> <yeni-yol> [--dry-run]");
+    const result = moveProject(args[0], args[1], { dryRun });
+    console.log(`${dryRun ? "Plan" : "Taşındı"}: ${result.oldPath} → ${result.newPath}`);
+    console.log(`Git depoları/worktree'ler: ${result.repos.length}; Claude geçmişi: ${result.historyMoves.length}${result.rewritten ? `; güncellenen metinler: ${result.rewritten.length}` : ""}`);
+    return;
+  }
   if (sub === "add") {
     const name = flag(args, "--name");
     const noCard = bool(args, "--no-card");
