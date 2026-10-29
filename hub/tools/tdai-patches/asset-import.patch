@@ -1,5 +1,5 @@
 diff --git a/agents/asset-import.ts b/agents/asset-import.ts
-index dd842dd..e6e62a3 100644
+index dd842dd..9f97513 100644
 --- a/agents/asset-import.ts
 +++ b/agents/asset-import.ts
 @@ -1,4 +1,4 @@
@@ -55,7 +55,24 @@ index dd842dd..e6e62a3 100644
      acc.push({ path: rel.split('\\').join('/'), content: text });
    }
  }
-@@ -780,7 +811,8 @@ interface AgentRaw {
+@@ -692,9 +723,13 @@ interface PublicUser {
+ 
+ /** 用 userKey 反查真实 user_id（auth/verify 豁免 user-key 校验，body 带 user_key）。 */
+ async function resolveUserId(client: PanelClient, userKey: string): Promise<string> {
+-  const env = await client.post<PublicUser>('/meta/auth/verify', {
+-    user_key: userKey,
+-  });
++  // ekip: a busy memory server answers 504 KERNEL_TIMEOUT here; retry instead of aborting the whole
++  // run (29 Oct: three parallel import groups died on it and left their sessions undone)
++  let env = await client.post<PublicUser>('/meta/auth/verify', { user_key: userKey }).catch((e) => ({ code: -1, message: String(e) } as never));
++  for (let attempt = 1; attempt <= 8 && (env.code === 504 || env.code === 502 || env.code === 503 || env.code === -1); attempt++) {
++    await new Promise((r) => setTimeout(r, Math.min(120_000, 5_000 * 2 ** attempt)));
++    env = await client.post<PublicUser>('/meta/auth/verify', { user_key: userKey }).catch((e) => ({ code: -1, message: String(e) } as never));
++  }
+   if (env.code !== 0 || !env.data) {
+     throw new Error(`auth/verify 失败 code=${env.code} msg=${env.message ?? ''}`);
+   }
+@@ -780,7 +815,8 @@ interface AgentRaw {
  }
  
  // ── 消息分批 + checkpoint ──
@@ -65,7 +82,7 @@ index dd842dd..e6e62a3 100644
  const MAX_MESSAGE_CHARS = 8192;
  
  interface ImportMessage {
-@@ -930,6 +962,15 @@ interface BatchInput {
+@@ -930,6 +966,15 @@ interface BatchInput {
   * 工具以 [tool_call] / [tool_result] 文本形式并入对话流，且不出现 tool_call/tool_result 角色，
   * 因为 memory 链路 /chat-memory/import → core /v3/conversation/add 的 schema 仅接受 user/assistant/system）。
   */
@@ -81,7 +98,7 @@ index dd842dd..e6e62a3 100644
  function toMemoryMessages(msgs: ImportMessage[]): ImportMessage[] {
    const groups = new Map<number, ImportMessage[]>();
    for (const m of msgs) {
-@@ -943,11 +984,14 @@ function toMemoryMessages(msgs: ImportMessage[]): ImportMessage[] {
+@@ -943,11 +988,14 @@ function toMemoryMessages(msgs: ImportMessage[]): ImportMessage[] {
      const text = group
        .map((m) => {
          if (m.role === 'tool_call') {
@@ -97,7 +114,7 @@ index dd842dd..e6e62a3 100644
            const inner = m.content.replace(/\s+/g, ' ').trim();
            const capped = inner.length > 4000 ? `${inner.slice(0, 4000)}…` : inner;
            return `[tool_result${m.tool_name ? `:${m.tool_name}` : ''}] ${capped}`;
-@@ -991,9 +1035,19 @@ async function uploadBatches(client: PanelClient, ctx: WriteCtx, input: BatchInp
+@@ -991,9 +1039,19 @@ async function uploadBatches(client: PanelClient, ctx: WriteCtx, input: BatchInp
          m.ts !== undefined ? { role: m.role, content: m.content, ts: m.ts } : { role: m.role, content: m.content },
        ),
      };
@@ -120,7 +137,7 @@ index dd842dd..e6e62a3 100644
      }
    }
  }
-@@ -1479,6 +1533,8 @@ async function main(): Promise<void> {
+@@ -1479,6 +1537,8 @@ async function main(): Promise<void> {
          await uploadSession(client, ctx, { session: s, extract: opts.extract });
          results.imported++;
          markDone(cp, ck(s.sourceKey));
@@ -129,7 +146,7 @@ index dd842dd..e6e62a3 100644
        } catch (e) {
          results.failed++;
          results.errors.push(`session ${s.sessionId}: ${(e as Error).message}`);
-@@ -1674,7 +1730,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -1674,7 +1734,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
      if (!existsSync(sessionsDirPath)) continue;
      for (const f of listJsonlRecursive(sessionsDirPath)) {
        if (f.endsWith('.lock') || f.endsWith('.trajectory.jsonl')) continue;
@@ -138,7 +155,7 @@ index dd842dd..e6e62a3 100644
        if (msgs.length) out.push({ sessionId: `${agentId}/${basename(f, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
      }
    }
-@@ -1686,11 +1742,18 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -1686,11 +1746,18 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
    const out: ScannedSession[] = [];
    if (!existsSync(sessionsDir)) return out;
    const st = statSync(sessionsDir);
@@ -158,7 +175,7 @@ index dd842dd..e6e62a3 100644
    const jsonFiles = st.isDirectory()
      ? readdirSync(sessionsDir)
          .filter((f) => f.endsWith('.json'))
-@@ -1699,7 +1762,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -1699,7 +1766,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -167,7 +184,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -1764,7 +1827,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -1764,7 +1831,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
        const dir = join(root, proj);
        if (!statSync(dir).isDirectory()) continue;
        for (const f of listJsonlRecursive(dir)) {
@@ -176,7 +193,7 @@ index dd842dd..e6e62a3 100644
          if (msgs.length) out.push({ sessionId: `${proj}/${basename(f, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
        }
      }
-@@ -1773,7 +1836,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -1773,7 +1840,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
    const legacy = join(home(), '.codebuddy', 'sessions');
    if (existsSync(legacy)) {
      for (const f of listJsonlRecursive(legacy)) {
@@ -185,7 +202,7 @@ index dd842dd..e6e62a3 100644
        if (msgs.length) out.push({ sessionId: basename(f, '.jsonl'), messages: msgs, sourceKey: `session:${KIND}:${f}`, origin: f });
      }
    }
-@@ -1798,7 +1861,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -1798,7 +1865,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -194,7 +211,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -1872,7 +1935,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -1872,7 +1939,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
    const sessionsRoot = join(codexHome(), 'sessions');
    if (!existsSync(sessionsRoot)) return out;
    for (const full of listJsonlRecursive(sessionsRoot)) {
@@ -203,7 +220,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({ sessionId: extractCodexSessionId(full, text), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
-@@ -1898,7 +1961,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -1898,7 +1965,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -212,7 +229,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -1962,7 +2025,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -1962,7 +2029,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
      for (const f of readdirSync(pd)) {
        if (!f.endsWith('.jsonl')) continue;
        const full = join(pd, f);
@@ -221,7 +238,7 @@ index dd842dd..e6e62a3 100644
        if (msgs.length) {
          out.push({ sessionId: f.replace('.jsonl', ''), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
        }
-@@ -1990,7 +2053,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -1990,7 +2057,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -230,7 +247,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -2197,7 +2260,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
+@@ -2197,7 +2264,7 @@ function scanSessions(sessionsDir?: string, _opts?: ScanOptions): ScannedSession
    const sessionsRoot = join(dshHome(), 'sessions');
    if (!existsSync(sessionsRoot)) return out;
    for (const full of walkFiles(sessionsRoot, (n) => n === 'session.jsonl.zstd' || n === 'session.jsonl')) {
@@ -239,7 +256,7 @@ index dd842dd..e6e62a3 100644
      if (!text) continue;
      const msgs = parseDshSessionLines(text);
      if (!msgs.length) continue;
-@@ -2224,7 +2287,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -2224,7 +2291,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -248,7 +265,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -2521,7 +2584,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -2521,7 +2588,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {
@@ -257,7 +274,7 @@ index dd842dd..e6e62a3 100644
      const msgs = parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({
-@@ -2591,7 +2654,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
+@@ -2591,7 +2658,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
    for (const f of readdirSync(root)) {
      if (!f.endsWith('.jsonl') && !f.endsWith('.json')) continue;
      const full = join(root, f);
@@ -266,7 +283,7 @@ index dd842dd..e6e62a3 100644
      const msgs = f.endsWith('.json') ? normalizeResponsesJson(full) : parseJsonlLines(text);
      if (!msgs.length) continue;
      out.push({ sessionId: basename(f, f.endsWith('.json') ? '.json' : '.jsonl'), messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
-@@ -2602,7 +2665,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
+@@ -2602,7 +2669,7 @@ function scanWbSessions(root: string, _opts?: ScanOptions): ScannedSession[] {
        const dir = join(projectsRoot, proj);
        if (!statSync(dir).isDirectory()) continue;
        for (const full of listJsonlRecursive(dir)) {
@@ -275,7 +292,7 @@ index dd842dd..e6e62a3 100644
          if (!msgs.length) continue;
          out.push({ sessionId: `${proj}/${basename(full, '.jsonl')}`, messages: msgs, sourceKey: `session:${KIND}:${full}`, origin: full });
        }
-@@ -2634,7 +2697,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
+@@ -2634,7 +2701,7 @@ function scanSessionsOverride(kind: AgentKind, sessionsDir: string): ScannedSess
        ? [sessionsDir]
        : [];
    for (const full of jsonlFiles) {

@@ -33,10 +33,42 @@ const errTTY = process.stderr.isTTY && !process.env.NO_COLOR;
 export const die = (msg, code = 1) => { process.stderr.write(`${errTTY ? "\x1b[31mekip ✗\x1b[39m" : "ekip:"} ${t(msg)}\n`); process.exit(code); };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
+// macOS shows the sending app's icon and ignores terminal-notifier's -appIcon on recent versions, so
+// notifications go out in the name of a tiny "ekip" app bundle that carries the logo (-sender).
+export const NOTIFIER_APP = path.join(os.homedir(), "Applications/ekip.app");
+const NOTIFIER_ID = "io.ekip.notifier";
+export function ensureNotifierApp() {
+  if (process.platform !== "darwin" || fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/applet.icns"))) return fs.existsSync(NOTIFIER_APP);
+  const png = path.join(ROOT, "plugin/assets/ekip-icon.png");
+  if (!fs.existsSync(png)) return false;
+  try {
+    fs.mkdirSync(path.dirname(NOTIFIER_APP), { recursive: true });
+    spawnSync("osacompile", ["-o", NOTIFIER_APP, "-e", 'display dialog "ekip sends its notifications through this app." buttons {"OK"} default button 1'], { stdio: "ignore" });
+    const set = path.join(os.tmpdir(), `ekip-${process.pid}.iconset`);
+    fs.mkdirSync(set, { recursive: true });
+    for (const n of [16, 32, 128, 256, 512]) {
+      spawnSync("sips", ["-z", String(n), String(n), png, "--out", path.join(set, `icon_${n}x${n}.png`)], { stdio: "ignore" });
+      spawnSync("sips", ["-z", String(n * 2), String(n * 2), png, "--out", path.join(set, `icon_${n}x${n}@2x.png`)], { stdio: "ignore" });
+    }
+    spawnSync("iconutil", ["-c", "icns", set, "-o", path.join(NOTIFIER_APP, "Contents/Resources/applet.icns")], { stdio: "ignore" });
+    fs.rmSync(set, { recursive: true, force: true });
+    const plist = path.join(NOTIFIER_APP, "Contents/Info.plist");
+    spawnSync("plutil", ["-replace", "CFBundleIdentifier", "-string", NOTIFIER_ID, plist], { stdio: "ignore" });
+    spawnSync("plutil", ["-replace", "CFBundleName", "-string", "ekip", plist], { stdio: "ignore" });
+    // newer osacompile also writes an asset catalog whose default icon wins over applet.icns
+    fs.rmSync(path.join(NOTIFIER_APP, "Contents/Resources/Assets.car"), { force: true });
+    spawnSync("plutil", ["-remove", "CFBundleIconName", plist], { stdio: "ignore" });
+    spawnSync("plutil", ["-replace", "CFBundleIconFile", "-string", "applet", plist], { stdio: "ignore" });
+    spawnSync("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", ["-f", NOTIFIER_APP], { stdio: "ignore" });
+    return true;
+  } catch { return false; }
+}
+
 export function notify(title, message) {
   if (process.platform !== "darwin") return;
   const icon = path.join(ROOT, "plugin/assets/ekip-icon.png");
-  if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", "ekip", "-subtitle", title, "-message", message, "-appIcon", icon, "-group", "ekip"], { stdio: "ignore", timeout: 1000 });
+  const sender = ensureNotifierApp() ? ["-sender", NOTIFIER_ID] : ["-appIcon", icon];
+  if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", "ekip", "-subtitle", title, "-message", message, ...sender, "-group", "ekip"], { stdio: "ignore", timeout: 3000 });
   else spawnSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore", timeout: 1000 });
 }
 fs.mkdirSync(path.dirname(LOG), { recursive: true });
