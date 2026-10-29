@@ -3,10 +3,10 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME } from "./core.js";
-import { lang } from "./i18n.js";
-import { findProject } from "./projects.js";
-import { setupGaps } from "./onboarding.js";
+import { HOME } from "../core/core.js";
+import { lang } from "../core/i18n.js";
+import { findProject } from "../projects/projects.js";
+import { setupGaps } from "../projects/onboarding.js";
 
 const CARD_LINES = 80;
 

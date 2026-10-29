@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
-import { c, dot, fit } from "./ui.js";
-import { t } from "./i18n.js";
+import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "../core/core.js";
+import { c, dot, fit } from "../core/ui.js";
+import { t } from "../core/i18n.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
 const qwenOAuth = () => fs.existsSync(path.join(os.homedir(), ".qwen/oauth_creds.json"));

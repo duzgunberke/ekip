@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { HOME, REMOTE, ROOT, RUNS, SETTINGS, FREE_CONTAINER_SH } from './core.js';
-import { c, title } from './ui.js';
-import { t, lang } from './i18n.js';
+import { HOME, REMOTE, ROOT, RUNS, SETTINGS, FREE_CONTAINER_SH } from '../core/core.js';
+import { c, title } from '../core/ui.js';
+import { t, lang } from '../core/i18n.js';
 
 const dayKey = (v) => { const d = new Date(v); return Number.isNaN(+d) ? null : d.toISOString().slice(0, 10); };
 const bucket = (map, day) => map[day] ??= { claude: 0, other: 0, pools: {}, unmeasured: 0 };

@@ -2,9 +2,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME, REPO, RUNS, SETTINGS } from "./core.js";
+import { HOME, REPO, RUNS, SETTINGS } from "../core/core.js";
 import { getProject, listProjects } from "./projects.js";
-import { c, title } from "./ui.js";
+import { c, title } from "../core/ui.js";
 
 const USAGE = path.join(HOME, "skill-usage.jsonl");
 const CANDIDATES = path.join(HOME, "skill-candidates");
@@ -332,7 +332,7 @@ export async function learn(args = []) {
     let memory = null;
     try {
       if (!getProject(name)) throw new Error("unregistered project: skip TencentDB lookup");
-      memory = await import("./memory.js");
+      memory = await import("../memory/memory.js");
       seeds = await memory.projectSkills(name);
     } catch { /* TDAI is optional; legacy logs may belong to unregistered folders */ }
     const reject = rejectedNames(name);
@@ -465,7 +465,7 @@ export async function prune(args = []) {
     let skills = [];
     let error = null;
     try {
-      const memory = await import("./memory.js");
+      const memory = await import("../memory/memory.js");
       skills = await memory.projectSkills(p.name);
     } catch (e) { error = e.message; }
     if (error) { console.log(`${p.name}: TencentDB skills alınamadı: ${error}`); continue; }

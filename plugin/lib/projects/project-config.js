@@ -7,7 +7,7 @@
 //   dev.json    development environment mapping (database name, redis index; never secrets)
 import fs from "node:fs";
 import path from "node:path";
-import { HOME } from "./core.js";
+import { HOME } from "../core/core.js";
 
 export const dirOf = (p) => (p?.path ? path.join(p.path, ".ekip") : null);
 const read = (f, max = 4000) => { try { return fs.readFileSync(f, "utf8").slice(0, max); } catch { return ""; } };

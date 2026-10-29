@@ -13,12 +13,12 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
-} from "../lib/core.js";
-import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core.js";
-import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
-import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/ui.js";
-import { lang, t } from "../lib/i18n.js";
-import { main as vpsMain } from "../lib/vps.js";
+} from "../lib/core/core.js";
+import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh } from "../lib/core/core.js";
+import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/workers/agents.js";
+import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
+import { lang, t } from "../lib/core/i18n.js";
+import { main as vpsMain } from "../lib/hub/vps.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -344,7 +344,7 @@ async function runVia(via, o, logFile) {
   let procs = "";
   if (o.project) {
     try {
-      const { skillSearch } = await import("../lib/memory.js");
+      const { skillSearch } = await import("../lib/memory/memory.js");
       const hits = await Promise.race([skillSearch(o.project, o.task, 3), sleep(8000).then(() => [])]);
       if (hits.length) procs = `This project has procedures that may apply. Read the relevant ones before you start with \`ekip skill show ${o.project} <name>\`:\n${hits.map((h) => `- ${h.name}: ${h.description ?? ""}`).join("\n")}\n\n`;
     } catch { /* memory offline: go without */ }
@@ -378,10 +378,10 @@ const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "u
 async function runOne(o, via, id) {
   const t0 = Date.now();
   const r = await runOneInner(o, via, id);
-  try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
+  try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
   recordStat(r.via ?? via, r.ok, Date.now() - t0);
-  if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
+  if (o.taskId) (await import("../lib/tasks/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
   return r;
 }
 
@@ -395,11 +395,11 @@ function onStop() {
   for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, async () => {
     for (const [id, r] of activeRuns) {
       try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
-      try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
+      try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
       await postRun({ ...r, status: "cancelled", report: "durduruldu", finishedAt: new Date().toISOString() });
       await uploadRunLog(id, path.join(RUNS, `${id}.log`));
     }
-    const { pending } = await import("../lib/tasks.js");
+    const { pending } = await import("../lib/tasks/tasks.js");
     await Promise.race([Promise.allSettled([...pending]), sleep(4000)]);
     process.exit(143);
   });
@@ -442,7 +442,7 @@ export async function reconcileRuns() {
     const via = id.split("Z-")[1] ?? null;
     await postRun({ id, via, model: modelFromLog(file), project: project && project !== "-" ? project : null,
       task, status: "cancelled", report: "durduruldu (süreç kayıp)", finishedAt: st.mtime.toISOString() });
-    try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, via, project: project && project !== "-" ? project : null, label, brief: task, status: "cancelled" }); } catch { /* usage logging must never affect reconciliation */ }
+    try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, via, project: project && project !== "-" ? project : null, label, brief: task, status: "cancelled" }); } catch { /* usage logging must never affect reconciliation */ }
     n++;
   }
   markLogsSynced(uploaded);
@@ -456,20 +456,20 @@ async function projectKnowledge(o) {
   if (/^(proje kartı: |review-|skill-learn)/.test(o.label ?? "")) return "";
   const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r([]), ms))]);
   try {
-    const mem = await import("../lib/memory.js");
-    const { redact } = await import("../lib/redact.js");
+    const mem = await import("../lib/memory/memory.js");
+    const { redact } = await import("../lib/core/redact.js");
     const q = o.task.slice(0, 600);
-    const proj = (await import("../lib/projects.js")).getProject(o.project);
+    const proj = (await import("../lib/projects/projects.js")).getProject(o.project);
     const [skills, facts, wiki] = await Promise.all([
       timeout(mem.skillSearch(o.project, q, 3).catch(() => []), 6000),
       timeout(mem.recall(o.project, q, 6, { timeoutMs: 6000, factsOnly: true }).catch(() => []), 7000),
       proj?.tdai?.wikiId ? timeout(mem.knowledgeTool(proj.tdai.wikiId, "search", { query: q.slice(0, 300), limit: 3 }).catch(() => null), 6000) : null,
     ]);
     const lines = [];
-    const projectRules = (await import("../lib/project-config.js")).rules(proj);
+    const projectRules = (await import("../lib/projects/project-config.js")).rules(proj);
     if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
     // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
-    const local = (await import("../lib/project-skills.js")).projectSkills(proj?.path, q).slice(0, 4);
+    const local = (await import("../lib/projects/project-skills.js")).projectSkills(proj?.path, q).slice(0, 4);
     if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
     if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
@@ -482,14 +482,14 @@ async function projectKnowledge(o) {
 async function runOneInner(o, via, id) {
   process.env.EKIP_PARENT_RUN = id;
   const logFile = path.join(RUNS, `${id}.log`);
-  if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, model: o.model ?? null, label: o.label ?? null, log: logFile, pid: process.pid });
+  if (o.taskId) (await import("../lib/tasks/tasks.js")).linkWorker(o.taskId, { runId: id, via, model: o.model ?? null, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
   if (o.project) {
-    const { SETTINGS } = await import("../lib/core.js");
-    if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
+    const { SETTINGS } = await import("../lib/core/core.js");
+    if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
     if (!o.knowledgeAdded) { o.knowledgeAdded = true; o.task += await projectKnowledge(o); }
   }
-  try { (await import("../lib/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
+  try { (await import("../lib/projects/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
   activeRuns.set(id, { id, via, project: o.project, task: o.task, label: o.label, model: o.model ?? null, logFile });
   const upload = () => uploadRunLog(id, logFile);
@@ -513,7 +513,7 @@ function modelFromLog(file) {
   try { return fs.readFileSync(file, "utf8").match(/^\s*model\s*:\s*([^\r\n]{1,160})/im)?.[1]?.trim() ?? fs.readFileSync(file, "utf8").match(/"model"\s*:\s*"([^"\r\n]{1,160})"/)?.[1] ?? null; } catch { return null; }
 }
 async function uploadRunLog(id, file) {
-  const { redact } = await import("../lib/redact.js");
+  const { redact } = await import("../lib/core/redact.js");
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   try {
     const st = fs.statSync(file), len = Math.min(st.size, 64 * 1024), fd = fs.openSync(file, "r"), b = Buffer.alloc(len);
@@ -779,7 +779,7 @@ async function hub([sub, url, token]) {
 // and written to the project's memory so later sessions know what was done.
 async function report(run) {
   try {
-    const { recordRun } = await import("../lib/memory.js");
+    const { recordRun } = await import("../lib/memory/memory.js");
     await Promise.race([recordRun(run.project, run), sleep(15000)]);
   } catch { /* memory is best effort */ }
   await postRun({ ...run, finishedAt: new Date().toISOString() });
@@ -792,7 +792,7 @@ const runStart = (id) => id.slice(0, 24).replace(/^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\
 // report() later overwrites it by id.
 async function postRun(run) {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
-  const { pending } = await import("../lib/tasks.js");
+  const { pending } = await import("../lib/tasks/tasks.js");
   const pr = fetch(`${SETTINGS.hubUrl}/api/runs`, {
     method: "POST", signal: AbortSignal.timeout(5000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
@@ -944,8 +944,8 @@ async function lead(args) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
     console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
-    try { const up = (await import("../lib/update.js")).autoUpdate(); if (up.updated) console.log(`        ${c.green(`ekip ${up.from} → ${up.to} güncellendi`)} ${c.gray("(yeni hook'lar bir sonraki açılışta)")}`); } catch { /* offline */ }
-    const onboarding = await import("../lib/onboarding.js");
+    try { const up = (await import("../lib/ops/update.js")).autoUpdate(); if (up.updated) console.log(`        ${c.green(`ekip ${up.from} → ${up.to} güncellendi`)} ${c.gray("(yeni hook'lar bir sonraki açılışta)")}`); } catch { /* offline */ }
+    const onboarding = await import("../lib/projects/onboarding.js");
     const gaps = await onboarding.setupGaps({ cwd: process.cwd() });
     onboarding.printGaps(gaps, { limit: 3 });
     const welcomeFile = path.join(HOME, "onboarding.json");
@@ -962,7 +962,7 @@ async function lead(args) {
   if (free && !member) console.error("ekip: lead session on free-tier models (freellmapi)");
   // awaited: spawnSync below blocks the event loop, so a request still in flight would never leave
   if (!member) await heartbeat();
-  if (!member) await (await import("../lib/limits.js")).push().catch(() => {});
+  if (!member) await (await import("../lib/workers/limits.js")).push().catch(() => {});
   const r = spawnSync("claude", argv, { stdio: "inherit", env });
   return r.status ?? 1;
 }
@@ -1046,10 +1046,10 @@ async function init({ skipKeys = false } = {}) {
     await agentsMain(["login"]);
     step(10, "your projects");
     console.log("Registering projects with a commit in the last 30 days (cards, wiki, code graphs, memory):");
-    await (await import("../lib/projects.js")).main(["scan", "--days", "30", "--yes"]);
+    await (await import("../lib/projects/projects.js")).main(["scan", "--days", "30", "--yes"]);
   }
   console.log("\nDone. Open a new terminal and run: ekip");
-  const onboarding = await import("../lib/onboarding.js");
+  const onboarding = await import("../lib/projects/onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd(), refresh: true }), { heading: true });
 }
 
@@ -1142,7 +1142,7 @@ async function importHistory(args = []) {
   const tdai = depDir("tdai");
   const importer = path.join(tdai, "agents/asset-import.ts");
   if (!fs.existsSync(importer)) die(`TencentDB is not cloned at ${tdai}`);
-  const { identity } = await import("../lib/memory.js");
+  const { identity } = await import("../lib/memory/memory.js");
   const me = await identity();
   const base = path.join(os.homedir(), ".claude/projects");
   const projects = registry();
@@ -1195,7 +1195,7 @@ function reindex() {
 async function memory([sub = "status", ...rest]) {
   if (sub === "import-history") return importHistory(rest);
   if (sub === "reindex") return reindex();
-  if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory.js")).main([sub, ...rest]);
+  if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
     const cmd = sub === "up" ? `cd ${dir} && ./start-memory-core.sh && ./start-memory-hub.sh && PROXY_FULL_STACK=1 ./start-proxy.sh`
@@ -1306,7 +1306,7 @@ async function status() {
     console.log(recent.map((f) => fit(`  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`)).join("\n"));
   }
   try {
-    const note = (await import("../lib/skillgen.js")).statusCandidateNote();
+    const note = (await import("../lib/projects/skillgen.js")).statusCandidateNote();
     if (note) console.log(`${c.yellow("•")} ${note}`);
   } catch { /* status remains available if skill metadata is malformed */ }
   console.log("");
@@ -1426,12 +1426,12 @@ if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "-h", "--help"].in
 }
 let code = 0;
 switch (cmd) {
-  case "run": code = await run(rest); await (await import("../lib/limits.js")).push().catch(() => {}); break;
-  case "review": code = await (await import("../lib/review.js")).main(rest); break;
+  case "run": code = await run(rest); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
+  case "review": code = await (await import("../lib/review/review.js")).main(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
-  case "update": code = (await import("../lib/update.js")).update(); break;
-  case "version": { const u = (await import("../lib/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (yeni sürüm ${u.latest}: ekip update)` : u.latest ? "  (güncel)" : ""}`); break; }
+  case "update": code = (await import("../lib/ops/update.js")).update(); break;
+  case "version": { const u = (await import("../lib/ops/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (yeni sürüm ${u.latest}: ekip update)` : u.latest ? "  (güncel)" : ""}`); break; }
   // ekip show LOG...: a long job started outside `ekip run` (an import, a render, a script) gets the
   // same live pane next to the lead, so nothing runs out of sight.
   case "show": {
@@ -1442,13 +1442,13 @@ switch (cmd) {
   }
   case "skill": case "skills": {
     const [sub = "ls", proj, ...q] = rest;
-    const gen = await import("../lib/skillgen.js");
+    const gen = await import("../lib/projects/skillgen.js");
     if (sub === "learn") { await gen.learn(rest.slice(1)); break; }
     if (sub === "prune") { await gen.prune(rest.slice(1)); break; }
     if (sub === "candidates") { gen.candidates(); break; }
     if (sub === "accept") { gen.accept(proj, q[0]); break; }
     if (sub === "reject") { gen.reject(proj, q[0]); break; }
-    const mem = await import("../lib/memory.js");
+    const mem = await import("../lib/memory/memory.js");
     const pName = proj ?? registry().filter((x) => process.cwd().startsWith(x.path)).sort((a, b) => b.path.length - a.path.length)[0]?.name;
     if (!pName) die("usage: ekip skill ls|search|show <project> [query|name]");
     if (sub === "ls") for (const sk of await mem.projectSkills(pName)) console.log(`${c.cyan(sk.name)}  ${c.gray(sk.description ?? "")}`);
@@ -1458,22 +1458,22 @@ switch (cmd) {
     break;
   }
   case "doctor": await reconcileRuns().catch(() => {});
-    await (await import("../lib/skillgen.js")).doctorLearnOnceDaily().catch(() => {});
-    code = await (await import("../lib/doctor.js")).main(rest);
+    await (await import("../lib/projects/skillgen.js")).doctorLearnOnceDaily().catch(() => {});
+    code = await (await import("../lib/ops/doctor.js")).main(rest);
     // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd), and resend
     // task states the hub missed
-    await (await import("../lib/limits.js")).push().catch(() => {});
-    await (await import("../lib/tasks.js")).syncHub().catch(() => {});
+    await (await import("../lib/workers/limits.js")).push().catch(() => {});
+    await (await import("../lib/tasks/tasks.js")).syncHub().catch(() => {});
     await heartbeat();
-    try { (await import("../lib/update.js")).autoUpdate(); } catch { /* offline */ }
-    await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
-  case "limits": case "limitler": await (await import("../lib/limits.js")).main(rest); break;
-  case "savings": await (await import("../lib/savings.js")).report(rest); break;
+    try { (await import("../lib/ops/update.js")).autoUpdate(); } catch { /* offline */ }
+    await (await import("../lib/workers/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;
+  case "limits": case "limitler": await (await import("../lib/workers/limits.js")).main(rest); break;
+  case "savings": await (await import("../lib/workers/savings.js")).report(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
-    const t = await import("../lib/tasks.js");
+    const t = await import("../lib/tasks/tasks.js");
     try { t.reapStale(); } catch { /* never block a task command */ }
-    if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/limits.js")).push().catch(() => {}); break; }
+    if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);
@@ -1485,11 +1485,11 @@ switch (cmd) {
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;
   case "vps": await vpsMain(rest); break;
-  case "dev": await (await import("../lib/dev.js")).main(rest); break;
+  case "dev": await (await import("../lib/dev/dev.js")).main(rest); break;
   case "tunnel": tunnel(rest); break;
-  case "project": case "projects": code = (await (await import("../lib/projects.js")).main(rest)) ?? 0; break;
-  case "mcp": code = (await (await import("../lib/mcp.js")).main(rest)) ?? 0; break;
-  case "hook": code = (await (await import("../lib/hooks.js")).main(rest)) ?? 0; break;
+  case "project": case "projects": code = (await (await import("../lib/projects/projects.js")).main(rest)) ?? 0; break;
+  case "mcp": code = (await (await import("../lib/memory/mcp.js")).main(rest)) ?? 0; break;
+  case "hook": code = (await (await import("../lib/memory/hooks.js")).main(rest)) ?? 0; break;
   case "remote": await remote(rest); break;
   case "key": await key(rest); break;
   case "keys":
@@ -1511,5 +1511,5 @@ switch (cmd) {
     code = await lead(cmd ? [cmd, ...rest] : []);
 }
 // Let hub pushes started by this command finish (task updates, run reports) before exiting.
-try { const { pending } = await import("../lib/tasks.js"); await Promise.race([Promise.allSettled([...pending]), sleep(5000)]); } catch { /* none */ }
+try { const { pending } = await import("../lib/tasks/tasks.js"); await Promise.race([Promise.allSettled([...pending]), sleep(5000)]); } catch { /* none */ }
 process.exit(code);

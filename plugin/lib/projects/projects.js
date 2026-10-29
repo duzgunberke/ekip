@@ -4,8 +4,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, REPO, SETTINGS, die } from "./core.js";
-import * as mem from "./memory.js";
+import { HOME, REPO, SETTINGS, die } from "../core/core.js";
+import * as mem from "../memory/memory.js";
 
 export const REGISTRY = path.join(HOME, "projects.json");
 export const CARDS = path.join(HOME, "projects");

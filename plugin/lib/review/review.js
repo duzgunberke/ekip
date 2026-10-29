@@ -2,12 +2,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync, spawn } from "node:child_process";
-import { HOME } from "./core.js";
-import { autoOrder, AGENTS } from "./agents.js";
-import { c, dot, fit } from "./ui.js";
-import { t } from "./i18n.js";
+import { HOME } from "../core/core.js";
+import { autoOrder, AGENTS } from "../workers/agents.js";
+import { c, dot, fit } from "../core/ui.js";
+import { t } from "../core/i18n.js";
 
-const EKIP = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js");
+const EKIP = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js");
 const UNSAFE_NAME = /(?:format|prettier\s+--write|eslint\s+--fix|\beas\b|update:|deploy|publish|release|\bpush\b|migrate|seed|db\s+reset)/i;
 const LIVE_URL = /fetch\s*\(\s*["'`]https?:\/\/(?!localhost|127\.0\.0\.1)/;
 // Treat writes as live-service risks only when the receiver looks like an ORM or model repository.
@@ -200,13 +200,13 @@ function extractProfile(output, project) {
 }
 
 async function ensureProfile(project, root, checks, refresh = false, via = null) {
-  const file = (await import("./project-config.js")).reviewProfileFile({ name: project, path: root });
+  const file = (await import("../projects/project-config.js")).reviewProfileFile({ name: project, path: root });
   if (fs.existsSync(file) && !refresh) return fs.readFileSync(file, "utf8");
   const cardFile = path.join(HOME, "projects", `${project}.md`);
   const card = fs.existsSync(cardFile) ? fs.readFileSync(cardFile, "utf8") : "(no project card)";
   let memories = "";
   try {
-    const memory = await import("./memory.js");
+    const memory = await import("../memory/memory.js");
     if (memory.search) memories = JSON.stringify(await memory.search(project, "top project review risks", 5));
   } catch { /* memory context is optional */ }
   const brief = profileBrief(project, root, card + "\n" + memories, checks);
@@ -283,14 +283,14 @@ export async function main(args) {
   }
   if (!repoStates.length) console.log(t("No changed files found."));
   // the project's own checks (.ekip/checks) always run when anything changed
-  if (repoStates.length) for (const x of (await import("./project-config.js")).extraChecks(project)) plan.push({ name: x.name, why: "project check (.ekip/checks)", repo: x.cwd, label: "", cmd: x.cmd });
+  if (repoStates.length) for (const x of (await import("../projects/project-config.js")).extraChecks(project)) plan.push({ name: x.name, why: "project check (.ekip/checks)", repo: x.cwd, label: "", cmd: x.cmd });
   printSelection(plan.map((check) => ({ ...check, name: `${check.label}${check.name}` })), skippedChecks);
 
   // Profile mode only discovers check names; dry-run prints the plan and exits before spawning checks.
   if (sub === "profile") {
     const checkList = plan.map((check) => check.name).join(", ") || "none discovered";
     const profile = await ensureProfile(project.name, project.path, checkList, options.refresh, options.via);
-    const file = (await import("./project-config.js")).reviewProfileFile(project);
+    const file = (await import("../projects/project-config.js")).reviewProfileFile(project);
     console.log(`\n${file}\n${profile.split("\n").slice(0, 40).join("\n")}`);
     return 0;
   }

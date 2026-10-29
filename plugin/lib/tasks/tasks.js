@@ -5,9 +5,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { HOME, SETTINGS, die, sleep, notify } from "./core.js";
-import { c, dot, mark, progress, fit } from "./ui.js";
-import { t as tr, lang } from "./i18n.js";
+import { HOME, SETTINGS, die, sleep, notify } from "../core/core.js";
+import { c, dot, mark, progress, fit } from "../core/ui.js";
+import { t as tr, lang } from "../core/i18n.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -237,7 +237,7 @@ function recentRuns(limit = 4) {
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks.js", "ui.js", "i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), f));
+const CODE = ["tasks/tasks.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;

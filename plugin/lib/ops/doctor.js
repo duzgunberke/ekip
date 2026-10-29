@@ -4,9 +4,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, sleep, tdaiUp } from "./core.js";
-import { c, dot, mark, title, fit } from "./ui.js";
-import { lang, t } from "./i18n.js";
+import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, sleep, tdaiUp } from "../core/core.js";
+import { c, dot, mark, title, fit } from "../core/ui.js";
+import { lang, t } from "../core/i18n.js";
 
 const line = (state, label, detail = "") => console.log(fit(`  ${dot(state)} ${label.padEnd(20)} ${detail}`));
 
@@ -15,7 +15,7 @@ const LABEL = "io.ekip.doctor";
 // launchd runs `ekip doctor --fix` every 30 minutes, so slow or interrupted indexing finishes on its own.
 function install() {
   const plist = path.join(process.env.HOME, "Library/LaunchAgents", `${LABEL}.plist`);
-  const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js");
+  const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js");
   const node = process.execPath;
   fs.writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -40,7 +40,7 @@ export async function main(args = []) {
   console.log(`${mark()}  ${c.gray(fix ? t("doktor · onarım modu") : t("doktor · sadece kontrol (onarmak için --fix)"))}`);
   let problems = 0;
 
-  const onboarding = await import("./onboarding.js");
+  const onboarding = await import("../projects/onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd() }), { heading: true });
 
   console.log(title(t("Bağlantı")));
@@ -57,8 +57,8 @@ export async function main(args = []) {
   line(mem ? "ok" : "bad", "TencentDB", mem ? t("açık") : t("erişilemiyor"));
   if (!mem) { problems++; console.log(`\n  ${c.red(t("Hafıza servisine ulaşılamıyor; proje kontrolleri atlandı."))}`); return 1; }
 
-  const m = await import("./memory.js");
-  const { pool } = await import("./projects.js");
+  const m = await import("../memory/memory.js");
+  const { pool } = await import("../projects/projects.js");
   let projects = [];
   try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")); } catch { /* none */ }
 
@@ -98,7 +98,7 @@ export async function main(args = []) {
   let bf = null; try { bf = JSON.parse((st ?? "").replace(/RUNNING/g, "").trim().split("\n")[0]); } catch { /* none */ }
   const running = /RUNNING/.test(st ?? "");
   if (bf?.layer === "done") line("ok", t("vektörler"), t("tüm kayıtlar vektörlü"));
-  else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
+  else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
   else line("warn", t("vektörler"), t("doldurma hiç çalışmadı (ekip memory reindex)"));
   // for the setup gaps shown at the lead start (onboarding.js reads it without a network call)
   try { fs.writeFileSync(path.join(HOME, "vectors-status.json"), JSON.stringify({ at: Date.now(), missing: bf?.layer === "done" ? 0 : bf ? (running ? 0 : Math.max(0, bf.total - bf.done)) : 0, never: !bf })); } catch { /* best effort */ }

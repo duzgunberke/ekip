@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 const configFile = path.join(process.env.EKIP_HOME ?? path.join(root, "data"), "config.json");
 let configured;
 try { configured = JSON.parse(fs.readFileSync(configFile, "utf8")).lang; } catch { /* optional */ }
