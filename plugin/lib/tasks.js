@@ -7,6 +7,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { HOME, SETTINGS, die, sleep } from "./core.js";
 import { c, dot, mark, progress, fit } from "./ui.js";
+import { t as tr, lang } from "./i18n.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -41,7 +42,7 @@ export function eta(t) {
   return new Date(Date.now() + elapsed * (100 - p) / p).toISOString();
 }
 
-const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? "<1 dk" : m < 60 ? `${m} dk` : `${Math.floor(m / 60)} sa ${m % 60} dk`; };
+const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? tr("<1 dk") : m < 60 ? tr("{n} dk", { n: m }) : tr("{h} sa {m} dk", { h: Math.floor(m / 60), m: m % 60 }); };
 const notify = (title, body) => process.platform === "darwin" && spawnSync("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore" });
 
 // Pushes in flight; ekip.js waits for them before it exits, or the update would be cut off.
@@ -77,7 +78,7 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     if (detail != null) s.detail = detail;
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
-    if (status === "failed") notify(`ekip · ${t.title}`, `Adım takıldı: ${s.title}`);
+    if (status === "failed") notify(`ekip · ${t.title}`, `${lang === "en" ? "Step stalled" : "Adım takıldı"}: ${s.title}`);
   });
 }
 
@@ -90,7 +91,7 @@ export function finish(id, status = "done", note) {
     for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status, endedAt: now() });
     if (note) x.notes.push({ at: now(), text: note });
   });
-  notify(`ekip · ${status === "done" ? "bitti" : "durdu"}`, `${t.title}${note ? ` — ${note}` : ""}`);
+  notify(`ekip · ${status === "done" ? tr("bitti") : tr("durdu")}`, `${t.title}${note ? ` — ${note}` : ""}`);
   return t;
 }
 
@@ -112,15 +113,15 @@ function render(t) {
   const p = percent(t);
   const e = eta(t);
   const elapsed = Date.now() - Date.parse(t.createdAt);
-  const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : c.yellow("sürüyor");
+  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : c.yellow(tr("sürüyor"));
   const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
-  const line = fit(`  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(`geçen ${fmtDur(elapsed)}`)}${e ? c.gray(` · tahmini bitiş ${new Date(e).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} (${fmtDur(Date.parse(e) - Date.now())} kaldı)`) : ""}`);
+  const line = fit(`  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(tr("geçen {duration}", { duration: fmtDur(elapsed) }))}${e ? c.gray(` · ${tr("tahmini bitiş {time} ({duration} kaldı)", { time: new Date(e).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), duration: fmtDur(Date.parse(e) - Date.now()) })}`) : ""}`);
   const steps = t.steps.map((s, i) => {
     const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
     const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
     const stall = stalledFor(s);
-    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)}dır ilerleme yok`)}` : "";
+    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`)}` : "";
     const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
     return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`);
   });
@@ -128,7 +129,7 @@ function render(t) {
   const alive = (w) => { if (!w.pid) return true; try { process.kill(w.pid, 0); return true; } catch { return false; } };
   const workers = t.workers.filter((w) => w.status === "running" && alive(w)).map((w) => {
     const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
-    return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? " · 10 dk'dır çıktı yok" : ""}`)}`);
+    return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? ` · ${lang === "en" ? "no output for 10 min" : "10 dk'dır çıktı yok"}` : ""}`)}`);
   });
   const last = t.notes.at(-1);
   return [head, line, ...steps, ...workers, ...(last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [])].join("\n");
@@ -140,13 +141,13 @@ function renderCompact(t) {
   const p = percent(t);
   const e = eta(t);
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)}dır ilerleme yok`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
+  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
-  const state = t.status === "done" ? c.green("bitti") : t.status === "failed" ? c.red("takıldı") : t.status === "cancelled" ? c.gray("iptal") : "";
-  const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} kaldı`) : "";
+  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : "";
+  const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
   const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
-  const now = fit([...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? `sırada: ${t.steps.find((s) => s.status === "pending").title}` : ""));
-  return `${head}\n${fit(`    ${c.gray(`${done}/${t.steps.length} bitti`)}${now ? `  ${now}` : ""}`)}`;
+  const now = fit([...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
+  return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
 }
 
 export async function main([sub = "ls", ...args]) {
@@ -180,10 +181,10 @@ export async function main([sub = "ls", ...args]) {
     do {
       const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 5 * 60 * 1000)
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
-      let out = `${mark()}  ${c.gray("görevler")}\n\n${list.length ? list.map(render).join("\n\n") : c.gray("  aktif görev yok")}\n`;
+      let out = `${mark()}  ${c.gray(tr("görevler"))}\n\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n`;
       // too tall for the pane: every task in two lines, so none is cut off below the edge
       if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
-        out = `${mark()}  ${c.gray(`görevler · ${list.length}`)}\n${list.map(renderCompact).join("\n")}\n`;
+        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${list.map(renderCompact).join("\n")}\n`;
       if (watching) {
         const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
         const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));

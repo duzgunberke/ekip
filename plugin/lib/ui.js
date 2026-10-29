@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 // Shared terminal language for ekip's own screens. Never color piped output or NO_COLOR.
 const on = (stream = process.stdout) => !!stream.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
 const mode = () => process.env.COLORTERM?.match(/truecolor|24bit/i) ? "rgb" : process.env.TERM?.includes("256color") ? "256" : "16";
@@ -21,6 +22,7 @@ export const strip = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
 export const width = (stream = process.stdout, fallback = 80) => Math.max(24, stream.columns || Number(process.env.COLUMNS) || fallback);
 export function fit(s, max = width()) {
   s = String(s);
+  if (process.env.EKIP_NO_FIT === "1") return s;
   if (strip(s).length <= max) return s;
   let out = "", n = 0;
   for (const part of s.split(/(\x1b\[[0-9;]*m)/g)) {
@@ -40,8 +42,8 @@ export function progress(pct, cells = 16, stream) {
   const chars = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
   return `${c.cyan("█".repeat(full) + (full < cells ? chars[eighth] : ""), stream)}${c.gray("░".repeat(Math.max(0, cells - full - (eighth ? 1 : 0))), stream)}`;
 }
-export const say = (s) => process.stderr.write(`${c.cyan("ekip", process.stderr)} ${c.gray(sym.arrow, process.stderr)} ${s}\n`);
-export const warn = (s) => process.stderr.write(`${c.yellow("ekip", process.stderr)} ${c.yellow("!", process.stderr)} ${s}\n`);
+export const say = (s) => process.stderr.write(`${c.cyan("ekip", process.stderr)} ${c.gray(sym.arrow, process.stderr)} ${t(s)}\n`);
+export const warn = (s) => process.stderr.write(`${c.yellow("ekip", process.stderr)} ${c.yellow("!", process.stderr)} ${t(s)}\n`);
 
 // The logo in the terminal: the prompt (the lead, amber) fanning out to the team (teal).
 const LEAD = [[255, 180, 92], [247, 150, 74], [240, 123, 63], [240, 123, 63]];
@@ -49,7 +51,7 @@ const TEAM = [45, 212, 191];
 const CHEVRON = ["  ▜█▄    ", "    ▜█▄  ", "    ▟█▀  ", "  ▟█▀    "];
 const FAN = ["     ╭──●", "─────┼──●", "     ╰──●", ""];
 export function banner(stream = process.stdout) {
-  const text = [c.bold("ekip", stream), c.gray("tek terminal, tek Claude, koca bir ekip", stream), "", ""];
+  const text = [c.bold("ekip", stream), c.gray(t("tek terminal, tek Claude, koca bir ekip"), stream), "", ""];
   const lines = CHEVRON.map((ch, i) => `${c.rgb(LEAD[i], ch, stream)}${c.rgb(TEAM, FAN[i].padEnd(9), stream)}   ${text[i]}`.trimEnd());
   return `\n${lines.join("\n")}\n`;
 }

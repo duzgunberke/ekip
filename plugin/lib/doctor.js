@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, sleep, tdaiUp } from "./core.js";
 import { c, dot, mark, title, fit } from "./ui.js";
+import { lang, t } from "./i18n.js";
 
 const line = (state, label, detail = "") => console.log(fit(`  ${dot(state)} ${label.padEnd(20)} ${detail}`));
 
@@ -36,29 +37,29 @@ export async function main(args = []) {
   if (args.includes("--install")) { install(); return 0; }
   if (args.includes("--uninstall")) { spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${LABEL}`], { stdio: "ignore" }); console.log("periodic doctor removed"); return 0; }
   const fix = args.includes("--fix");
-  console.log(`${mark()}  ${c.gray(fix ? "doktor · onarım modu" : "doktor · sadece kontrol (onarmak için --fix)")}`);
+  console.log(`${mark()}  ${c.gray(fix ? t("doktor · onarım modu") : t("doktor · sadece kontrol (onarmak için --fix)"))}`);
   let problems = 0;
 
-  console.log(title("Bağlantı"));
+  console.log(title(t("Bağlantı")));
   if (REMOTE) {
     const t = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
     const running = /state = running/.test(t.stdout ?? "");
-    line(running ? "ok" : "bad", "VPS tüneli", running ? `${REMOTE.ssh} açık` : "kapalı");
-    if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", "tünel yeniden başlatıldı"); } }
+    line(running ? "ok" : "bad", "VPS tüneli", running ? `${REMOTE.ssh} açık` : t("kapalı"));
+    if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", t("tünel yeniden başlatıldı")); } }
   }
   const free = await healthy();
-  line(free ? "ok" : "bad", "freellmapi", free ? `${keyCounts().length} sağlayıcı` : "erişilemiyor");
+  line(free ? "ok" : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}` : t("erişilemiyor"));
   if (!free) problems++;
   const mem = await tdaiUp();
-  line(mem ? "ok" : "bad", "TencentDB", mem ? "açık" : "erişilemiyor");
-  if (!mem) { problems++; console.log(`\n  ${c.red("Hafıza servisine ulaşılamıyor; proje kontrolleri atlandı.")}`); return 1; }
+  line(mem ? "ok" : "bad", "TencentDB", mem ? t("açık") : t("erişilemiyor"));
+  if (!mem) { problems++; console.log(`\n  ${c.red(t("Hafıza servisine ulaşılamıyor; proje kontrolleri atlandı."))}`); return 1; }
 
   const m = await import("./memory.js");
   const { pool } = await import("./projects.js");
   let projects = [];
   try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")); } catch { /* none */ }
 
-  console.log(title(`Projeler (${projects.length})`));
+  console.log(title(t("Projeler ({n})", { n: projects.length })));
   const rows = await pool(projects, 3, async (p) => {
     const graphs = await pool(p.tdai?.codeGraphs ?? [], 2, async (g) => ({ g, s: await m.codeGraphStatus(g.id).catch((e) => ({ status: "error", error: e.message })) }));
     const wiki = p.tdai?.wikiId ? await m.wikiStatus(p.tdai.wikiId).catch((e) => ({ status: "error", error: e.message })) : null;
@@ -81,37 +82,37 @@ export async function main(args = []) {
     const pct = r.wiki?.progress?.percent;
     const state = badGraphs.length || wikiBad ? "bad" : busy || unknown || !["ready", "-"].includes(w) ? "warn" : "ok";
     if (state === "bad") problems++;
-    const wikiText = wikiBad ? c.red("başarısız") : w === "ready" ? c.green(`hazır${r.wiki.pages ? ` · ${r.wiki.pages} sayfa` : ""}`) + (wikiFailedSources ? c.yellow(` (${wikiFailedSources} dosya tekrar denenecek)`) : "") : w === "error" ? c.gray("sorgulanamadı") : c.yellow(w === "processing" ? `işleniyor${pct != null ? ` %${pct}` : ""}` : w);
-    line(state, r.p.name, `${c.gray("graph")} ${ready}/${r.graphs.length}${busy ? c.yellow(` (${busy} işleniyor)`) : ""}${badGraphs.length ? c.red(` (${badGraphs.length} hatalı)`) : ""}${unknown ? c.gray(` (${unknown} sorgulanamadı)`) : ""}  ${c.gray("wiki")} ${wikiText}  ${c.gray("hafıza")} ${r.hits ? c.green(`${r.hits}+ kayıt`) : c.gray("henüz yok")}`);
+    const wikiText = wikiBad ? c.red(t("başarısız")) : w === "ready" ? c.green(`${t("hazır")}${r.wiki.pages ? ` · ${r.wiki.pages} ${t("sayfa")}` : ""}`) + (wikiFailedSources ? c.yellow(` (${wikiFailedSources} ${t("dosya tekrar denenecek")})`) : "") : w === "error" ? c.gray(t("sorgulanamadı")) : c.yellow(w === "processing" ? `${t("işleniyor")}${pct != null ? ` %${pct}` : ""}` : w);
+    line(state, r.p.name, `${c.gray(t("graph"))} ${ready}/${r.graphs.length}${busy ? c.yellow(` (${busy} ${t("işleniyor")})`) : ""}${badGraphs.length ? c.red(` (${badGraphs.length} ${t("hatalı")})`) : ""}${unknown ? c.gray(` (${unknown} ${t("sorgulanamadı")})`) : ""}  ${c.gray(t("wiki"))} ${wikiText}  ${c.gray(t("hafıza"))} ${r.hits ? c.green(`${r.hits}+ ${t("kayıt")}`) : c.gray(t("henüz yok"))}`);
     if (wikiBad || wikiFailedSources) repairs.push(["wiki", r.p]);
     if (badGraphs.length) repairs.push(["graph", r.p]);
   }
 
-  console.log(title("Vektör indeksi"));
+  console.log(title(t("Vektör indeksi")));
   const st = REMOTE
     ? spawnSync("ssh", ["-o", "BatchMode=yes", REMOTE.ssh, "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout
     : spawnSync("sh", ["-c", "docker exec tdai-memory-core cat /data/tdai-memory/backfill.state.json 2>/dev/null; docker exec tdai-memory-core sh -c 'grep -qs backfill[.]mjs /proc/[0-9]*/cmdline' && echo RUNNING"], { encoding: "utf8" }).stdout;
   let bf = null; try { bf = JSON.parse((st ?? "").replace(/RUNNING/g, "").trim().split("\n")[0]); } catch { /* none */ }
   const running = /RUNNING/.test(st ?? "");
-  if (bf?.layer === "done") line("ok", "vektörler", "tüm kayıtlar vektörlü");
-  else if (bf) { line(running ? "warn" : "bad", "vektörler", `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? " · dolduruluyor" : " · durdu"}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
-  else line("warn", "vektörler", "doldurma hiç çalışmadı (ekip memory reindex)");
+  if (bf?.layer === "done") line("ok", t("vektörler"), t("tüm kayıtlar vektörlü"));
+  else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
+  else line("warn", t("vektörler"), t("doldurma hiç çalışmadı (ekip memory reindex)"));
 
-  console.log(title("Geçmiş oturumlar"));
+  console.log(title(t("Geçmiş oturumlar")));
   let done = 0;
   try { done = JSON.parse(fs.readFileSync(path.join(HOME, "memory-state/asset-import.json"), "utf8")).done?.length ?? 0; } catch { /* none */ }
-  line(done ? "ok" : "warn", "içe aktarılan", `${done} öğe`);
+  line(done ? "ok" : "warn", t("içe aktarılan"), `${done} ${t("öğe")}`);
 
   if (fix && repairs.length) {
-    console.log(title("Onarım"));
+    console.log(title(t("Onarım")));
     for (const [kind, p] of repairs) {
       try {
-        if (kind === "wiki") { const r = await m.ingestWiki(p); line("warn", p.name, `wiki yeniden kuyrukta (${r.files ?? "?"} dosya)`); }
-        else { const r = await m.syncCodeGraphs(p); line("warn", p.name, `${r.length} graph yeniden senkron`); }
+        if (kind === "wiki") { const r = await m.ingestWiki(p); line("warn", p.name, `${t("wiki requeued")} (${r.files ?? "?"} ${t("files")})`); }
+        else { const r = await m.syncCodeGraphs(p); line("warn", p.name, `${r.length} ${t("graphs resynced")}`); }
       } catch (e) { line("bad", p.name, c.red(e.message.slice(0, 120))); }
     }
   }
-  console.log(`\n  ${problems ? c.yellow(`${problems} sorun${fix ? " · onarılabilenler başlatıldı, birkaç dakika sonra tekrar bak" : " · onarmak için: ekip doctor --fix"}`) : c.green("her şey yolunda")}\n`);
+  console.log(`\n  ${problems ? c.yellow(`${problems} ${t("sorunlar")}${fix ? ` · ${t("onarılabilenler başlatıldı, birkaç dakika sonra tekrar bak")}` : ` · ${t("onarmak için: ekip doctor --fix")}`}`) : c.green(t("her şey yolunda"))}\n`);
   void SETTINGS;
   return problems ? 1 : 0;
 }

@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { HOME, SETTINGS, URL_ROOT, die, has, saveSettings, unifiedKey, up } from "./core.js";
 import { c, dot, fit } from "./ui.js";
+import { t } from "./i18n.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
 const qwenOAuth = () => fs.existsSync(path.join(os.homedir(), ".qwen/oauth_creds.json"));
@@ -101,13 +102,13 @@ export async function main([sub = "ls", ...names]) {
     for (const [n, a] of Object.entries(AGENTS).filter(([, a]) => !a.hidden?.())) {
       const s = state()[n];
       const st = !has(a.bin) ? "off" : s?.ok ? "ok" : s ? "bad" : "warn";
-      const label = !has(a.bin) ? c.gray("kurulu değil") : s?.ok ? c.green("hazır") : s ? c.red(a.login ? `giriş gerekiyor` : "çalışmıyor") : c.yellow("denenmedi");
+      const label = !has(a.bin) ? c.gray(t("kurulu değil")) : s?.ok ? c.green(t("hazır")) : s ? c.red(a.login ? t("giriş gerekiyor") : t("çalışmıyor")) : c.yellow(t("denenmedi"));
       const sc = poolScore(n);
-      const perf = sc.runs ? c.gray(` · ${sc.runs} iş, %${Math.round(sc.rate * 100)} başarı${sc.avgMin != null ? `, ort. ${sc.avgMin} dk` : ""}${sc.cooling ? ", şu an geri planda" : ""}`) : "";
-      const labelText = !has(a.bin) ? "kurulu değil" : s?.ok ? "hazır" : s ? (a.login ? "giriş gerekiyor" : "çalışmıyor") : "denenmedi";
-      console.log(fit(`  ${dot(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(a.quota)}${perf}`));
+      const perf = sc.runs ? c.gray(` · ${sc.runs} ${t("runs")}, ${Math.round(sc.rate * 100)}% ${t("success rate")}${sc.avgMin != null ? `, ${t("avg.")} ${sc.avgMin} ${t("min")}` : ""}${sc.cooling ? `, ${t("currently deprioritized")}` : ""}`) : "";
+      const labelText = !has(a.bin) ? t("kurulu değil") : s?.ok ? t("hazır") : s ? (a.login ? t("giriş gerekiyor") : t("çalışmıyor")) : t("denenmedi");
+      console.log(fit(`  ${dot(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(t(a.quota))}${perf}`));
     }
-    console.log(fit(`\n  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
+    console.log(fit(`\n  ${c.gray(t("auto sırası:"))} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
   } else if (sub === "install") {
     const pkgs = pick.filter((n) => AGENTS[n].pkg && !has(AGENTS[n].bin)).map((n) => AGENTS[n].pkg);
     if (pkgs.length) spawnSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });
@@ -117,7 +118,7 @@ export async function main([sub = "ls", ...names]) {
     for (const n of pick) {
       const a = AGENTS[n];
       if (!a.login || !has(a.bin)) continue;
-      console.log(`\n── ${n}: ${a.quota}\n   sign in, then exit the tool (Ctrl+C or /quit) to continue`);
+      console.log(`\n── ${n}: ${t(a.quota)}\n   sign in, then exit the tool (Ctrl+C or /quit) to continue`);
       spawnSync(a.login[0], a.login.slice(1), { stdio: "inherit" });
     }
     await test(pick);
@@ -133,6 +134,6 @@ async function test(names) {
     const r = spawnSync(a.bin, a.argv("Reply with exactly: OK", { cwd: process.cwd(), model: null }), { encoding: "utf8", timeout: 180_000 });
     const ok = r.status === 0 && /\bOK\b/.test(r.stdout ?? "");
     setState(n, { ok, testedAt: new Date().toISOString() });
-    console.log(`  ${dot(ok ? "ok" : "bad")} ${n.padEnd(9)} ${ok ? c.green("hazır") : c.red(`sorun: ${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "çıktı yok"}`)}`);
+    console.log(`  ${dot(ok ? "ok" : "bad")} ${n.padEnd(9)} ${ok ? c.green(t("hazır")) : c.red(`${t("sorun: ")}${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "no output"}`)}`);
   }
 }

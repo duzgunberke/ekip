@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { t } from "./i18n.js";
 
 // Everything ekip keeps (keys, run transcripts, logs, cloned dependencies) lives inside the repo it
 // runs from, so the whole setup sits on one disk and moves with the folder. EKIP_HOME overrides it.
@@ -29,7 +30,7 @@ export const RUNS = path.join(HOME, "runs");
 export const FREE_CLAUDE_HOME = path.join(HOME, "claude-free");
 
 const errTTY = process.stderr.isTTY && !process.env.NO_COLOR;
-export const die = (msg, code = 1) => { process.stderr.write(`${errTTY ? "\x1b[31mekip ✗\x1b[39m" : "ekip:"} ${msg}\n`); process.exit(code); };
+export const die = (msg, code = 1) => { process.stderr.write(`${errTTY ? "\x1b[31mekip ✗\x1b[39m" : "ekip:"} ${t(msg)}\n`); process.exit(code); };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
 fs.mkdirSync(path.dirname(LOG), { recursive: true });

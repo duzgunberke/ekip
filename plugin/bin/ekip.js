@@ -17,6 +17,7 @@ import {
 import { POINTER, REMOTE, ROOT, TUNNEL_LABEL, openPane, restartFree, ssh } from "../lib/core.js";
 import { AGENTS, autoOrder, main as agentsMain, recordStat } from "../lib/agents.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit } from "../lib/ui.js";
+import { lang, t } from "../lib/i18n.js";
 import { main as vpsMain } from "../lib/vps.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -395,10 +396,10 @@ async function runOneInner(o, via, id) {
   const order = via === "auto" ? autoOrder() : [via];
   let last = null;
   for (const v of order) {
-    say(`${c.bold(v, process.stderr)} çalışıyor ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
+    say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
     if (!failed(last)) return { ok: true, via: v, out: last.out.trim(), logFile };
-    warn(`${c.bold(v, process.stderr)} başarısız (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
+    warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
   }
   return { ok: false, via, out: last?.out.trim() ?? "", logFile };
 }
@@ -1036,38 +1037,68 @@ async function status() {
   const free = await healthy();
   const counts = free ? keyCounts() : [];
   const mem = await tdaiUp();
-  console.log(title("Havuzlar"));
+  console.log(title(t("Havuzlar")));
   console.log(rows([
-    [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} sağlayıcı ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}` : c.red("kapalı (ekip up)")],
+    [`${dot(free ? (counts.length > 1 ? "ok" : "warn") : "bad")} freellmapi`, free ? `${counts.length} ${t("sağlayıcı")} ${c.gray(counts.map(([p, n]) => `${p}×${n}`).join(" "))}` : c.red(t("kapalı (ekip up)"))],
     ...Object.entries(AGENTS).filter(([, a]) => !a.hidden?.()).map(([n, a]) => {
       const st = SETTINGS.agents?.[n];
       const state = !has(a.bin) ? "off" : st?.ok ? "ok" : st ? "bad" : "warn";
-      const label = !has(a.bin) ? c.gray("kurulu değil") : st?.ok ? c.green("hazır") : st ? c.red(a.login ? `giriş gerekiyor → ekip agents login ${n}` : "çalışmıyor → ekip agents test") : c.yellow("denenmedi");
-      return [`${dot(state)} ${n}`, `${label} ${c.gray(a.quota)}`];
+      const label = !has(a.bin) ? c.gray(t("kurulu değil")) : st?.ok ? c.green(t("hazır")) : st ? c.red(a.login ? `${t("giriş gerekiyor")} → ekip agents login ${n}` : t("çalışmıyor → ekip agents test")) : c.yellow(t("denenmedi"));
+      return [`${dot(state)} ${n}`, `${label} ${c.gray(t(a.quota))}`];
     }),
-    [`${dot("ok")} claude`, `${c.green("hazır")} ${c.gray("aboneliğin (lead)")}`],
+    [`${dot("ok")} claude`, `${c.green(t("hazır"))} ${c.gray(t("aboneliğin (lead)"))}`],
   ]));
   console.log(fit(`  ${c.gray("auto sırası:")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
 
-  console.log(title("Hafıza ve hub"));
+  console.log(title(t("Hafıza ve hub")));
   console.log(rows([
-    [`${dot(mem ? "ok" : "bad")} TencentDB`, mem ? `açık ${c.gray(REMOTE ? `VPS ${REMOTE.ssh} (tünel)` : "yerel")}` : c.red("kapalı")],
-    [`${dot(SETTINGS.hubUrl ? "ok" : "off")} panel`, SETTINGS.hubUrl ? c.under(SETTINGS.hubUrl) : c.gray("bağlı değil (ekip hub link)")],
-    [`${dot(registry().length ? "ok" : "off")} projeler`, `${registry().length} kayıtlı ${c.gray("(ekip project ls)")}`],
+    [`${dot(mem ? "ok" : "bad")} TencentDB`, mem ? `${t("açık")} ${c.gray(REMOTE ? `VPS ${REMOTE.ssh} (${t("tünel")})` : t("yerel"))}` : c.red(t("kapalı"))],
+    [`${dot(SETTINGS.hubUrl ? "ok" : "off")} panel`, SETTINGS.hubUrl ? c.under(SETTINGS.hubUrl) : c.gray(t("bağlı değil (ekip hub link)"))],
+    [`${dot(registry().length ? "ok" : "off")} projeler`, `${registry().length} ${t("kayıtlı")} ${c.gray("(ekip project ls)")}`],
   ]));
   if (has("tmux")) {
-    console.log(title("Ekip"));
-    console.log(rows(Object.keys(TEAM).map((n) => [`${dot(tmuxHas(n) ? "ok" : "off")} ${n}`, tmuxHas(n) ? c.green("çalışıyor") : c.gray("durdu")])));
+    console.log(title(t("Ekip")));
+    console.log(rows(Object.keys(TEAM).map((n) => [`${dot(tmuxHas(n) ? "ok" : "off")} ${n}`, tmuxHas(n) ? c.green(t("çalışıyor")) : c.gray(t("durdu"))])));
   }
   const recent = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")).sort().slice(-5).reverse();
   if (recent.length) {
-    console.log(title("Son çalıştırmalar"));
+    console.log(title(t("Son çalıştırmalar")));
     console.log(recent.map((f) => fit(`  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`)).join("\n"));
   }
   console.log("");
 }
 
-const HELP = () => `${banner()}
+const HELP = () => lang === "en" ? `${banner()}
+
+${c.bold("Everyday")}
+  ${c.cyan("ekip")}                          lead Claude session (your subscription); delegates work
+  ${c.cyan("ekip --free")}                   lead on free models (when Claude limits run out)
+  ${c.cyan("ekip --safe")}                   ask before taking actions (default: automatic)
+  ${c.cyan("ekip status")}                   pools, memory, panel, team, recent runs
+  ${c.cyan("ekip limits")}                   pool limits and where a new task will go
+  ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
+
+${c.bold("Workers")}
+  ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] "task"')}
+  ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
+  ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
+  ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
+
+${c.bold("Projects and memory")}
+  ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip skill")} ${c.gray("ls|search|show <project> [query|name]")} project procedures
+
+${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
+  ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
+
+${c.bold("Setup")}
+  ${c.cyan("ekip init")}                     one-time setup
+  ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         free provider API keys (opens provider pages)
+  ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
+`.split("\n").map((line) => fit(line)).join("\n") : `${banner()}
 
 ${c.bold("Günlük")}
   ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır

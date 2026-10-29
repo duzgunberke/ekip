@@ -10,6 +10,7 @@ import { AGENTS, autoOrder, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
 import { REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey } from "./core.js";
 import { c, dot, title, fit } from "./ui.js";
+import { t, lang } from "./i18n.js";
 
 // Quota messages worth surfacing, newest log first; "Resets in 140h45m18s" gives the reopen time.
 const QUOTA = [
@@ -88,7 +89,7 @@ const ago = (iso) => {
   const ms = Date.parse(iso) - Date.now();
   const h = Math.floor(Math.abs(ms) / 3600000), m = Math.round((Math.abs(ms) % 3600000) / 60000);
   const d = Math.floor(h / 24);
-  return d ? `${d} gün ${h % 24} sa` : h ? `${h} sa ${m} dk` : `${m} dk`;
+  return d ? (lang === "en" ? `${d} day${d === 1 ? "" : "s"} ${h % 24} hr` : `${d} gün ${h % 24} sa`) : h ? t("{n} sa {m} dk", { n: h, m }) : t("{n} dk", { n: m });
 };
 
 export async function snapshot() {
@@ -106,31 +107,46 @@ export async function push(s) {
     body: JSON.stringify(s), signal: AbortSignal.timeout(8000) }).catch(() => {});
 }
 
-export async function main(args = []) {
-  const s = await snapshot();
-  console.log(title("İşçi havuzları (kendi kotaları)"));
-  const label = { ready: c.green("hazır"), limited: c.red("limitte"), login: c.yellow("giriş gerekiyor"), untested: c.gray("denenmedi"), off: c.gray("kurulu değil") };
+export function render(s, args = []) {
+  console.log(title(t("İşçi havuzları (kendi kotaları)")));
+  const label = { ready: c.green(t("hazır")), limited: c.red(t("limitte")), login: c.yellow(t("giriş gerekiyor")), untested: c.gray(t("denenmedi")), off: c.gray(t("kurulu değil")) };
   for (const w of s.workers) {
     const tone = w.status === "ready" ? "ok" : w.status === "limited" ? "bad" : w.status === "off" ? "off" : "warn";
-    const lim = w.limit ? c.gray(` · ${w.limit.resetAt ? `${ago(w.limit.resetAt)} sonra açılır` : w.limit.message}`) : "";
-    const perf = w.runs ? c.gray(` · ${w.runs} iş, %${w.successRate} başarı`) : "";
-    console.log(fit(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status]}${lim}${perf}  ${c.gray(w.quota)}`));
+    const lim = w.limit ? c.gray(` · ${w.limit.resetAt ? `${t("resets in")} ${ago(w.limit.resetAt)}` : w.limit.message}`) : "";
+    const perf = w.runs ? c.gray(` · ${w.runs} ${t("runs")}, ${w.successRate}% ${t("success rate")}`) : "";
+    console.log(fit(`  ${dot(tone)} ${w.name.padEnd(9)} ${label[w.status]}${lim}${perf}  ${c.gray(t(w.quota))}`));
   }
-  console.log(title("Ücretsiz havuz (freellmapi)"));
+  console.log(title(t("Ücretsiz havuz (freellmapi)")));
   if (s.free.error) console.log(`  ${dot("bad")} ${c.red(s.free.error)}`);
   else for (const p of s.free) {
     const tone = p.status === "healthy" ? "ok" : p.status === "rate_limited" ? "warn" : "bad";
-    const st = p.status === "healthy" ? c.green("sağlıklı") : p.status === "rate_limited" ? c.yellow(`limitte${p.resumeAt ? ` · ${ago(p.resumeAt)} sonra` : ""}`) : p.status === "no_models" ? c.red("kullanılacak model yok") : c.red(p.status);
-    const day = p.ok24 + p.fail24 ? c.gray(` · 24 sa: ${p.ok24} başarılı, ${p.fail24} hata`) : "";
-    const models = p.models ? c.gray(`${p.models - p.cooling}/${p.models} model açık`) : "";
+    const st = p.status === "healthy" ? c.green(t("sağlıklı")) : p.status === "rate_limited" ? c.yellow(`${t("limited")}${p.resumeAt ? ` · ${ago(p.resumeAt)} ${t("later")}` : ""}`) : p.status === "no_models" ? c.red("no models available") : c.red(p.status);
+    const day = p.ok24 + p.fail24 ? c.gray(` · ${t("24 sa")}: ${p.ok24} ${t("başarılı")}, ${p.fail24} ${t("hata")}`) : "";
+    const models = p.models ? c.gray(`${p.models - p.cooling}/${p.models} ${t("model açık")}`) : "";
     console.log(fit(`  ${dot(tone)} ${p.name.padEnd(18)} ${st}  ${models}${day}`));
   }
-  console.log(title("Şimdi bir iş gelse"));
-  console.log(fit(`  ${c.gray("işçi (--via auto):")} ${c.bold(c.cyan(s.route.worker))}${s.route.skipped.length ? c.gray(`  (limitte, atlanır: ${s.route.skipped.join(", ")})`) : ""}`));
-  console.log(fit(`  ${c.gray("sıra:")} ${s.route.order.map((n) => (s.route.skipped.includes(n) ? c.gray(n) : c.cyan(n))).join(c.gray(" → "))}`));
+  console.log(title(t("Şimdi bir iş gelse")));
+  console.log(fit(`  ${c.gray(t("işçi (--via auto):"))} ${c.bold(c.cyan(s.route.worker))}${s.route.skipped.length ? c.gray(`  (${t("limited, skipped: ")}${s.route.skipped.join(", ")})`) : ""}`));
+  console.log(fit(`  ${c.gray(t("sıra:"))} ${s.route.order.map((n) => (s.route.skipped.includes(n) ? c.gray(n) : c.cyan(n))).join(c.gray(" → "))}`));
   for (const [prof, r] of Object.entries(s.route.profiles ?? {}))
-    console.log(fit(`  ${c.gray(`${prof.padEnd(15)}›`)} ${r.next[0] ?? c.red("açık model yok")}${r.next.length > 1 ? c.gray(`, sonra ${r.next.slice(1).join(", ")}`) : ""}${r.cooling ? c.gray(`  (${r.cooling}/${r.models} soğumada)`) : ""}`));
+    console.log(fit(`  ${c.gray(`${prof.padEnd(15)}›`)} ${r.next[0] ?? c.red(t("açık model yok"))}${r.next.length > 1 ? c.gray(`, ${t("sonra ")}${r.next.slice(1).join(", ")}`) : ""}${r.cooling ? c.gray(`  (${r.cooling}/${r.models} ${t("cooling down")})`) : ""}`));
   // hub copy for the web panel
-  if (!args.includes("--local")) await push(s);
   console.log("");
+}
+
+export async function main(args = []) {
+  const demoAt = args.indexOf("--demo");
+  if (demoAt >= 0) {
+    const file = args[demoAt + 1];
+    if (!file) throw new Error("usage: limits --demo snapshot.json");
+    render(JSON.parse(fs.readFileSync(file, "utf8")), ["--local"]);
+    return;
+  }
+  const s = await snapshot();
+  render(s, args);
+  if (!args.includes("--local")) await push(s);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+  main(process.argv.slice(2)).catch((e) => { console.error(e.message); process.exitCode = 1; });
 }
