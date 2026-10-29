@@ -410,12 +410,23 @@ export async function reconcileRuns() {
   let files = [];
   try { files = fs.readdirSync(RUNS).filter((f) => f.endsWith(".log")); } catch { return 0; }
   let n = 0;
+  const synced = runsSynced();
   for (const f of files) {
     const file = path.join(RUNS, f);
     const st = fs.statSync(file);
     if (Date.now() - st.mtimeMs > 7 * 86400_000) continue;
     const tail = (() => { const fd = fs.openSync(file, "r"); const len = Math.min(st.size, 4096); const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); return b.toString("utf8"); })();
-    if (/\[exit -?\d+\]/.test(tail)) continue;
+    const exit = tail.match(/\[exit (-?\d+)\][^\n]*\s*$/)?.[1];
+    if (exit != null) {
+      if (SETTINGS.hubUrl && !synced.has(f.slice(0, -4))) {
+        const head = fs.readFileSync(file, "utf8").slice(0, 4000);
+        const id = f.slice(0, -4), project = head.match(/^project: (.*)$/m)?.[1];
+        await postRun({ id, via: id.split("Z-")[1] ?? null, model: modelFromLog(file), project: project && project !== "-" ? project : null,
+          task: head.match(/^task:\n([\s\S]*?)(?=\n\n|$)/m)?.[1] ?? "", status: exit === "0" ? "done" : "failed",
+          report: tail.replace(/\n\[exit[\s\S]*$/, "").trim().slice(-1500), finishedAt: st.mtime.toISOString() });
+      }
+      continue;
+    }
     const head = fs.readFileSync(file, "utf8").slice(0, 4000);
     const pid = Number(head.match(/^pid: (\d+)$/m)?.[1]) || null;
     // logs from before pids were written: only when quiet for 3 hours
@@ -704,8 +715,19 @@ async function postRun(run) {
     method: "POST", signal: AbortSignal.timeout(5000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify({ startedAt: runStart(run.id), ...run, host: os.hostname() }),
-  }).catch(() => {}).finally(() => pending.delete(pr));
+  }).then((r) => { if (r.ok && run.status !== "running") markRunSynced(run.id); }, () => {}).finally(() => pending.delete(pr));
   pending.add(pr);
+}
+
+// Finished runs whose final state reached the hub. reconcileRuns resends the others, so a run that
+// ended while the hub was unreachable (or as its process exited) does not stay "running" there.
+const RUNS_SYNCED = () => path.join(HOME, "runs-synced.json");
+const runsSynced = () => { try { return new Set(JSON.parse(fs.readFileSync(RUNS_SYNCED(), "utf8"))); } catch { return new Set(); } };
+function markRunSynced(id) {
+  const s = runsSynced();
+  if (s.has(id)) return;
+  s.add(id);
+  try { fs.writeFileSync(RUNS_SYNCED(), JSON.stringify([...s].slice(-2000))); } catch { /* best effort */ }
 }
 
 // ---- the lead session -------------------------------------------------------------------------
@@ -1325,7 +1347,7 @@ switch (cmd) {
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
     try { t.reapStale(); } catch { /* never block a task command */ }
-    if (cmd === "tasks" && rest[0] === "sync") { console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/limits.js")).push().catch(() => {}); break; }
+    if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/limits.js")).push().catch(() => {}); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);

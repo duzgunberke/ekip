@@ -84,7 +84,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
               {translate('Çalışan ajanlar')} ({formatNumber(workers.length)})
             </h3>
             {workers.length === 0 ? (
-              <p className='text-sm text-muted-foreground'>{translate('Şu an çalışan ajan yok.')}</p>
+              <p className='text-sm text-muted-foreground'>{translate('İşçi yok: bu görevi lead (Claude) kendisi yürütüyor.')}</p>
             ) : (
               <ul className='grid gap-1.5'>
                 {workers.map((w, i) => (

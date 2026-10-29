@@ -278,7 +278,7 @@ export async function main([sub = "ls", ...args]) {
       process.on("SIGINT", restore); process.on("SIGTERM", restore);
     }
     do {
-      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 5 * 60 * 1000)
+      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 60 * 1000)
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
       const runs = watching ? recentRuns() : [];
       const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";

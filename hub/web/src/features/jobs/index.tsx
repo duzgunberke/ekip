@@ -171,7 +171,7 @@ export function Jobs() {
       <Main>
         <PageTitle
           title={t('İşler')}
-          description={t("Hub'ın sunucuda çalıştırdığı görevler. Satıra tıklayarak ayrıntı ve canlı günlüğü açın.")}
+          description={t("Sunucuda `ekip job` ile kuyruğa eklenip çalışan işler; Mac kapalıyken de sürer. Mac'teki işçiler Çalıştırmalar sayfasında.")}
           actions={
             <Button onClick={() => openNewJob()}>
               <Plus /> {t('Yeni iş')}
