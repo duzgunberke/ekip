@@ -137,7 +137,7 @@ const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR
              a,b,c runs the same task on several pools, each in its own git worktree and branch
   --project  a registered project (ekip project ls); sets the folder and its memory
   --plugin   load an installed Claude plugin into a free/claude worker (e.g. lemo-opuscar)
-  --skill    load a skill from ~/.claude/skills into a free/claude worker
+  --skill    load a project-local skill, then ~/.claude/skills, into a worker
   --task ID  show this worker under a task (ekip task new ...) while it runs
   --label T  a short name for the worker in the task view
   --no-watch don't open a pane that shows the worker live
@@ -274,8 +274,21 @@ function runStream(cmd, argv, opts, logFile, kind) {
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
 const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && LIMIT_RE.test(r.out));
 
-// --plugin NAME: an installed Claude Code plugin; --skill NAME: a skill under ~/.claude/skills,
+// --plugin NAME: an installed Claude Code plugin; --skill NAME: a project or user skill,
 // wrapped as a one-skill plugin so --bare sessions can load it with --plugin-dir.
+function localSkillPath(o, name) {
+  if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") return null;
+  const project = registry().find((p) => p.name === o.project) ?? registry().filter((p) => o.cwd === p.path || o.cwd.startsWith(`${p.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
+  const root = project?.path ?? o.cwd;
+  const roots = [root];
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") roots.push(path.join(root, entry.name));
+    }
+  } catch { /* a missing project root has no local skills */ }
+  return roots.map((dir) => path.join(dir, ".claude", "skills", name)).find((dir) => fs.existsSync(path.join(dir, "SKILL.md"))) ?? null;
+}
+
 function pluginDirs(o) {
   const dirs = [];
   let installed = {};
@@ -286,9 +299,10 @@ function pluginDirs(o) {
     dirs.push([hit[1]].flat()[0].installPath);
   }
   for (const name of o.skills) {
-    const src = path.join(os.homedir(), ".claude/skills", name);
-    if (!fs.existsSync(path.join(src, "SKILL.md"))) die(`no skill ${name} in ~/.claude/skills`);
-    const pack = path.join(HOME, "skillpacks", name);
+    if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") die(`bad skill name ${name}`);
+    const src = localSkillPath(o, name) ?? path.join(os.homedir(), ".claude/skills", name);
+    if (!fs.existsSync(path.join(src, "SKILL.md"))) die(`no project-local or user skill named ${name}`);
+    const pack = path.join(HOME, "skillpacks", `${name}-${Buffer.from(src).toString("base64url").slice(0, 16)}`);
     fs.mkdirSync(path.join(pack, ".claude-plugin"), { recursive: true });
     fs.mkdirSync(path.join(pack, "skills"), { recursive: true });
     fs.writeFileSync(path.join(pack, ".claude-plugin/plugin.json"), JSON.stringify({ name: `skill-${name}`, version: "0.0.0", description: `ekip wrapper for the ${name} skill` }));
@@ -310,7 +324,12 @@ function skillDocs(o) {
     const root = hit && [hit[1]].flat()[0].installPath;
     if (root) for (const f of spawnSync("find", [root, "-name", "SKILL.md", "-maxdepth", "4"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)) docs.push(f);
   }
-  for (const name of o.skills) { const f = path.join(os.homedir(), ".claude/skills", name, "SKILL.md"); if (fs.existsSync(f)) docs.push(fs.realpathSync(f)); }
+  for (const name of o.skills) {
+    if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") continue;
+    const src = localSkillPath(o, name) ?? path.join(os.homedir(), ".claude/skills", name);
+    const f = path.join(src, "SKILL.md");
+    if (fs.existsSync(f)) docs.push(fs.realpathSync(f));
+  }
   return docs;
 }
 
@@ -354,6 +373,7 @@ const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "u
 async function runOne(o, via, id) {
   const t0 = Date.now();
   const r = await runOneInner(o, via, id);
+  try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
   recordStat(r.via ?? via, r.ok, Date.now() - t0);
   if (o.taskId) (await import("../lib/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu");
@@ -370,6 +390,7 @@ function onStop() {
   for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, async () => {
     for (const [id, r] of activeRuns) {
       try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
+      try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
       await postRun({ ...r, status: "cancelled", report: "durduruldu", finishedAt: new Date().toISOString() });
     }
     const { pending } = await import("../lib/tasks.js");
@@ -398,8 +419,12 @@ export async function reconcileRuns() {
     const id = f.slice(0, -4);
     fs.appendFileSync(file, "\n[exit 143] durduruldu (süreç kayıp)\n");
     const project = head.match(/^project: (.*)$/m)?.[1];
-    await postRun({ id, via: id.split("Z-")[1] ?? null, project: project && project !== "-" ? project : null,
-      task: head.split("\ntask:\n")[1]?.split("\n\n")[0] ?? "", status: "cancelled", report: "durduruldu (süreç kayıp)", finishedAt: st.mtime.toISOString() });
+    const task = head.match(/^task:\n([\s\S]*?)(?=\n\n(?:\$ |▸ |\[exit)|$)/m)?.[1] ?? "";
+    const label = head.match(/^label: (.*)$/m)?.[1];
+    const via = id.split("Z-")[1] ?? null;
+    await postRun({ id, via, project: project && project !== "-" ? project : null,
+      task, status: "cancelled", report: "durduruldu (süreç kayıp)", finishedAt: st.mtime.toISOString() });
+    try { (await import("../lib/skillgen.js")).recordRunFinish({ runId: id, via, project: project && project !== "-" ? project : null, label, brief: task, status: "cancelled" }); } catch { /* usage logging must never affect reconciliation */ }
     n++;
   }
   return n;
@@ -409,8 +434,9 @@ async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
   if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
+  try { (await import("../lib/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
-  activeRuns.set(id, { id, via, project: o.project, task: o.task });
+  activeRuns.set(id, { id, via, project: o.project, task: o.task, label: o.label });
   onStop();
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
@@ -724,6 +750,8 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Projects: \`ekip project ls\` / \`ekip project show NAME\` list the user's registered projects with
   their cards (stack, commands, frequent tasks). The ekip MCP tools search each project's memory,
   wiki and code graph; codegraph MCP explores code. Save durable facts with memory_remember.
+- Before dispatching work in a project, check its \`.claude/skills\` and pass a matching procedure with \`--skill NAME\`.
+  Run \`ekip skill learn PROJECT\` weekly or whenever the user asks to turn repeated work into reusable skills.
 - The hub on the user's VPS (if linked: \`ekip hub status\`) runs queued jobs even when this Mac is off:
   \`ekip job "<task>" --project NAME\` queues one (it works on a branch and pushes it).
 - Long-lived peers: \`ekip team up --open\` starts ekip-agy/ekip-free as hoptell peers in their own
@@ -1104,6 +1132,10 @@ async function status() {
     console.log(title(t("Son çalıştırmalar")));
     console.log(recent.map((f) => fit(`  ${c.gray(f.slice(0, 19).replace("T", " "))}  ${f.slice(25, -4)}`)).join("\n"));
   }
+  try {
+    const note = (await import("../lib/skillgen.js")).statusCandidateNote();
+    if (note) console.log(`${c.yellow("•")} ${note}`);
+  } catch { /* status remains available if skill metadata is malformed */ }
   console.log("");
 }
 
@@ -1126,7 +1158,7 @@ ${c.bold("Workers")}
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
-  ${c.cyan("ekip skill")} ${c.gray("ls|search|show <project> [query|name]")} project procedures
+  ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
@@ -1156,7 +1188,7 @@ ${c.bold("İşçiler")}
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
-  ${c.cyan("ekip skill")} ${c.gray("ls|search|show <proje> [sorgu|ad]")}  projenin kendi prosedürleri
+  ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
@@ -1176,17 +1208,25 @@ switch (cmd) {
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
   case "skill": case "skills": {
-    const mem = await import("../lib/memory.js");
     const [sub = "ls", proj, ...q] = rest;
+    const gen = await import("../lib/skillgen.js");
+    if (sub === "learn") { await gen.learn(rest.slice(1)); break; }
+    if (sub === "prune") { await gen.prune(rest.slice(1)); break; }
+    if (sub === "candidates") { gen.candidates(); break; }
+    if (sub === "accept") { gen.accept(proj, q[0]); break; }
+    if (sub === "reject") { gen.reject(proj, q[0]); break; }
+    const mem = await import("../lib/memory.js");
     const pName = proj ?? registry().filter((x) => process.cwd().startsWith(x.path)).sort((a, b) => b.path.length - a.path.length)[0]?.name;
     if (!pName) die("usage: ekip skill ls|search|show <project> [query|name]");
     if (sub === "ls") for (const sk of await mem.projectSkills(pName)) console.log(`${c.cyan(sk.name)}  ${c.gray(sk.description ?? "")}`);
     else if (sub === "search") for (const sk of await mem.skillSearch(pName, q.join(" "), 5)) console.log(`${c.cyan(sk.name)}  ${c.gray(sk.description ?? "")}`);
     else if (sub === "show") { const sk = await mem.skillGet(pName, q.join(" ")); console.log(`# ${sk.name}\n${sk.description ?? ""}\n\n${sk.content}`); }
-    else die("usage: ekip skill ls|search|show <project> [query|name]");
+    else die("usage: ekip skill ls|search|show <project> [query|name]; learn|prune [project|--all]; candidates; accept|reject <project> <name>");
     break;
   }
-  case "doctor": await reconcileRuns().catch(() => {}); code = await (await import("../lib/doctor.js")).main(rest);
+  case "doctor": await reconcileRuns().catch(() => {});
+    await (await import("../lib/skillgen.js")).doctorLearnOnceDaily();
+    code = await (await import("../lib/doctor.js")).main(rest);
     // refresh the limits snapshot on the hub (doctor runs every 30 min via launchd)
     await (await import("../lib/limits.js")).push().catch(() => {});
     await (await import("../lib/savings.js")).report(["--json", "--silent"]).catch(() => {}); break;

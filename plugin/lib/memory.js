@@ -356,7 +356,7 @@ export async function projectSkills(project, { projectOnly = true } = {}) {
 export async function skillGet(project, nameOrId) {
   const p = resolve(project);
   await identity();
-  const id = /^skl-/.test(nameOrId) ? nameOrId : (await coreData("/skill/get-by-name", { ...scope(p), name: nameOrId }, 20000))?.skill_id;
+  const id = /^skl-/.test(nameOrId) ? nameOrId : (await coreData("/skill/get-by-name", { ...scope(p), skill_name: nameOrId }, 20000))?.skill_id;
   if (!id) throw new Error(`no skill ${nameOrId} for ${p.name}`);
   const d = await coreData("/skill/get", { ...scope(p), skill_id: id }, 20000);
   return { name: d.name, description: d.description, content: d.content ?? "", files: (d.manifest ?? []).map((f) => f.path) };

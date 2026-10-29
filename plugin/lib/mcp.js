@@ -82,8 +82,30 @@ export async function callTool(name, a = {}) {
       if (!a.refs?.length) return mem.knowledgeTool(p.tdai.wikiId, "list_pages", {});
       return mem.knowledgeTool(p.tdai.wikiId, "read_page", { refs: a.refs });
     }
-    case "skill_search": return mem.skillSearch(project(a.project), a.query, a.limit ?? 5);
-    case "skill_get": return mem.skillGet(project(a.project), a.name);
+    case "skill_search": {
+      let p = a.project ?? null;
+      let hits = [];
+      try {
+        p = project(a.project);
+        const result = await mem.skillSearch(p, a.query, a.limit ?? 5);
+        hits = result;
+        return result;
+      } finally {
+        try { (await import("./skillgen.js")).recordSkillCall("skill_search", p, { query: String(a.query ?? "").slice(0, 500) }, hits); } catch { /* telemetry must not affect MCP */ }
+      }
+    }
+    case "skill_get": {
+      let p = a.project ?? null;
+      let hits = [];
+      try {
+        p = project(a.project);
+        const result = await mem.skillGet(p, a.name);
+        hits = [result];
+        return result;
+      } finally {
+        try { (await import("./skillgen.js")).recordSkillCall("skill_get", p, { name: a.name }, hits); } catch { /* telemetry must not affect MCP */ }
+      }
+    }
     case "skill_list": return mem.projectSkills(project(a.project));
     case "code_graph": {
       const p = project(a.project);
