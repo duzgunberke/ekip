@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> **Status:** early (v1), used every day by its author on 15 projects. macOS first; the hub runs on any Linux VPS with Docker.
+> **Status:** v1.1, used every day by its author on 15 projects. macOS first; the hub runs on any Linux VPS with Docker.
 
 ## Why
 
@@ -77,6 +77,21 @@ How memory works and why vectors matter, in depth: [docs/memory.md](docs/memory.
 </table>
 
 <p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · the same tasks in a pane next to your Claude session</sub></p>
+
+## Built not to get stuck
+
+Long agent work fails quietly: a CLI hangs, a free model stops answering, a task says "running" all
+night. ekip handles that itself, so you never have to chase it.
+
+- **Every worker has a watchdog.** 15 minutes without output or 90 minutes in total, and it is stopped;
+  the reason goes onto the task and `auto` moves the work to the next pool.
+- **Tasks close themselves** when their steps are done or their last worker ends, and a task nobody
+  touched for 6 hours is closed as stalled. The pane and the panel never show yesterday's work as live.
+- **Estimates are measured, not guessed.** The finish time comes from the real rate of progress; with
+  no basis yet, ekip shows none instead of a made-up number.
+- **Background jobs run one copy at a time**, so two imports never fight over the same quota.
+- **Memory stays in your language.** A nightly sweep rewrites any memory a free model wrote in the
+  wrong language, text, search index and vector together.
 
 ## Agents that talk to each other
 

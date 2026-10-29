@@ -61,6 +61,7 @@ flowchart LR
 | Worker panes | A title using the worker label or project, live output, and a quiet line confirming the worker is still working. A killed worker is detected; its pane shows that it stopped and closes after 90 seconds. Completed panes also close after 90 seconds; Enter closes either immediately. |
 | `ekip limits` | Worker and free-provider limits, open models, recent errors, and current routing. |
 | `ekip doctor [--fix]` | Checks the tunnel, pools, project graphs, wiki, and memory; `--fix` starts safe repairs. Launchd runs the check every 30 minutes. |
+| Watchdog | Every worker is stopped after 15 minutes without output or 90 minutes in total (`EKIP_IDLE_MIN`, `EKIP_TIMEOUT_MIN`); the reason is noted on the task and `auto` falls through to the next pool. Tasks close themselves when all steps are done or the last worker ends, and are closed as stalled after 6 hours without activity. The ETA uses the measured rate since the first update and is hidden while there is no basis. |
 | `ekip reconcile` | Closes runs whose processes disappeared without reporting. It also runs before a new worker run and as part of `doctor`. |
 | Web panel | Overview, projects and code maps, jobs, runs, worker pools, panels, and live tasks with step details and stall status. The interface supports English and Turkish; route paths remain English. |
 

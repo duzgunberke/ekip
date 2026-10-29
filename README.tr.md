@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> **Durum:** erken aşama (v1); yazarı tarafından 15 projede her gün kullanılıyor. Öncelik macOS'ta; hub, Docker ile herhangi bir Linux VPS'te çalışır.
+> **Durum:** v1.1; yazarı tarafından 15 projede her gün kullanılıyor. Öncelik macOS'ta; hub, Docker ile herhangi bir Linux VPS'te çalışır.
 
 ## Neden?
 
@@ -66,6 +66,21 @@ Belleğin nasıl çalıştığını ve vektörlerin neden önemli olduğunu ayr�
 </table>
 
 <p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · aynı görevler, Claude oturumunun yanındaki panelde</sub></p>
+
+## Takılmamak için tasarlandı
+
+Uzun agent işleri sessizce bozulur: bir CLI donar, ücretsiz bir model cevap vermeyi keser, bir görev
+bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanız gerekmez.
+
+- **Her worker'ın bir bekçisi var.** 15 dakika çıktı yoksa ya da toplam 90 dakika aşıldıysa durdurulur;
+  nedeni göreve yazılır ve `auto` işi sıradaki havuza taşır.
+- **Görevler kendiliğinden kapanır:** adımlar bitince ya da son worker bitince. 6 saat kimsenin
+  dokunmadığı görev "takıldı" olarak kapanır. Panel ve terminal dünkü işi canlı göstermez.
+- **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
+  sahte bir sayı yerine hiç tahmin gösterilmez.
+- **Arka plan işleri tek kopya çalışır**, iki içe aktarma aynı kota için yarışmaz.
+- **Bellek sizin dilinizde kalır.** Ücretsiz bir modelin yanlış dilde yazdığı kayıtları her gece bir
+  tarama yeniden yazar: metin, arama dizini ve vektör birlikte.
 
 ## Birbiriyle konuşan agent'lar
 
