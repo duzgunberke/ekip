@@ -137,3 +137,7 @@ Temel zaten hazır: bellek, tek bir depoda proje ve agent bazında yalıtılmı�
 ve Antigravity, Codex, Copilot, Qwen Code, OpenCode ve grok-cli agent CLI'ları.
 
 MIT lisanslıdır. Üzerine kurulduğu projeler kendi lisanslarını korur.
+
+## Geliştirme veritabanları
+
+`ekip dev add PROJE` ile projeyi ayrı bir `_dev` veritabanına eşleyin; `ekip dev up PROJE` `.env.ekip-dev` dosyasını oluşturup yerel tüneli açar. Worker'lar bu dosyayı kullanmalı; test ve migration için production URL'lerini kullanmayın. Yalnızca geliştirme verisini `ekip dev reset PROJE --yes` ile sıfırlayın ve iş bitince `ekip dev down` çalıştırın.

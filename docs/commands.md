@@ -23,6 +23,9 @@ Workers
   ekip agents ls|install|login|test
   ekip team up|down|ls|open [--open]
 
+Development environment
+  ekip dev ls|add|up|env|down|reset|sql|psql
+
 Projects and memory
   ekip project add|scan|ls|show|sync|card
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
@@ -72,3 +75,9 @@ ekip's own services live outside project repositories: freellmapi (free pool), T
 ---
 
 [← Back to README](../README.md) · Next: [Operations](operations.md)
+
+## Development databases
+
+`ekip dev add PROJECT [--db NAME]` maps a project to an isolated `_dev` database; `ekip dev up [PROJECT]` opens the local SSH tunnel and writes `.env.ekip-dev` at the registered project root. Workers should source that file and never use production URLs for tests or migrations. Use `ekip dev reset PROJECT --yes` for a development reset and `ekip dev down` when finished. `ekip dev env PROJECT --shell` prints shell exports; passwords are masked by default.
+
+Hub jobs currently run in the VPS worker without the Mac settings bridge. To supply dev credentials there, persist the dev project map and Redis/Postgres UUIDs in hub configuration, then call `devEnv(PROJECT, { onVps: true })` before spawning the worker so URLs use the Coolify container IPs directly. Do not pass production resource UUIDs or URLs.

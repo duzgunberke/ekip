@@ -409,6 +409,10 @@ async function runOneInner(o, via, id) {
   const logFile = path.join(RUNS, `${id}.log`);
   if (o.taskId) (await import("../lib/tasks.js")).linkWorker(o.taskId, { runId: id, via, label: o.label ?? null, log: logFile, pid: process.pid });
   fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
+  if (o.project) {
+    const { SETTINGS } = await import("../lib/core.js");
+    if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
+  }
   await postRun({ id, via, project: o.project, task: o.task, status: "running", report: "" });
   activeRuns.set(id, { id, via, project: o.project, task: o.task });
   onStop();
@@ -661,6 +665,9 @@ async function postRun(run) {
 // ---- the lead session -------------------------------------------------------------------------
 
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
+
+## Development databases
+For database or Redis work in a registered project, run \`ekip dev up PROJECT\` and have workers source the project's \`.env.ekip-dev\`. Never use production URLs from project \`.env\` files for tests or migrations. Use \`ekip dev reset PROJECT --yes\` to reset development data, and \`ekip dev down\` when finished.
 
 ## Your own subagents
 Your Claude limit is the scarce resource. Hand work to ekip workers first. When you do need a
@@ -1130,6 +1137,9 @@ ${c.bold("Workers")}
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
 
+${c.bold("Development environment")}
+  ${c.cyan("ekip dev")} ${c.gray("ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
+
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
@@ -1161,6 +1171,9 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
+
+${c.bold("Geliştirme ortamı")}
+  ${c.cyan("ekip dev")} ${c.gray("ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|scan|ls|show|sync|card")}
@@ -1217,6 +1230,7 @@ switch (cmd) {
   case "job": case "jobs": await job(rest); break;
   case "hub": await hub(rest); break;
   case "vps": await vpsMain(rest); break;
+  case "dev": await (await import("../lib/dev.js")).main(rest); break;
   case "tunnel": tunnel(rest); break;
   case "project": case "projects": code = (await (await import("../lib/projects.js")).main(rest)) ?? 0; break;
   case "mcp": code = (await (await import("../lib/mcp.js")).main(rest)) ?? 0; break;
