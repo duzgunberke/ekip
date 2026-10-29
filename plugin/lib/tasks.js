@@ -73,6 +73,8 @@ export function create({ title, project, steps = [] }) {
 export function step(id, n, status = "done", { pct, note, detail, parallel = false } = {}) {
   return update(id, (t) => {
     const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
+    // a late progress update from a script must not reopen a step of a task that is already closed
+    if (t.status !== "running" && status === "running") return;
     if (status === "running" && !parallel) for (const o of t.steps) if (o !== s && o.status === "running") Object.assign(o, { status: "done", endedAt: now() });
     // progressAt: when the step last moved; a running step that stops moving is shown as stalled
     if ((pct != null && pct !== s.pct) || (status === "running" && s.status !== "running")) s.progressAt = now();
@@ -103,10 +105,10 @@ export function finish(id, status = "done", note) {
   const t = update(id, (x) => {
     x.status = status;
     x.endedAt = now();
-    for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status, endedAt: now() });
+    for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "running" ? "failed" : s.status, endedAt: now() });
     if (note) x.notes.push({ at: now(), text: note });
   });
-  notify(`ekip · ${status === "done" ? tr("bitti") : tr("durdu")}`, `${t.title}${note ? ` — ${note}` : ""}`);
+  notify(`ekip · ${status === "done" ? tr("bitti") : tr("durdu")}`, `${t.title}${note ? ` · ${note}` : ""}`);
   return t;
 }
 
