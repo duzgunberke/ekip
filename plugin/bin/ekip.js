@@ -480,11 +480,12 @@ function modelFromLog(file) {
   try { return fs.readFileSync(file, "utf8").match(/^\s*model\s*:\s*([^\r\n]{1,160})/im)?.[1]?.trim() ?? fs.readFileSync(file, "utf8").match(/"model"\s*:\s*"([^"\r\n]{1,160})"/)?.[1] ?? null; } catch { return null; }
 }
 async function uploadRunLog(id, file) {
+  const { redact } = await import("../lib/redact.js");
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   try {
     const st = fs.statSync(file), len = Math.min(st.size, 64 * 1024), fd = fs.openSync(file, "r"), b = Buffer.alloc(len);
     fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd);
-    const log = b.toString("utf8").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/(?:Bearer\s+|(?:api[_-]?key|token|secret|password)\s*[:=]\s*)(?:"[^"\n]+"|'[^'\n]+'|[^\s,;]+)/gi, "****").replace(/(?:sk-[A-Za-z0-9_-]{12,}|(?:gh[pousr]_|github_pat_|gsk_|hf_|nvapi-)[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16})/gi, "****");
+    const log = redact(b.toString("utf8").replace(/\u001b\[[0-9;]*[A-Za-z]/g, ""));
     const r = await fetch(`${SETTINGS.hubUrl}/api/runs/${encodeURIComponent(id)}/log`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` }, body: JSON.stringify({ log }), signal: AbortSignal.timeout(8000) }).catch(() => null);
     return !!r?.ok;
   } catch { return false; /* log delivery is best effort */ }
