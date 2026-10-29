@@ -1009,7 +1009,19 @@ async function init({ skipKeys = false } = {}) {
   fs.mkdirSync(path.dirname(link), { recursive: true });
   fs.rmSync(link, { force: true });
   fs.symlinkSync(self, link);
-  console.log(`${link} -> ${self}${(process.env.PATH ?? "").split(":").includes(path.dirname(link)) ? "" : "  (add ~/.local/bin to PATH)"}`);
+  console.log(`${link} -> ${self}`);
+  // ~/.local/bin not on PATH: add it to the shell's startup files instead of asking the user to
+  if (!(process.env.PATH ?? "").split(":").includes(path.dirname(link))) {
+    const line = 'export PATH="$HOME/.local/bin:$PATH"  # added by ekip init';
+    for (const rc of [".zshrc", ".bashrc"].map((f) => path.join(os.homedir(), f))) {
+      if ((rc.endsWith(".zshrc") && process.platform === "darwin") || fs.existsSync(rc)) {
+        const text = fs.existsSync(rc) ? fs.readFileSync(rc, "utf8") : "";
+        if (!text.includes(".local/bin")) fs.appendFileSync(rc, `\n${line}\n`);
+      }
+    }
+    process.env.PATH = `${path.dirname(link)}:${process.env.PATH}`;
+    console.log("~/.local/bin was added to your shell's PATH (new terminals pick it up)");
+  }
 
   step(3, "freellmapi (free-tier router)");
   const fdir = clone("freellmapi");
@@ -1025,7 +1037,16 @@ async function init({ skipKeys = false } = {}) {
   if (!has("hoptell")) {
     const hdir = clone("hoptell");
     sh("npm", ["install"], { cwd: hdir });
-    sh("npm", ["link"], { cwd: hdir });
+    // npm link needs a writable global prefix (fine with Homebrew, not with a system node): link the
+    // binary into ~/.local/bin like ekip itself when it fails
+    if (spawnSync("npm", ["link"], { cwd: hdir, stdio: "ignore" }).status !== 0) {
+      const bin = JSON.parse(fs.readFileSync(path.join(hdir, "package.json"), "utf8")).bin;
+      const entry = typeof bin === "string" ? bin : bin?.hoptell ?? Object.values(bin ?? {})[0];
+      const target = path.join(os.homedir(), ".local/bin/hoptell");
+      fs.rmSync(target, { force: true });
+      fs.symlinkSync(path.join(hdir, entry), target);
+      fs.chmodSync(path.join(hdir, entry), 0o755);
+    }
   }
   spawnSync("hoptell", ["local-relay", "install"], { stdio: "inherit" });
   if (spawnSync("claude", ["mcp", "get", "hoptell"], { stdio: "ignore" }).status !== 0) sh("claude", ["mcp", "add", "-s", "user", "hoptell", "--", "hoptell", "mcp"]);
