@@ -1,28 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" role="img" aria-label="Claude usage without and with ekip during the setup phase: without ekip all 110 million input-equivalent tokens land on Claude; with ekip 46 million do, and 64 million run on other quotas.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" role="img" aria-label="Share of the work that ran outside Claude, measured with ekip savings: 58% during the two-day setup phase, 81% the next day.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
     <linearGradient id="lead" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFB45C"/><stop offset="1" stop-color="#F07B3F"/></linearGradient>
     <linearGradient id="team" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#5EEAD4"/></linearGradient>
   </defs>
-  <style>.t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}</style>
-  <rect width="1200" height="380" rx="24" fill="url(#bg)"/>
+  <style>.t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}.big{font-weight:800;letter-spacing:-3px}</style>
+  <rect width="1200" height="470" rx="24" fill="url(#bg)"/>
   <g class="t">
-    <text x="48" y="62" class="h" font-size="24">Where the work went</text>
-    <text x="48" y="90" class="s" font-size="15">Two days of building ekip itself: cold indexing of 15 projects, wiki building, debugging. Input-equivalent tokens.</text>
+    <text x="48" y="58" class="h" font-size="22">Share of the work that ran outside Claude</text>
+    <text x="48" y="84" class="s" font-size="15">measured with ekip savings · input-equivalent tokens</text>
 
-    <text x="48" y="160" class="h" font-size="17">Without ekip</text>
-    <rect x="230" y="134" width="900" height="40" rx="10" fill="url(#lead)"/>
-    <text x="250" y="160" font-size="16" font-weight="700" fill="#2A1405">110M · all on your Claude limit</text>
+    <!-- setup -->
+    <text x="48" y="186" class="big" font-size="88" fill="#5EEAD4">58%</text>
+    <text x="52" y="216" class="h" font-size="16">Setup, 2 days</text>
+    <text x="52" y="238" class="s" font-size="14">building ekip, indexing 15 projects</text>
+    <rect x="330" y="140" width="822" height="44" rx="11" fill="#1C2028"/>
+    <rect x="330" y="140" width="345" height="44" rx="11" fill="url(#lead)"/>
+    <rect x="681" y="140" width="471" height="44" rx="11" fill="url(#team)"/>
+    <text x="348" y="168" font-size="15" font-weight="700" fill="#2A1405">Claude 46M</text>
+    <text x="699" y="168" font-size="15" font-weight="700" fill="#04201C">other quotas 64M</text>
 
-    <text x="48" y="238" class="h" font-size="17">With ekip</text>
-    <rect x="230" y="212" width="376" height="40" rx="10" fill="url(#lead)"/>
-    <text x="250" y="238" font-size="16" font-weight="700" fill="#2A1405">46M Claude</text>
-    <rect x="612" y="212" width="518" height="40" rx="10" fill="url(#team)"/>
-    <text x="632" y="238" font-size="16" font-weight="700" fill="#04201C">64M other quotas (58%)</text>
+    <!-- next day -->
+    <text x="48" y="352" class="big" font-size="88" fill="#5EEAD4">81%</text>
+    <text x="52" y="382" class="h" font-size="16">The next day</text>
+    <text x="52" y="404" class="s" font-size="14">still mostly building</text>
+    <rect x="330" y="306" width="822" height="44" rx="11" fill="#1C2028"/>
+    <rect x="330" y="306" width="156" height="44" rx="11" fill="url(#lead)"/>
+    <rect x="492" y="306" width="660" height="44" rx="11" fill="url(#team)"/>
+    <text x="348" y="334" font-size="15" font-weight="700" fill="#2A1405">Claude 29M</text>
+    <text x="510" y="334" font-size="15" font-weight="700" fill="#04201C">Copilot, Codex, free pool 127M</text>
 
-    <g font-size="14" class="s">
-      <rect x="230" y="296" width="14" height="14" rx="3" fill="#F07B3F"/><text x="252" y="308">Claude: planning, review, and the build-and-debug work only the lead can do</text>
-      <rect x="230" y="324" width="14" height="14" rx="3" fill="#2DD4BF"/><text x="252" y="336">Free pool, Copilot, Antigravity: memory extraction, wiki pages, translation, films</text>
+    <g font-size="13" class="s">
+      <rect x="330" y="420" width="12" height="12" rx="3" fill="#F07B3F"/><text x="350" y="431">Claude: plans, reviews, and work only the lead can do</text>
+      <rect x="760" y="420" width="12" height="12" rx="3" fill="#2DD4BF"/><text x="780" y="431">other quotas: the rest of the work</text>
     </g>
   </g>
 </svg>

@@ -69,7 +69,7 @@ Panel routes: `/tasks`, `/overview`, `/projects`, `/code-map`, `/jobs`, `/runs`,
 <table>
   <tr>
     <td width="50%"><img src="screenshots/panel-tasks-dark.png" alt="Web panel task list showing progress, steps, and stalled work"><br><sub>Live tasks and step status</sub></td>
-    <td width="50%"><img src="screenshots/terminal-tasks.png" alt="Terminal task pane with progress and current step"><br><sub>Task progress beside the lead session</sub></td>
+    <td width="50%"><img src="screenshots/terminal-tasks-wide.png" alt="Terminal task pane with progress and current step"><br><sub>Task progress beside the lead session</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"><br><sub>Overview across the hub</sub></td>

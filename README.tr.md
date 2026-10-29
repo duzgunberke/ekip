@@ -26,9 +26,11 @@ Claude Code kotasının çoğu **okumaya** gider: dosyalar, loglar, geçmiş ve 
 - **Bağlam bir kez hazırlanır.** Her projenin bir belleği olur: vektör veritabanındaki geçmiş oturumlar, dokümanlarından oluşturulmuş bir LLM wiki'si, kod grafiği ve projeye özel beceriler. Worker'lar repo'yu yeniden okumak yerine bunlarla işe başlar.
 - **Her şeyi görürsünüz.** Her worker'a bir terminal paneli ayrılır, her istek canlı adımları olan bir göreve dönüşür; web panelinde çalışmaları, kotaları ve yeni bir görevin hangi modele yönlendirileceğini görürsünüz.
 
-<p align="center"><img src="docs/assets/savings.svg" alt="Kurulum sırasında işin yüzde 58'i Claude dışında yürütüldü: Claude'da 110 milyon girdi eşdeğeri token'ın 46 milyonu, diğer kotalarda 64 milyonu kullanıldı" width="100%"></p>
+<p align="center"><img src="docs/assets/savings.svg" alt="ekip savings ile ölçülen, Claude dışında yürüyen iş payı: iki günlük kurulumda %58, ertesi gün %81" width="100%"></p>
 
-Bu rakamlar en kötü senaryoyu gösteriyor: ekip'in kendisini geliştirmek ve 15 projeyi ilk kez indekslemek için geçen iki gün; yalnızca liderin yapabileceği işler. Ertesi gün, hâlâ çoğunlukla geliştirme yaparken, `ekip savings` **işin %81'inin Claude dışında** yürüdüğünü ölçtü. Kendi işinde çalıştır: Claude oturumlarını, worker loglarını ve ücretsiz havuzu gün gün okur.
+> [!TIP]
+> **%58 en kötü durumdu:** ekip'in kendisini geliştirmek ve 15 projeyi ilk kez indekslemekle geçen iki gün; bu işleri yalnızca lider yapabilirdi. **Ertesi gün oran %81 oldu.**
+> Kendi işinde `ekip savings` ile ölç: Claude oturumlarını, worker loglarını ve ücretsiz havuzu gün gün okur.
 
 ## Nasıl çalışır?
 
