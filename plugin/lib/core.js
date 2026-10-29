@@ -246,17 +246,39 @@ export const adminKey = () => {
   return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
 };
 
-// In iTerm2, a worker opens as a split pane next to the lead's own session (ITERM_SESSION_ID is
-// inherited from the lead): the first one splits the lead vertically, later ones stack under the
-// previous worker pane. Elsewhere it falls back to a new window.
-export function openPane(command, { below = false } = {}) {
+// iTerm2 session ids that are open right now (one osascript call).
+function openSessions() {
+  const r = spawnSync("osascript", ["-e", `tell application "iTerm2"
+  set out to ""
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        set out to out & (id of s) & linefeed
+      end repeat
+    end repeat
+  end repeat
+  return out
+end tell`], { encoding: "utf8" });
+  return new Set(r.stdout.split("\n").map((x) => x.trim()).filter(Boolean));
+}
+
+// In iTerm2, worker and log panes open in one column to the right of the lead: the first one splits
+// the lead vertically, every later one goes under any pane of that column that is still open, so the
+// lead keeps its width when earlier panes close. Past five panes in the column, a pane opens as a
+// tab instead. `below` (the task pane) splits the lead horizontally, full width. Each pane gets a
+// title saying what it shows. Elsewhere it falls back to a new window. Returns the new session id.
+export function openPane(command, { below = false, title = "" } = {}) {
   const lead = process.env.ITERM_SESSION_ID?.split(":")[1];
   if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "iTerm.app" || !lead) return openTerminal(command);
-  const stateFile = path.join(HOME, "panes", `${lead}.txt`);
+  const stateFile = path.join(HOME, "panes", `${lead}.json`);
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-  const prev = fs.existsSync(stateFile) ? fs.readFileSync(stateFile, "utf8").trim() : "";
+  let column = [];
+  try { column = JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch { /* first pane */ }
+  const open = openSessions();
+  column = column.filter((id) => open.has(id));
   const shellCmd = `/bin/zsh -lc ${JSON.stringify(command)}`;
-  const script = (anchor, how) => `tell application "iTerm2"
+  const name = title ? `\n    tell n to set name to ${JSON.stringify(title)}` : "";
+  const split = (anchor, how) => `tell application "iTerm2"
   set target to missing value
   repeat with w in windows
     repeat with t in tabs of w
@@ -267,14 +289,21 @@ export function openPane(command, { below = false } = {}) {
   end repeat
   if target is missing value then return ""
   tell target
-    set n to (split ${how} with default profile command ${JSON.stringify(shellCmd)})
+    set n to (split ${how} with default profile command ${JSON.stringify(shellCmd)})${name}
   end tell
   return id of n
 end tell`;
-  const run = (anchor, how) => spawnSync("osascript", ["-e", script(anchor, how)], { encoding: "utf8" }).stdout.trim();
-  if (below) { const id = run(lead, "horizontally"); if (!id) openTerminal(command); return id || null; }
-  const id = (prev && run(prev, "horizontally")) || run(lead, "vertically");
-  if (id) fs.writeFileSync(stateFile, id); else openTerminal(command);
+  const tab = `tell application "iTerm2"
+  tell current window
+    set nt to (create tab with default profile command ${JSON.stringify(shellCmd)})
+    set n to current session of nt${name}
+  end tell
+  return id of n
+end tell`;
+  const run = (script) => spawnSync("osascript", ["-e", script], { encoding: "utf8" }).stdout.trim();
+  if (below) { const id = run(split(lead, "horizontally")); if (!id) openTerminal(command); return id || null; }
+  const id = column.length >= 5 ? run(tab) : column.length ? run(split(column.at(-1), "horizontally")) : run(split(lead, "vertically"));
+  if (id) { if (column.length < 5) column.push(id); fs.writeFileSync(stateFile, JSON.stringify(column)); } else openTerminal(command);
   return id || null;
 }
 
@@ -302,7 +331,7 @@ export function ensureTaskPane() {
   const flag = path.join(HOME, "panes", `${lead}-tasks`);
   const prev = fs.existsSync(flag) ? fs.readFileSync(flag, "utf8").trim() : "";
   if (prev && paneAlive(prev)) return;
-  const id = openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true });
+  const id = openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true, title: "ekip · görevler" });
   fs.mkdirSync(path.dirname(flag), { recursive: true });
   fs.writeFileSync(flag, id ?? "");
 }

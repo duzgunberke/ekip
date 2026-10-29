@@ -496,7 +496,7 @@ async function runOneInner(o, via, id) {
   const uploadTimer = setInterval(upload, 60_000); uploadTimer.unref();
   onStop();
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
-  if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`);
+  if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`, { title: `ekip · ${o.label ?? via}` });
   const order = via === "auto" ? autoOrder() : [via];
   let last = null;
   for (const v of order) {
@@ -1437,7 +1437,7 @@ switch (cmd) {
   case "show": {
     const files = rest.filter((f) => !f.startsWith("-")).map((f) => path.resolve(f));
     if (!files.length) die("kullanım: ekip show <log> [log...]  (logları canlı izleyen bir panel açar)");
-    openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`);
+    openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`, { title: `ekip · ${rest.find((x) => x.startsWith("--title="))?.slice(8) ?? path.basename(files[0])}` });
     break;
   }
   case "skill": case "skills": {

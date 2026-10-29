@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, sleep, tdaiUp } from "./core.js";
+import { HOME, REMOTE, SETTINGS, TUNNEL_LABEL, healthy, keyCounts, notify, sleep, tdaiUp } from "./core.js";
 import { c, dot, mark, title, fit } from "./ui.js";
 import { lang, t } from "./i18n.js";
 
@@ -39,6 +39,7 @@ export async function main(args = []) {
   const fix = args.includes("--fix");
   console.log(`${mark()}  ${c.gray(fix ? t("doktor · onarım modu") : t("doktor · sadece kontrol (onarmak için --fix)"))}`);
   let problems = 0;
+  const fixed = []; // what this run repaired, for one notification at the end
 
   const onboarding = await import("./onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd() }), { heading: true });
@@ -48,7 +49,7 @@ export async function main(args = []) {
     const t = spawnSync("launchctl", ["print", `gui/${process.getuid()}/${TUNNEL_LABEL}`], { encoding: "utf8" });
     const running = /state = running/.test(t.stdout ?? "");
     line(running ? "ok" : "bad", "VPS tüneli", running ? `${REMOTE.ssh} açık` : t("kapalı"));
-    if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", t("tünel yeniden başlatıldı")); } }
+    if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", t("tünel yeniden başlatıldı")); fixed.push(t("VPS tüneli yeniden başlatıldı")); } }
   }
   const free = await healthy();
   line(free ? "ok" : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}` : t("erişilemiyor"));
@@ -98,7 +99,7 @@ export async function main(args = []) {
   let bf = null; try { bf = JSON.parse((st ?? "").replace(/RUNNING/g, "").trim().split("\n")[0]); } catch { /* none */ }
   const running = /RUNNING/.test(st ?? "");
   if (bf?.layer === "done") line("ok", t("vektörler"), t("tüm kayıtlar vektörlü"));
-  else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); } } }
+  else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); fixed.push(t("durmuş vektör doldurma yeniden başlatıldı")); } } }
   else line("warn", t("vektörler"), t("doldurma hiç çalışmadı (ekip memory reindex)"));
   // for the setup gaps shown at the lead start (onboarding.js reads it without a network call)
   try { fs.writeFileSync(path.join(HOME, "vectors-status.json"), JSON.stringify({ at: Date.now(), missing: bf?.layer === "done" ? 0 : bf ? (running ? 0 : Math.max(0, bf.total - bf.done)) : 0, never: !bf })); } catch { /* best effort */ }
@@ -112,12 +113,22 @@ export async function main(args = []) {
     console.log(title(t("Onarım")));
     for (const [kind, p] of repairs) {
       try {
-        if (kind === "wiki") { const r = await m.ingestWiki(p); line("warn", p.name, `${t("wiki requeued")} (${r.files ?? "?"} ${t("files")})`); }
-        else { const r = await m.syncCodeGraphs(p); line("warn", p.name, `${r.length} ${t("graphs resynced")}`); }
+        if (kind === "wiki") { const r = await m.ingestWiki(p); line("warn", p.name, `${t("wiki requeued")} (${r.files ?? "?"} ${t("files")})`); fixed.push(`${p.name} wiki`); }
+        else { const r = await m.syncCodeGraphs(p); line("warn", p.name, `${r.length} ${t("graphs resynced")}`); fixed.push(`${p.name} ${t("kod grafiği")}`); }
       } catch (e) { line("bad", p.name, c.red(e.message.slice(0, 120))); }
     }
   }
   console.log(`\n  ${problems ? c.yellow(`${problems} ${t("sorunlar")}${fix ? ` · ${t("onarılabilenler başlatıldı, birkaç dakika sonra tekrar bak")}` : ` · ${t("onarmak için: ekip doctor --fix")}`}`) : c.green(t("her şey yolunda"))}\n`);
+  // Say what was repaired without being asked, once per distinct set of repairs every 6 hours.
+  if (fix && fixed.length) {
+    const key = fixed.join("|"), stamp = path.join(HOME, "doctor-notified.json");
+    let last = {};
+    try { last = JSON.parse(fs.readFileSync(stamp, "utf8")); } catch { /* first */ }
+    if (last.key !== key || Date.now() - (last.at ?? 0) > 6 * 3600_000) {
+      notify(t("ekip kendini onardı"), fixed.join(" · "), { subtitle: t("Otomatik bakım"), group: "ekip-doctor" });
+      try { fs.writeFileSync(stamp, JSON.stringify({ key, at: Date.now() })); } catch { /* best effort */ }
+    }
+  }
   void SETTINGS;
   return problems ? 1 : 0;
 }
