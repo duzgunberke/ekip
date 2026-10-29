@@ -21,6 +21,12 @@ if (!URL_ || !KEY || !MODEL) { console.error("EMBED_URL, EMBED_KEY, EMBED_MODEL 
 const log = (s) => fs.appendFileSync(LOG, `${new Date().toISOString()} ${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// one copy at a time: a second run would compete for the same free-pool quota and rows
+const LOCK = "/data/tdai-memory/backfill.lock";
+try { const pid = Number(fs.readFileSync(LOCK, "utf8")); process.kill(pid, 0); console.error(`already running (pid ${pid})`); process.exit(0); } catch { /* free */ }
+fs.writeFileSync(LOCK, String(process.pid));
+process.on("exit", () => { try { if (fs.readFileSync(LOCK, "utf8") === String(process.pid)) fs.unlinkSync(LOCK); } catch { /* ignore */ } });
+
 const db = new DatabaseSync(DB, { allowExtension: true });
 sqliteVec.load(db);
 db.exec("PRAGMA busy_timeout = 15000");

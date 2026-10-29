@@ -657,6 +657,15 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
 - Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.
 - \`ekip task done $id "<one-line result>"\` at the end (\`ekip task fail $id "<why>"\` if you must stop).
+- Close what you open, the moment it is true: mark each step done when it is done, and the task done
+  as soon as its result is reviewed. A task closes by itself when every step is done or its last worker
+  ends with nothing pending, and is closed as failed after 6 hours without activity, but never leave
+  that to the safety net. The user must never have to tell you "this is still open".
+- Be proactive: when a job is slow or stuck, look at why (logs, CPU, rate limits, a duplicate copy)
+  and fix it or move it to a faster pool, then tell the user what you did. Don't wait to be asked.
+- Check your own output before reporting it: look at every screenshot, video frame and page you made
+  (leftover other-language text, em dashes, clipped or overlapping text, wrong aspect ratio, personal
+  data in demos). Fix what you find; the user should not be the one who spots it.
 The user watches percent, current step and estimated finish live in a pane and on the panel; a
 request without a task is invisible to them. Several requests = several tasks, worked in parallel.
 The user has Claude Max and wants YOUR effort spent on judgment: understanding, design, splitting,
@@ -898,6 +907,12 @@ async function importHistory(args = []) {
   const days = all ? "0" : opt("--days") ?? "30";
   const maxMb = all ? "0" : opt("--max-mb") ?? "200";
   console.log(all ? "geçmişin tamamı içe aktarılıyor" : `son ${days} günün oturumları, en fazla ${maxMb} MB (hepsi için: --all)`);
+  // one import at a time: two would read the same sessions and double the memory writes
+  const lock = path.join(path.dirname(RUNS), "import-history.lock");
+  let held = 0; try { held = Number(fs.readFileSync(lock, "utf8")); process.kill(held, 0); } catch { held = 0; }
+  if (held) die(`import-history is already running (pid ${held})`);
+  fs.writeFileSync(lock, String(process.pid));
+  process.on("exit", () => { try { if (fs.readFileSync(lock, "utf8") === String(process.pid)) fs.unlinkSync(lock); } catch { /* ignore */ } });
   const key = adminKey() ?? die("no TencentDB admin key");
   const tdai = depDir("tdai");
   const importer = path.join(tdai, "agents/asset-import.ts");
@@ -1156,6 +1171,7 @@ switch (cmd) {
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks.js");
+    try { t.reapStale(); } catch { /* never block a task command */ }
     if (cmd === "task" && rest[0] === "new") {
       // The first task of a lead session opens the live task pane under the lead (iTerm2).
       const lead = process.env.ITERM_SESSION_ID?.split(":")[1];

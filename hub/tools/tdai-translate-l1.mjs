@@ -19,7 +19,15 @@ const BATCH = Number(process.env.BATCH ?? 10), LOG = "/data/tdai-memory/translat
 const CJK = /[぀-ヿ一-鿿]/;
 const log = (s) => fs.appendFileSync(LOG, `${new Date().toISOString()} ${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!LLM_URL || !LLM_KEY || !EMBED_MODEL) { console.error("LLM_URL, LLM_KEY, EMBED_MODEL are required"); process.exit(2); }
+// APPLY_FILE=/path.json: apply translations made elsewhere ({record_id: text}), no LLM calls.
+const APPLY = process.env.APPLY_FILE ? JSON.parse(fs.readFileSync(process.env.APPLY_FILE, 'utf8')) : null;
+if ((!APPLY && (!LLM_URL || !LLM_KEY)) || !EMBED_MODEL) { console.error("LLM_URL, LLM_KEY, EMBED_MODEL are required"); process.exit(2); }
+
+// one copy at a time: a second run would compete for the same free-pool quota and rows
+const LOCK = `/data/tdai-memory/translate-${process.env.SHARD ?? 0}.lock`;
+try { const pid = Number(fs.readFileSync(LOCK, "utf8")); process.kill(pid, 0); console.error(`already running (pid ${pid})`); process.exit(0); } catch { /* free */ }
+fs.writeFileSync(LOCK, String(process.pid));
+process.on("exit", () => { try { if (fs.readFileSync(LOCK, "utf8") === String(process.pid)) fs.unlinkSync(LOCK); } catch { /* ignore */ } });
 
 const db = new DatabaseSync(DB, { allowExtension: true });
 sqliteVec.load(db);
@@ -44,7 +52,8 @@ its user (Berke) and his software projects. Keep code, file paths, commands, ide
 product and project names exactly as they are. Do not add or drop information. Answer with ONLY a JSON array
 of strings, one per input, in the same order.`;
 
-async function translate(texts) {
+async function translate(texts, batchRows) {
+  if (APPLY) return batchRows.map((r) => APPLY[r.record_id] ?? r.content);
   const j = await post("/chat/completions", {
     model: LLM_MODEL, temperature: 0.1,
     messages: [{ role: "system", content: PROMPT }, { role: "user", content: JSON.stringify(texts) }],
@@ -61,7 +70,7 @@ const embed = async (texts) => (await post("/embeddings", { model: EMBED_MODEL, 
 // SHARD=k SHARDS=n: run n copies side by side, each takes every n-th record (no overlap)
 const SHARD = Number(process.env.SHARD ?? 0), SHARDS = Number(process.env.SHARDS ?? 1);
 const rows = db.prepare("SELECT record_id, content FROM l1_records").all()
-  .filter((r, i) => CJK.test(r.content) && [...r.record_id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % SHARDS === SHARD);
+  .filter((r, i) => CJK.test(r.content) && (!APPLY || r.record_id in APPLY) && [...r.record_id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % SHARDS === SHARD);
 log(`start${SHARDS > 1 ? ` shard ${SHARD}/${SHARDS}` : ""} · ${rows.length} records with CJK text · model ${LLM_MODEL}`);
 const upd = db.prepare("UPDATE l1_records SET content = ? WHERE record_id = ?");
 const updFts = db.prepare("UPDATE l1_fts SET content = ?, content_original = ? WHERE record_id = ?");
@@ -72,10 +81,10 @@ let done = 0, skipped = 0;
 for (let i = 0; i < rows.length; i += BATCH) {
   const batch = rows.slice(i, i + BATCH);
   let out;
-  try { out = await translate(batch.map((r) => r.content)); }
+  try { out = await translate(batch.map((r) => r.content), batch); }
   catch (e) {
     // a model that answers in the wrong shape: try once more, then leave the batch for a later run
-    try { out = await translate(batch.map((r) => r.content)); } catch { skipped += batch.length; log(`batch ${i}: skipped (${e.message})`); continue; }
+    try { out = await translate(batch.map((r) => r.content), batch); } catch { skipped += batch.length; log(`batch ${i}: skipped (${e.message})`); continue; }
   }
   const keep = batch.map((r, k) => [r, out[k]]).filter(([, t]) => !CJK.test(t));
   if (!keep.length) { skipped += batch.length; continue; }
@@ -93,6 +102,6 @@ for (let i = 0; i < rows.length; i += BATCH) {
   } catch (e) { try { db.exec("ROLLBACK"); } catch { /* ignore */ } log(`batch ${i}: write failed: ${e.message}`); await sleep(5000); continue; }
   done += keep.length; skipped += batch.length - keep.length;
   if ((i / BATCH) % 10 === 0) log(`${done}/${rows.length} translated, ${skipped} skipped`);
-  await sleep(500);
+  await sleep(APPLY ? 0 : 500);
 }
 log(`complete · ${done} translated, ${skipped} left for a later run`);

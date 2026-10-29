@@ -79,7 +79,21 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
     if (status === "failed") notify(`ekip · ${t.title}`, `${lang === "en" ? "Step stalled" : "Adım takıldı"}: ${s.title}`);
+    autoClose(t);
   });
+}
+
+// A task finishes by itself: when every step is done or skipped, or when its last worker ended and
+// no step is still running or pending. Nobody has to remember to close it.
+function autoClose(t) {
+  if (t.status !== "running") return;
+  const terminal = t.steps.length && t.steps.every((x) => ["done", "skipped", "failed"].includes(x.status));
+  const workersDone = t.workers.length && t.workers.every((w) => w.status !== "running");
+  const open = t.steps.some((x) => ["running", "pending"].includes(x.status));
+  if (terminal || (workersDone && !open)) {
+    const failed = t.steps.some((x) => x.status === "failed");
+    Object.assign(t, { status: failed ? "failed" : "done", endedAt: now() });
+  }
 }
 
 export function addSteps(id, titles) { return update(id, (t) => t.steps.push(...titles.map((s) => ({ title: s, status: "pending" })))); }
@@ -97,7 +111,18 @@ export function finish(id, status = "done", note) {
 
 /** Called by `ekip run --task ID`: the worker shows under the task while it runs. */
 export function linkWorker(id, w) { try { update(id, (t) => { t.workers.push({ ...w, startedAt: now(), status: "running" }); }); } catch { /* unknown task: ignore */ } }
-export function endWorker(id, runId, status) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); }); } catch { /* ignore */ } }
+export function endWorker(id, runId, status) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now() }); autoClose(t); }); } catch { /* ignore */ } }
+
+// Tasks nobody moved for hours (no live worker, no step update) are orphans: flagged after 2 h,
+// closed as failed after 6 h, so the pane and panel never show yesterday's work as running.
+export function reapStale() {
+  const alive = (w) => { if (!w.pid) return false; try { process.kill(w.pid, 0); return true; } catch { return false; } };
+  for (const t of read().filter((x) => x.status === "running")) {
+    const idle = Date.now() - Date.parse(t.updatedAt ?? t.createdAt);
+    if (idle > 6 * 3600_000 && !t.workers.some((w) => w.status === "running" && alive(w)))
+      update(t.id, (x) => { x.notes.push({ at: now(), text: lang === "en" ? "closed: no activity for 6 hours" : "kapatıldı: 6 saattir hareket yok" }); Object.assign(x, { status: "failed", endedAt: now() }); });
+  }
+}
 
 export function active() { return read().filter((t) => t.status === "running"); }
 
