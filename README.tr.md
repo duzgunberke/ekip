@@ -64,16 +64,16 @@ Belleğin nasıl çalıştığını ve vektörlerin neden önemli olduğunu ayr�
 
 ## Görün
 
+<p align="center"><img src="docs/screenshots/panel-tasks-dark.png" alt="Tasks page" width="100%"><br><sub><b>Görevler</b> · her istek canlı adımlarla; ilerlemeyen adım işaretlenir</sub></p>
+
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/panel-tasks-dark.png" alt="Görevler: canlı adımlar, işaretlenmiş takılan bir adım ve her görevdeki agent"><br><sub><b>Görevler</b> · canlı adımlar, işaretlenen takılmalar ve her görevdeki agent</sub></td>
-    <td width="50%"><img src="docs/screenshots/panel-pools-dark.png" alt="Havuzlar: worker kotaları ve yeni görevin yönlendirileceği yer"><br><sub><b>Havuzlar</b> · kimin kotasının dolduğu ve yeni görevin nereye gideceği</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/terminal-tasks.png" alt="Terminaldeki görev paneli"><br><sub><b>Terminal</b> · Claude oturumunuzun yanında aynı görevler</sub></td>
-    <td width="50%"><img src="docs/screenshots/panel-codemap-dark.png" alt="Bir projenin kod haritası"><br><sub><b>Kod haritası</b> · her proje bir grafiğe indekslenir</sub></td>
+    <td width="50%"><img src="docs/screenshots/panel-pools-dark.png" alt="Pools page"><br><sub><b>Havuzlar</b> · hangisi limitte, yeni bir görev nereye gider</sub></td>
+    <td width="50%"><img src="docs/screenshots/panel-codemap-dark.png" alt="Code map page"><br><sub><b>Kod haritası</b> · her proje bir grafiğe indekslenmiş</sub></td>
   </tr>
 </table>
+
+<p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · aynı görevler, Claude oturumunun yanındaki panelde</sub></p>
 
 ## Birbiriyle konuşan agent'lar
 

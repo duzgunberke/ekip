@@ -119,7 +119,7 @@ function render(t) {
   const steps = t.steps.map((s, i) => {
     const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
     const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
-    const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? ` · %${s.pct}` : ""})`) : "";
+    const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? (lang === "en" ? ` · ${s.pct}%` : ` · %${s.pct}`) : ""})`) : "";
     const stall = stalledFor(s);
     const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`)}` : "";
     const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
@@ -141,7 +141,7 @@ function renderCompact(t) {
   const p = percent(t);
   const e = eta(t);
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
+  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "dır ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
   const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";

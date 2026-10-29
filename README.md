@@ -79,16 +79,16 @@ How memory works and why vectors matter, in depth: [docs/memory.md](docs/memory.
 
 ## See it
 
+<p align="center"><img src="docs/screenshots/panel-tasks-dark.png" alt="Tasks page" width="100%"><br><sub><b>Tasks</b> · every request as live steps; a step that stops moving is flagged</sub></p>
+
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/panel-tasks-dark.png" alt="Tasks: live steps, a stalled step flagged, the active agent"><br><sub><b>Tasks</b> · live steps, stalls flagged, the agent on each</sub></td>
-    <td width="50%"><img src="docs/screenshots/panel-pools-dark.png" alt="Pools: worker quotas and where a new task would go"><br><sub><b>Pools</b> · who is limited, where a new task goes</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/terminal-tasks.png" alt="The task pane in the terminal"><br><sub><b>Terminal</b> · the same tasks next to your Claude session</sub></td>
-    <td width="50%"><img src="docs/screenshots/panel-codemap-dark.png" alt="Code map of a project"><br><sub><b>Code map</b> · every project indexed into a graph</sub></td>
+    <td width="50%"><img src="docs/screenshots/panel-pools-dark.png" alt="Pools page"><br><sub><b>Pools</b> · who is limited, and where a new task would go</sub></td>
+    <td width="50%"><img src="docs/screenshots/panel-codemap-dark.png" alt="Code map page"><br><sub><b>Code map</b> · every project indexed into a graph</sub></td>
   </tr>
 </table>
+
+<p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · the same tasks in a pane next to your Claude session</sub></p>
 
 ## Agents that talk to each other
 
