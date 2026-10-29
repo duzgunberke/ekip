@@ -130,7 +130,7 @@ Your final answer must be ONLY the card markdown, starting with the line "# ${na
 
 export function generateCard(p, { via = process.env.EKIP_CARD_VIA ?? "auto" } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [EKIP_JS, "run", "--via", via, "--cwd", p.path, "-"], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [EKIP_JS, "run", "--via", via, "--cwd", p.path, "--label", `proje kartı: ${p.name}`, "-"], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     child.stdout.on("data", (d) => { out += d; });
     child.stderr.on("data", (d) => { err += d; });
