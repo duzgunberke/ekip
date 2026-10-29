@@ -21,9 +21,13 @@ function distance(a, b) {
   return d[a.length][b.length];
 }
 
-// Names a project answers to: its name, the name without separators, and its repos' folder names.
+// Generic sub-repo folder names ("web", "api") say nothing about which project a message is about.
+const GENERIC = new Set(["web", "api", "app", "apps", "mobile", "backend", "frontend", "server", "client", "core", "docs", "admin", "hub", "landing", "shared", "common", "worker", "site", "www", "ios", "android", "cli", "sdk", "lib", "packages", "infra", "scripts", "tools", "viewer", "render", "cockpit", "assets"]);
+
+// Names a project answers to: its name, the name without separators, and its repos' folder names
+// unless they are generic.
 function aliases(p) {
-  const out = new Set([p.name, ...(p.repos ?? []).map((r) => path.basename(r.path ?? ""))].filter(Boolean).map(fold));
+  const out = new Set([p.name, ...(p.repos ?? []).map((r) => path.basename(r.path ?? "")).filter((n) => !GENERIC.has(fold(n)))].filter(Boolean).map(fold));
   for (const a of [...out]) { out.add(a.replace(/[-_.]/g, "")); out.add(a.replace(/[-_.]/g, " ")); }
   return [...out].filter((a) => a.length >= 3);
 }
