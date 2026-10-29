@@ -1085,6 +1085,8 @@ async function memoryUp() {
     MEMORY_LLM_BASE_URL: `http://host.docker.internal:${PORT}/v1`, MEMORY_LLM_API_KEY: key, MEMORY_LLM_MODEL: "auto", MEMORY_LLM_PROTOCOL: "openai",
     PROXY_UPSTREAM_URL: `http://host.docker.internal:${PORT}`, PROXY_UPSTREAM_API_KEY: key, PROXY_UPSTREAM_MODEL: "auto",
     MEMORY_CORE_VOLUME: coreData, PANEL_VOLUME: panelData,
+    // the images ekip's patches were written against, pinned by digest (hub/tools/tdai-patches/images.json)
+    ...Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT, "hub/tools/tdai-patches/images.json"), "utf8"))).filter(([k]) => !k.startsWith("_"))),
   });
   patchTdaiScripts(dir);
   setEnvValues(env, {
@@ -1106,6 +1108,22 @@ async function memoryUp() {
 // TencentDB's hub script passes a fixed list of env vars; private GitHub code graphs need the
 // "gongfeng" code source (https clone with a token), so add that variable to the list.
 export function patchTdaiScripts(dir) {
+  // ekip's fixes to TencentDB (hub/tools/tdai-patches): overlay the patched source files onto the
+  // memory-core image (strict language rule in the extraction prompts, fast L0 writes), and apply the
+  // importer patch to the clone (retries, essential-only mode, progress beacon). Idempotent.
+  const patches = path.join(ROOT, "hub/tools/tdai-patches");
+  const coreScript = path.join(dir, "start-memory-core.sh");
+  const cs = fs.readFileSync(coreScript, "utf8");
+  if (!cs.includes("EKIP_TDAI_PATCHES") && cs.includes('-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n')) {
+    fs.writeFileSync(coreScript, cs.replace('-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n',
+      '-v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \\\n  $( P="${EKIP_TDAI_PATCHES:-' + patches + '}"; [ -d "$P/app" ] && cd "$P" && find app -type f -name "*.ts" | while read f; do printf -- "-v %s/%s:/%s:ro " "$P" "$f" "$f"; done ) \\\n'));
+  }
+  const clone = path.dirname(path.dirname(dir));
+  const ip = path.join(patches, "asset-import.patch");
+  if (fs.existsSync(ip) && spawnSync("git", ["-C", clone, "apply", "--reverse", "--check", ip], { stdio: "ignore" }).status !== 0) {
+    const r = spawnSync("git", ["-C", clone, "apply", "--3way", ip], { encoding: "utf8" });
+    if (r.status !== 0) console.error(`ekip: importer patch did not apply (${r.stderr.trim().split("\n")[0]}); history import works without its retries`);
+  }
   // memory-core ships with embeddings off ("provider: none" = keyword search only); make the block
   // read MEMORY_EMBEDDING_* so it can use an OpenAI-compatible embeddings endpoint (freellmapi).
   const core = path.join(dir, "start-memory-core.sh");

@@ -1,0 +1,6 @@
+{
+  "_comment": "TencentDB Agent Memory images the files in app/ were written against. ekip pins them by digest so an upstream ':latest' cannot break the overlay; refresh both together.",
+  "MEMORY_CORE_IMAGE": "agentmemory/memory-core@sha256:342331d5ccdb31ce84ac1ba205aa0b1a8b16a13fe71b6a104d17d41197eb7112",
+  "MEMORY_HUB_IMAGE": "agentmemory/memory-hub@sha256:c75bd28a5dbd045f43a0df9e6052b4fe26c06bfe911d90773b8ac805faf79b78",
+  "PROXY_IMAGE": "agentmemory/memory-proxy@sha256:2149edb6521ba7e7aeb5f1e52de2c42e9b43ba01ec4f7c4fdbf2f34357c35826"
+}

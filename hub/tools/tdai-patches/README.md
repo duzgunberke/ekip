@@ -1,5 +1,11 @@
 # TencentDB memory-core patches
 
+`ekip init` / `ekip memory up` apply everything here automatically (`patchTdaiScripts`): the files under
+`app/` are mounted read-only over the memory-core image, `asset-import.patch` is applied to the clone,
+the clone is pinned to the commit they were written against (`DEPS.tdai.ref`) and the images are pinned
+by digest (`images.json`). Refresh the files, the digests and the ref together. TencentDB Agent Memory
+is MIT licensed; the modified files keep its notice.
+
 `memory-core-l0-fts-scan.patch`: `upsertL0` ran `DELETE FROM l0_fts WHERE record_id = ?` on every
 message, but `record_id` is an UNINDEXED FTS5 column, so each write scanned the whole FTS table
 (CPU pinned at 100%+, ~1 message/s at 66k messages, getting slower as the table grows). The patch

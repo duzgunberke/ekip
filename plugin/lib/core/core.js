@@ -217,7 +217,8 @@ export function sh(cmd, argv, opts = {}) {
 export const DEPS = {
   freellmapi: { repo: "https://github.com/tashfeenahmed/freellmapi.git", key: "freellmapiDir" },
   hoptell: { repo: "https://github.com/EminUZUN/hoptell.git", key: "hoptellDir" },
-  tdai: { repo: "https://github.com/TencentCloud/TencentDB-Agent-Memory.git", key: "tdaiDir" },
+  // pinned: ekip's patches (hub/tools/tdai-patches) were written against this commit
+  tdai: { repo: "https://github.com/TencentCloud/TencentDB-Agent-Memory.git", key: "tdaiDir", ref: "ecc01a5" },
 };
 export const depDir = (name) => SETTINGS[DEPS[name].key] ?? path.join(VENDOR, name);
 export const saveSettings = (patch) => {
@@ -230,6 +231,12 @@ export function clone(name) {
   if (!fs.existsSync(path.join(dir, ".git"))) {
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     sh("git", ["clone", "--depth", "50", DEPS[name].repo, dir]);
+    if (DEPS[name].ref) {
+      if (spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" }).status !== 0) {
+        spawnSync("git", ["-C", dir, "fetch", "-q", "--depth", "200", "origin"], { stdio: "ignore" });
+        spawnSync("git", ["-C", dir, "checkout", "-q", DEPS[name].ref], { stdio: "ignore" });
+      }
+    }
   }
   saveSettings({ [DEPS[name].key]: dir });
   return dir;
