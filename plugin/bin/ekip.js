@@ -142,6 +142,7 @@ const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR
   --task ID  show this worker under a task (ekip task new ...) while it runs
   --label T  a short name for the worker in the task view
   --no-watch don't open a pane that shows the worker live
+  --worktree run on its own git worktree and branch (for work on code that is running right now)
 The worker's final report is printed to stdout; its full log is under data/runs/.`;
 
 function parseRun(args) {
@@ -156,6 +157,7 @@ function parseRun(args) {
     else if (a === "--skill") o.skills.push(args[++i]);
     else if (a === "--project") o.project = args[++i];
     else if (a === "--no-watch") o.watch = false;
+    else if (a === "--worktree") o.worktree = true;
     else if (a === "--task") o.taskId = args[++i];
     else if (a === "--label") o.label = args[++i];
     else if (a === "--watch") o.watch = true;
@@ -537,7 +539,9 @@ async function run(args) {
   process.env.EKIP_PARENT_RUN = process.env.EKIP_PARENT_RUN || `${Date.now()}-${process.pid}`;
   await reconcileRuns().catch(() => {});
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
-  if (o.vias.length === 1) {
+  // --worktree: one pool, but on its own branch like a race, so a worker that edits code that is
+  // running right now (ekip itself, a dev server) cannot break it halfway through
+  if (o.vias.length === 1 && !o.worktree) {
     const r = await runOne(o, o.vias[0], id);
     process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${r.out}\n`);
     await report({ id, via: r.via, model: r.model, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
@@ -546,7 +550,7 @@ async function run(args) {
   // Several pools on the same task: each gets its own git worktree and branch, so they cannot
   // collide; you (or the lead) compare the branches and merge the best one.
   const top = git(o.cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
-  if (!top) die("running several pools on one task needs a git repository (each gets its own worktree)");
+  if (!top) die("--worktree and several pools need a git repository (each run gets its own worktree)");
   const short = id.slice(0, 19).replace(/[^0-9]/g, "");
   const results = await Promise.all(o.vias.map(async (via) => {
     const branch = `ekip/${short}-${via}`;
@@ -847,6 +851,12 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+- A worker that edits code that is running right now (ekip itself, a live dev server) gets
+  \`--worktree\`; merge its branch after review.
+- Tasks never look frozen or skipped: mark every step you start, let long reporters pass \`--alive\`
+  when they measure work, and do not leave a step pending for later; close the task and open a new
+  one when that work starts. When something looks stuck, fix it and add the mechanism that prevents
+  the same class of problem, not a one-off patch.
 - Learn from failures: when a worker failed or was rejected and a later attempt worked, save the lesson
   with memory_remember in that project (what failed, the cause, what made it work, the pool that did
   it), one fact per call. Lessons that keep coming back become skill candidates (\`ekip skill learn\`).
