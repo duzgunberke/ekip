@@ -851,6 +851,8 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+- A long job you start yourself outside \`ekip run\` (an import, a render, a loop) is opened with
+  \`ekip show <log...>\` right away, so the user sees it in a pane like any worker.
 - A worker that edits code that is running right now (ekip itself, a live dev server) gets
   \`--worktree\`; merge its branch after review.
 - Tasks never look frozen or skipped: mark every step you start, let long reporters pass \`--alive\`
@@ -1283,6 +1285,8 @@ ${c.bold("Workers")}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} review changes
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
+  ${c.cyan("ekip show")} ${c.gray("<log...>")}        open a live pane on any log
+  ${c.cyan("ekip show")} ${c.gray("<log...>")}           open a live pane on any log
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           live task tracker; task step supports --alive
@@ -1320,6 +1324,7 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} ${t("değişiklikleri denetle")}
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
+  ${c.cyan("ekip show")} ${c.gray("<log...>")}        logları canlı izleyen panel aç
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           canlı görev takibi; task step --alive
@@ -1382,6 +1387,14 @@ switch (cmd) {
   case "review": code = await (await import("../lib/review.js")).main(rest); break;
   case "clean": clean(rest); break;
   case "watch": await watch(rest); break;
+  // ekip show LOG...: a long job started outside `ekip run` (an import, a render, a script) gets the
+  // same live pane next to the lead, so nothing runs out of sight.
+  case "show": {
+    const files = rest.filter((f) => !f.startsWith("-")).map((f) => path.resolve(f));
+    if (!files.length) die("kullanım: ekip show <log> [log...]  (logları canlı izleyen bir panel açar)");
+    openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`);
+    break;
+  }
   case "skill": case "skills": {
     const [sub = "ls", proj, ...q] = rest;
     const gen = await import("../lib/skillgen.js");
