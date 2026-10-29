@@ -29,8 +29,8 @@ Work on a branch (`feat/<topic>`, `fix/<topic>`) and merge it into `main` when `
 and the privacy check pass. Every commit that lands on `main` gets a fresh-install test on a clean
 machine; when it passes, it is released automatically: the version comes from the commit subjects
 merged since the last tag (`feat:` or `minor:` bumps the minor version, `major:` or `BREAKING CHANGE`
-the major one, anything else the patch), `CHANGELOG.md` and the version files are updated in a
-`release: vX.Y.Z` commit, and the tag and GitHub release follow. Never tag or bump versions by hand.
+the major one, anything else the patch), that exact commit is tagged and a GitHub release lists the
+changes. There is no release commit: ekip reads its version from the tag. Never tag by hand.
 
 ## Moving or renaming modules
 

@@ -187,6 +187,8 @@ function registry() {
 const WORKER_BRIEF = [
   "You are a worker agent dispatched by a lead agent. Do the task below completely and autonomously in the current directory; do not ask questions, make reasonable assumptions and state them.",
   "Finish with a short report: what you changed (files), what you verified and how, and anything left open.",
+  // a worker once revoked a signing certificate to get past an error; the account owner got Apple's email
+  "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
   "To find code, prefer the code index over reading many files: run `codegraph explore \"<what you look for>\"`, `codegraph callers <symbol>` or `codegraph impact <symbol>` in the repo (fall back to grep when it reports no index).",
   "",
   "TASK:",
@@ -511,13 +513,20 @@ async function runOneInner(o, via, id) {
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`, { title: `ekip · ${o.label ?? via}` });
   const order = via === "auto" ? autoOrder() : [via];
   let last = null;
-  for (const v of order) {
+  for (let i = 0; i < order.length; i++) {
+    const v = order[i];
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
     // which pool this run is on, so other `--via auto` runs see it as busy
     fs.appendFileSync(logFile, poolMark(v));
     try { last = await runVia(v, o, logFile); } catch (e) { last = { code: 1, out: String(e?.message ?? e) }; }
     if (!failed(last)) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
+    // A pool asked for by name that is out of quota hands the task on instead of failing it: the
+    // next pools of the auto order (limited ones are already left out; never the headless Claude)
+    if (via !== "auto" && i === order.length - 1 && LIMIT_RE.test(last.out.slice(-4000))) {
+      const rest = autoOrder().filter((x) => !order.includes(x) && x !== "claude");
+      if (rest.length) { warn(`${c.bold(v, process.stderr)} ${t("kotası dolu; sıradaki havuza geçiliyor")}: ${rest.join(" → ")}`); order.push(...rest); }
+    }
   }
   clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload();
   return { ok: false, via, out: last?.out.trim() ?? "", logFile, model };
@@ -1295,7 +1304,9 @@ async function importHistory(args = []) {
       cwd: tdai, stdio: "inherit",
       env: { ...process.env, HOME: shadow, PANEL_URL: `http://127.0.0.1:${TDAI_PORTS.panel}`, TDAI_SERVICE_ID: "default", TDAI_USER_KEY: key,
         // conversation only, no tool output (see agents/asset-import.ts LEAN); TDAI_IMPORT_LEAN=0 for everything
-        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1", TDAI_IMPORT_SINCE_DAYS: days, TDAI_IMPORT_MAX_MB: maxMb },
+        // what people said and what was answered: tool calls and results were 85% of the rows and
+        // made every vector search slower without adding decisions (TDAI_IMPORT_ESSENTIAL=0 keeps calls)
+        TDAI_IMPORT_LEAN: process.env.TDAI_IMPORT_LEAN ?? "1", TDAI_IMPORT_ESSENTIAL: process.env.TDAI_IMPORT_ESSENTIAL ?? "1", TDAI_IMPORT_SINCE_DAYS: days, TDAI_IMPORT_MAX_MB: maxMb },
     });
   }
 }
@@ -1312,9 +1323,30 @@ function reindex() {
   } else console.log(spawnSync("sh", ["-c", cmd(tdaiDeploy(), script)], { encoding: "utf8" }).stdout.trim());
 }
 
+// ekip memory compact: duplicates and tool noise out of memory-core's store (hub/tools/tdai-compact.mjs),
+// with memory-core stopped for the few seconds it takes; a copy of the store is kept next to it (the
+// previous copy is replaced). Runs where the memory stack runs: the VPS or local Docker.
+function compact() {
+  const script = path.join(ROOT, "hub/tools/tdai-compact.mjs");
+  const body = (src) => `set -e; C=$(${TDAI_CONTAINER_SH("tdai-memory-core")}); [ -n "$C" ] || { echo "memory-core is not running"; exit 1; }
+IMG=$(docker inspect -f '{{.Config.Image}}' $C)
+DIR=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' $C | sed -n 's/^TDAI_DATA_DIR=//p'); DIR=\${DIR:-/data/tdai-memory}
+docker stop $C >/dev/null
+docker run --rm --volumes-from $C -v ${src}:/tmp/ekip-compact.mjs:ro --entrypoint sh $IMG -c "rm -f $DIR/vectors.db.bak && cp $DIR/vectors.db $DIR/vectors.db.bak && node /tmp/ekip-compact.mjs $DIR/vectors.db" || { docker start $C >/dev/null; exit 1; }
+docker start $C >/dev/null
+echo "memory-core restarted; its first start rebuilds the vector tables per project (minutes on a large store)"`;
+  if (REMOTE) {
+    spawnSync("scp", ["-q", script, `${REMOTE.ssh}:${REMOTE.dir}/tdai-compact.mjs`], { stdio: "inherit" });
+    const r = ssh(body(`${REMOTE.dir}/tdai-compact.mjs`), { stdio: "inherit" });
+    return r.status ?? 1;
+  }
+  return spawnSync("sh", ["-c", body(script)], { stdio: "inherit" }).status ?? 1;
+}
+
 async function memory([sub = "status", ...rest]) {
   if (sub === "import-history") return importHistory(rest);
   if (sub === "reindex") return reindex();
+  if (sub === "compact") { process.exitCode = compact(); return; }
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
@@ -1469,7 +1501,7 @@ ${c.bold("Development environment")}
 
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
@@ -1509,7 +1541,7 @@ ${c.bold("Geliştirme ortamı")}
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}

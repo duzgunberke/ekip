@@ -15,11 +15,12 @@ const KINDS = ["memory", "wiki", "skill", "local-skill", "codegraph", "card"];
 const SOURCES = ["prompt-hook", "worker-brief", "mcp-lead", "mcp-worker", "review"];
 
 // Append one lookup. Never throws: a full disk or a bad value must not break the call it describes.
-export function recordUse({ source, kind, project, query, hits, names, skills, tool, runId, taskId, ms, logFrom, error } = {}) {
+export function recordUse({ source, kind, project, query, hits, names, skills, tool, runId, taskId, ms, logFrom, error, timeout } = {}) {
   try {
     const row = { at: new Date().toISOString(), source, kind, project: project?.name ?? project ?? null,
       query: query == null ? null : redact(String(query).replace(/\s+/g, " ")).slice(0, 200), hits: Number(hits) || 0 };
     if (tool) row.tool = tool;
+    if (timeout) row.timeout = true;
     if (names?.length) row.names = names.slice(0, 10).map(String);
     if (skills?.length) row.skills = skills.slice(0, 10).map((s) => ({ name: s.name, file: s.file }));
     if (runId) row.runId = runId;
@@ -157,7 +158,8 @@ export function summarize({ days = 30, project = null } = {}) {
     for (const [k, v] of Object.entries(p.sources)) bySource[k] = (bySource[k] ?? 0) + v;
     for (const [k, v] of Object.entries(p.kinds)) byKind[k] = (byKind[k] ?? 0) + v.n;
   }
-  return { at: new Date().toISOString(), days, totals: { lookups, hitRate: pct(hits, lookups), bySource, byKind },
+  const timeouts = rows.filter((r) => r.timeout).length;
+  return { at: new Date().toISOString(), days, totals: { lookups, hitRate: pct(hits, lookups), timeouts, timeoutRate: pct(timeouts, lookups), bySource, byKind },
     daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)).slice(-14), projects: out,
     note: "Signals, not proof: a hit means the lookup returned something; worker success and skill-file mentions in run logs only correlate with the knowledge being useful." };
 }
@@ -210,4 +212,17 @@ export async function main(args = []) {
   // the hub always gets every project, whatever this view was filtered to
   if (!args.includes("--local")) await push(project || days !== 30 ? summarize() : s);
   return 0;
+}
+
+/** Share of per-message lookups in the last hours that ran out of time (doctor warns above 20%). */
+export function recentTimeouts(hours = 24) {
+  const since = Date.now() - hours * 3600_000;
+  let n = 0, t = 0;
+  try {
+    for (const l of fs.readFileSync(LOG, "utf8").split("\n")) {
+      if (!l.includes('"prompt-hook"')) continue;
+      try { const r = JSON.parse(l); if (Date.parse(r.at) < since || r.kind !== "memory") continue; n++; if (r.timeout) t++; } catch { /* partial line */ }
+    }
+  } catch { /* no log yet */ }
+  return { lookups: n, timeouts: t };
 }

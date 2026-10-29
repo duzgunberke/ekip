@@ -4,6 +4,13 @@
 # branches; every merge to main that passes becomes a release. One run at a time.
 #   vps-ci-poll.sh <repo url> <dir for state, logs and results> [branch, default main] [token file]
 set -uo pipefail
+# bash reads a script while it runs: updating these files during a 20-minute test corrupted the run.
+# Every run works from its own copy, so the scripts can be replaced at any time.
+if [ -z "${EKIP_CI_SNAP:-}" ]; then
+  snap=$(mktemp -d /tmp/ekip-ci.XXXXXX); cp "$(cd "$(dirname "$0")" && pwd)"/*.sh "$snap"/
+  EKIP_CI_SNAP="$snap" exec bash "$snap/$(basename "$0")" "$@"
+fi
+trap 'rm -rf "$EKIP_CI_SNAP"' EXIT
 repo="$1"; dir="$2"; branch="${3:-main}"; token="${4:-}"
 mkdir -p "$dir"
 exec 9>"$dir/.lock"; flock -n 9 || exit 0

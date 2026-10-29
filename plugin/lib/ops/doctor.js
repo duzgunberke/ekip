@@ -141,6 +141,17 @@ export async function main(args = []) {
       }
     } catch { /* hub unreachable: no CI line */ }
   }
+  // Per-message knowledge that ran out of time: the message was handled without it, so say so.
+  try {
+    const { recentTimeouts } = await import("../memory/usage.js");
+    const r = recentTimeouts(24);
+    if (r.lookups >= 5) {
+      const share = Math.round((r.timeouts / r.lookups) * 100);
+      line(share > 20 ? "bad" : "ok", t("Mesaj bağlamı"), share > 20
+        ? `${t("son 24 saatte aramaların")} %${share} ${t("zaman aşımına uğradı; bellek sunucusu yavaş (ekip stats)")}`
+        : `${t("son 24 saatte")} ${r.lookups} ${t("arama")}, %${share} ${t("zaman aşımı")}`);
+    }
+  } catch { /* no usage log */ }
   // Say what was repaired without being asked, once per distinct set of repairs every 6 hours.
   if (fix && fixed.length) {
     const key = fixed.join("|"), stamp = path.join(HOME, "doctor-notified.json");

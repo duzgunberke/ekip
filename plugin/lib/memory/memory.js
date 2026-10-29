@@ -300,7 +300,9 @@ export async function recall(project, query, limit = 5, { timeoutMs = 10000, fac
   const q = String(query).slice(0, 2048);
   const [l1, l0] = await Promise.allSettled([
     coreData("/atomic/search", { ...s, query: q, limit }, timeoutMs),
-    factsOnly ? Promise.resolve(null) : coreData("/conversation/search", { ...s, query: q, limit }, timeoutMs),
+    // raw conversation search scans far more vectors than the facts: its own shorter limit, so a slow
+    // one gives up alone and the facts still come back in time
+    factsOnly ? Promise.resolve(null) : coreData("/conversation/search", { ...s, query: q, limit }, Math.round(timeoutMs * 0.7)),
   ]);
   const out = [];
   for (const m of l1.value?.items ?? []) out.push({ layer: "L1", type: m.type, content: m.content, score: m.score, at: m.updated_at });
@@ -401,6 +403,7 @@ export async function remember(project, text) {
 }
 
 const SYS_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+const NOISE_RE = /^(∅|Tool loaded\.|\[tool_(result|call)\][^\n]{0,80}|.{0,2})$/s;
 function turnText(entry) {
   if (!entry || entry.isSidechain || entry.isMeta || !["user", "assistant"].includes(entry.type)) return null;
   const c = entry.message?.content;
@@ -408,6 +411,8 @@ function turnText(entry) {
   // History import reads local session files directly; redact the extracted text before upload.
   text = redact(text.replace(SYS_RE, "").trim());
   if (!text || /^<(command-|local-command|bash-|task-notification)/.test(text) || text.startsWith("Caveat:")) return null;
+  // placeholders and tool chatter carry nothing to remember and only slow every search down
+  if (NOISE_RE.test(text.replace(/\[Image[^\]]*\]/g, "").trim() || "∅")) return null;
   if (text.length > MSG_MAX) text = `${text.slice(0, MSG_MAX - 20)}\n…(truncated)`;
   return { role: entry.type, content: text };
 }

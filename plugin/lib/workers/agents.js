@@ -86,6 +86,8 @@ export function poolScore(via) {
 const QUOTA = [
   /Individual quota reached[^\n"]*/, /You have no remaining credits[^\n"]*/, /exceeded your (?:current )?quota[^\n"]*/i,
   /usage limit[^\n"]*reached[^\n"]*/i, /RESOURCE_EXHAUSTED[^\n"]*/,
+  // codex: "You've hit your usage limit. … try again at Nov 28th, 2026 2:43 PM."; copilot/others: premium or monthly caps
+  /hit your usage limit[^\n"]*/i, /premium requests?[^\n"]*(?:limit|exhausted|exceeded|used up)[^\n"]*/i, /monthly (?:limit|quota)[^\n"]*(?:reached|exceeded)[^\n"]*/i,
 ];
 
 /** The pool's last quota error in its run logs, until a later run succeeds or the reset time passes. */
@@ -106,7 +108,10 @@ export function lastQuotaHit(via) {
     const hit = QUOTA.map((re) => end.match(re)?.[0]).find(Boolean);
     if (!hit) continue;
     const m = tail.match(/Resets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
-    const resetAt = m ? st.mtimeMs + ((+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0)) * 1000 : null;
+    // "try again at Nov 28th, 2026 2:43 PM" (codex) is an absolute reopen time
+    const at = tail.match(/try again at ([A-Z][a-z]{2,8} \d{1,2})(?:st|nd|rd|th)?,? (\d{4})(?: (\d{1,2}:\d{2} ?[AP]M))?/);
+    const atMs = at ? Date.parse(`${at[1]} ${at[2]} ${at[3] ?? ""}`.trim()) : NaN;
+    const resetAt = m ? st.mtimeMs + ((+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0)) * 1000 : Number.isFinite(atMs) ? atMs : null;
     if (resetAt && resetAt < Date.now()) return null;
     return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: resetAt ? new Date(resetAt).toISOString() : null };
   }

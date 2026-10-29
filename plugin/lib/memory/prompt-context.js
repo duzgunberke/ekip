@@ -7,9 +7,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { redact } from "../core/redact.js";
 
-// knowledge over speed: a busy memory server (an import writing) answers in 4-7 s, and dropping the
-// context then means the message is handled without it
-const BUDGET_MS = 7000;
+// Claude Code kills the hook at its timeout (6 s in plugin copies cached before 10 s) and prints an
+// error under the message, so the hook ends itself well inside it, with whatever it has by then.
+const BUDGET_MS = 4500;
+setTimeout(() => process.exit(0), 5500).unref();
 const fold = (s) => s.toLocaleLowerCase("tr").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
 
 function distance(a, b) {
@@ -100,9 +101,10 @@ export async function main() {
     try {
       const { recordUse } = await import("./usage.js");
       const base = { source: "prompt-hook", project: p.name, query: prompt };
-      recordUse({ ...base, kind: "memory", hits: facts.length, ms: memoriesT.ms });
-      recordUse({ ...base, kind: "skill", hits: skills?.length ?? 0, names: (skills ?? []).map((s) => s.name), ms: skillsT.ms });
-      if (wikiT) recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
+      // null = the search ran out of time (not "nothing found"): doctor warns when that becomes common
+      recordUse({ ...base, kind: "memory", hits: facts.length, ms: memoriesT.ms, ...(memories === null ? { timeout: true } : {}) });
+      recordUse({ ...base, kind: "skill", hits: skills?.length ?? 0, names: (skills ?? []).map((s) => s.name), ms: skillsT.ms, ...(skills === null ? { timeout: true } : {}) });
+      if (wikiT) recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms, ...(wiki === null ? { timeout: true } : {}) });
       recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
     } catch { /* usage logging must never affect the hook */ }
     if (by === "general" && !facts.length && !snippets.length && !skills?.length) return null;

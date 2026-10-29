@@ -23,6 +23,9 @@ async function readStdin(timeoutMs = 2000) {
   });
 }
 
+// project names that are ordinary words in the languages used here, never enough on their own
+const COMMON_WORDS = new Set(["ekip", "genel", "app", "apps", "web", "api", "hub", "site", "test", "demo", "notes", "blog", "shop", "store", "game", "portfolio", "landing", "docs", "tools", "mobile", "backend", "frontend", "server", "admin", "panel", "studio", "video", "music"]);
+
 const logErr = (e) => {
   try { fs.mkdirSync(path.join(HOME, "logs"), { recursive: true }); fs.appendFileSync(path.join(HOME, "logs/hooks.log"), `${new Date().toISOString()} ${e?.stack ?? e}\n`); } catch { /* ignore */ }
 };
@@ -87,7 +90,11 @@ export async function main([sub, ...rest] = []) {
         // projects the session really worked on, not ones it only listed in passing
         const total = Object.values(counts).reduce((a, b) => a + b, 0);
         for (const x of list.filter((x) => (counts[x.name] ?? 0) >= Math.max(5, total * 0.05))) {
-          const named = new RegExp(`\\b${x.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          // a name that is also an everyday word ("ekip" is Turkish for team) matched unrelated research;
+          // such names count only with the project's path or an explicit --project / "project": mention
+          const esc = x.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const plain = x.name.length >= 5 && !COMMON_WORDS.has(x.name.toLowerCase());
+          const named = new RegExp(plain ? `\\b${esc}\\b` : `--project[ =]${esc}\\b|"project"\\s*:\\s*"${esc}"`, "i");
           const r = await mem.capture(x, transcript, sessionId, { only: (l) => named.test(l) || l.includes(x.path) });
           console.log(`${new Date().toISOString()} ${x.name} ${sessionId} (from home): ${JSON.stringify(r)}`);
         }
