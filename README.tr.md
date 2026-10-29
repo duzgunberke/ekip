@@ -24,7 +24,7 @@ Claude Code kotasının çoğu **okumaya** gider: dosyalar, loglar, geçmiş ve 
 
 - **Kararları yalnızca Claude verir.** İsteği anlar, parçalara ayırır, her parça için bir worker seçer ve sonucu inceler. Okuma ve yazma işlerini **başka kotalardaki** agent'lar üstlenir: Antigravity, Codex, Copilot ve tek bir uç noktanın arkasındaki yaklaşık 60 ücretsiz model.
 - **Bağlam bir kez hazırlanır.** Her projenin bir belleği olur: vektör veritabanındaki geçmiş oturumlar, dokümanlarından oluşturulmuş bir LLM wiki'si, kod grafiği ve projeye özel beceriler. Worker'lar repo'yu yeniden okumak yerine bunlarla işe başlar.
-- **Her şeyi görürsünüz.** Her worker'a bir terminal paneli ayrılır, her istek canlı adımları olan bir göreve dönüşür; web panelinde çalışmaları, kotaları ve yeni bir görevin hangi modele yönlendirileceğini görürsünüz.
+- **Her şeyi görürsünüz.** Her worker'a bir terminal paneli ayrılır, her istek canlı adımları olan bir göreve dönüşür; web panelinde çalışmaları, kotaları ve yeni bir görevin hangi modele yönlendirileceğini görürsünüz. Sunucunuz yoksa `ekip init` paneli kendi bilgisayarınızda açar: http://localhost:7777.
 
 <p align="center"><img src="docs/assets/savings.svg" alt="ekip savings ile ölçülen, Claude dışında yürüyen iş payı: iki günlük kurulumda %58, ertesi gün %81" width="100%"></p>
 

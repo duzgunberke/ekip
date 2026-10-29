@@ -23,6 +23,15 @@ Never commit personal data: project names, hosts, tokens, UUIDs, logs, or files 
 
 Keep one topic per pull request and use imperative commit messages. For vulnerability reports, use GitHub Security Advisories privately; do not open a public issue.
 
+## Branches and releases
+
+Work on a branch (`feat/<topic>`, `fix/<topic>`) and merge it into `main` when `bash scripts/smoke.sh`
+and the privacy check pass. Every commit that lands on `main` gets a fresh-install test on a clean
+machine; when it passes, it is released automatically: the version comes from the commit subjects
+merged since the last tag (`feat:` or `minor:` bumps the minor version, `major:` or `BREAKING CHANGE`
+the major one, anything else the patch), `CHANGELOG.md` and the version files are updated in a
+`release: vX.Y.Z` commit, and the tag and GitHub release follow. Never tag or bump versions by hand.
+
 ## Moving or renaming modules
 
 ekip runs from its own checkout, and long-lived processes (a worker that started before your change,

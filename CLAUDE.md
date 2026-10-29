@@ -44,3 +44,5 @@ running while the Mac is off, and serves the web panel.
   half-finished edit cannot break the running lead, panes or hooks.
 - Update `README.md`, `README.tr.md` and `docs/` when behaviour changes; keep the README's
   structure.
+- Work on a branch (`feat/…`, `fix/…`), merge into `main` when checks pass; a passing merge is
+  released automatically (see `CONTRIBUTING.md`). Never tag or bump versions by hand.

@@ -775,9 +775,10 @@ async function job(args) {
 }
 
 async function hub([sub, url, token]) {
+  if (sub === "local") { process.exitCode = await (await import("../lib/hub/local-hub.js")).main([url]); return; }
   if (sub === "link") {
     if (!url || !token) die("usage: ekip hub link <https://hub.example.com> <token>");
-    saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token });
+    saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token, hubLocal: false });
     await hubFetch("/api/heartbeat", { method: "POST", body: JSON.stringify({ client: "mac", host: os.hostname() }) });
     console.log(`linked to ${url}`);
   } else if (sub === "push") {
@@ -802,7 +803,7 @@ async function hub([sub, url, token]) {
     console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
   } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));
   else if (sub === "open") openUrl(SETTINGS.hubUrl ?? die("no hub linked"));
-  else die("usage: ekip hub link <url> <token> | push | status | open");
+  else die("usage: ekip hub link <url> <token> | local [up|down|status] | push | status | open");
 }
 
 // Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together,
@@ -1123,6 +1124,13 @@ async function init({ skipKeys = false } = {}) {
     console.log("Registering projects with a commit in the last 30 days (cards, wiki, code graphs, memory):");
     await (await import("../lib/projects/projects.js")).main(["scan", "--days", "30", "--yes"]);
   }
+  // the web panel: on this computer when no VPS hub is linked (same image the VPS runs)
+  step(11, "web panel");
+  try {
+    const lh = await import("../lib/hub/local-hub.js");
+    if (lh.remoteLinked()) console.log(`ok (linked hub: ${SETTINGS.hubUrl})`);
+    else { await lh.up(); await hub(["push"]).catch(() => {}); }
+  } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip hub local`); }
   console.log("\nDone. Open a new terminal and run: ekip");
   const onboarding = await import("../lib/projects/onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd(), refresh: true }), { heading: true });
