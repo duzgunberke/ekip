@@ -263,20 +263,28 @@ export const adminKey = () => {
   return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null;
 };
 
-// iTerm2 session ids that are open right now (one osascript call).
-function openSessions() {
+// iTerm2 session ids that are open right now (one osascript call). The list of sessions can change
+// while the script walks it (a pane closing), which made the old per-index loop fail and every check
+// report "closed"; each window and tab is read in its own try block.
+export function openSessions() {
   const r = spawnSync("osascript", ["-e", `tell application "iTerm2"
   set out to ""
-  repeat with w in windows
-    repeat with t in tabs of w
-      repeat with s in sessions of t
-        set out to out & (id of s) & linefeed
+  repeat with w in (every window)
+    try
+      repeat with t in (every tab of w)
+        try
+          repeat with s in (every session of t)
+            try
+              set out to out & (id of s) & linefeed
+            end try
+          end repeat
+        end try
       end repeat
-    end repeat
+    end try
   end repeat
   return out
 end tell`], { encoding: "utf8" });
-  return new Set(r.stdout.split("\n").map((x) => x.trim()).filter(Boolean));
+  return new Set((r.stdout ?? "").split("\n").map((x) => x.trim()).filter(Boolean));
 }
 
 // In iTerm2, worker and log panes open in one column to the right of the lead: the first one splits
@@ -327,17 +335,7 @@ end tell`;
 // Whether an iTerm2 session with this id is still open (the user may have closed the pane).
 export function paneAlive(id) {
   if (!id || process.platform !== "darwin") return false;
-  const script = `tell application "iTerm2"
-  repeat with w in windows
-    repeat with t in tabs of w
-      repeat with s in sessions of t
-        if id of s is "${id}" then return "yes"
-      end repeat
-    end repeat
-  end repeat
-  return ""
-end tell`;
-  return spawnSync("osascript", ["-e", script], { encoding: "utf8" }).stdout.trim() === "yes";
+  return openSessions().has(id);
 }
 
 // The live task pane under the lead (iTerm2): opened when the lead starts, and again on a new task

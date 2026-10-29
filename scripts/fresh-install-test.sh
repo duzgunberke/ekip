@@ -15,8 +15,10 @@ orb create ubuntu "$vm" >/dev/null
 in_vm() { orb run -m "$vm" bash -lc "$1"; }
 
 echo "== prerequisites"
-in_vm 'sudo apt-get update -qq >/dev/null 2>&1
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git sqlite3 tmux curl ca-certificates docker.io >/dev/null 2>&1
+# a fresh machine runs its own package updates at first boot: wait for the dpkg lock, retry, fail loudly
+in_vm 'set -e; for i in $(seq 1 60); do sudo fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1 || break; sleep 5; done
+for i in 1 2 3; do sudo apt-get update -qq >/dev/null 2>&1 && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git sqlite3 tmux curl ca-certificates docker.io >/dev/null 2>&1 && break; sleep 10; done
+command -v docker >/dev/null || { echo "docker.io did not install"; exit 1; }
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null 2>&1
 sudo apt-get install -y -qq nodejs >/dev/null 2>&1
 sudo systemctl start docker 2>/dev/null || sudo service docker start >/dev/null
