@@ -763,6 +763,10 @@ function markRunSynced(id) {
 
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
 
+## Public repository rules
+Before committing in a public repo or one with scripts/privacy-check.sh, run that check. Never seed public code briefs with personal project names, hosts, or IDs; describe them as runtime config.
+If the panel says a run is active after it finished locally, run \`ekip tasks sync\`. Move or remove registered projects only with \`ekip project move\` or \`ekip project remove\`.
+
 ## Development databases
 For database or Redis work in a registered project, run \`ekip dev up PROJECT\` and have workers source the project's \`.env.ekip-dev\`. Never use production URLs from project \`.env\` files for tests or migrations. Use \`ekip dev reset PROJECT --yes\` to reset development data, and \`ekip dev down\` when finished.
 
@@ -1255,7 +1259,7 @@ ${c.bold("Development environment")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
 
 ${c.bold("Projects and memory")}
-  ${c.cyan("ekip project")} ${c.gray("add|remove|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|move|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
@@ -1290,7 +1294,7 @@ ${c.bold("Geliştirme ortamı")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
-  ${c.cyan("ekip project")} ${c.gray("add|remove|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project")} ${c.gray("add|remove|move|scan|ls|show|sync|card")}
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
