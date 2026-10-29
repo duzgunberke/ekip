@@ -2,7 +2,7 @@
 
 **The mark.** A terminal prompt `❯` (the lead, amber) whose tip fans out into three lines that end in three
 nodes (the team, teal): one terminal, one Claude, a whole team. It holds up from a 16 px favicon to the
-README banner, and it is drawn the same way in the terminal (`plugin/lib/ui.js`).
+README banner, and it is drawn the same way in the terminal (`plugin/lib/core/ui.js`).
 
 **Colour has a meaning everywhere**: amber is the lead (Claude, your subscription), teal is the team
 (work on other quotas). The README diagrams, the panel and the terminal use the same split.

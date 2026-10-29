@@ -11,7 +11,7 @@ Clone the repository and run the CLI directly from the checkout; no build step i
 node plugin/bin/ekip.js help
 ```
 
-Before submitting, run `node --check` on every JavaScript file you touched. Match the surrounding code: ESM, two spaces, double quotes, small named functions, and a comment above non-obvious functions. Avoid minified one-liners. User-facing CLI strings use Turkish source strings passed through `t()` with an English entry in `plugin/lib/i18n.js`.
+Before submitting, run `node --check` on every JavaScript file you touched. Match the surrounding code: ESM, two spaces, double quotes, small named functions, and a comment above non-obvious functions. Avoid minified one-liners. User-facing CLI strings use Turkish source strings passed through `t()` with an English entry in `plugin/lib/core/i18n.js`.
 
 Update `README.md`, `README.tr.md`, and relevant files in `docs/` when behavior changes.
 

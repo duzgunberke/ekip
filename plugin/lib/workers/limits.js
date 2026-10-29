@@ -8,9 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import { AGENTS, autoOrder, lastQuotaHit, poolScore } from "./agents.js";
 import { spawnSync } from "node:child_process";
-import { HOME, REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "./core.js";
-import { c, dot, title, fit } from "./ui.js";
-import { t, lang } from "./i18n.js";
+import { HOME, REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "../core/core.js";
+import { c, dot, title, fit } from "../core/ui.js";
+import { t, lang } from "../core/i18n.js";
 
 const state = () => SETTINGS.agents ?? {};
 

@@ -4,9 +4,9 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, SETTINGS, TDAI_PORTS, adminKey, die } from "./core.js";
-import { getProject, listProjects, updateProject, findProject } from "./projects.js";
-import { redact } from "./redact.js";
+import { HOME, SETTINGS, TDAI_PORTS, adminKey, die } from "../core/core.js";
+import { getProject, listProjects, updateProject, findProject } from "../projects/projects.js";
+import { redact } from "../core/redact.js";
 
 const SERVICE = SETTINGS.tdaiServiceId ?? "default";
 const CORE = `http://127.0.0.1:${TDAI_PORTS.core}`;

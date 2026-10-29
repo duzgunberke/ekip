@@ -2,7 +2,7 @@
 // logs and restart apps from the same terminal. The API token is created by the user in Coolify
 // (Keys & Tokens → API tokens) and stored in data/config.json; it never leaves this machine.
 import { spawnSync } from "node:child_process";
-import { SETTINGS, ask, die, openUrl, saveSettings } from "./core.js";
+import { SETTINGS, ask, die, openUrl, saveSettings } from "../core/core.js";
 
 const vps = () => SETTINGS.vps ?? die("no VPS configured: ekip vps add <ssh-host> <coolify-url>");
 

@@ -7,7 +7,7 @@ import { t } from "./i18n.js";
 
 // Everything ekip keeps (keys, run transcripts, logs, cloned dependencies) lives inside the repo it
 // runs from, so the whole setup sits on one disk and moves with the folder. EKIP_HOME overrides it.
-export const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+export const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 // Claude Code runs plugins from a cached copy, so the real repo is recorded in a pointer file.
 export const POINTER = path.join(os.homedir(), ".config/ekip/root");
 const pointed = (() => { try { return fs.readFileSync(POINTER, "utf8").trim(); } catch { return null; } })();

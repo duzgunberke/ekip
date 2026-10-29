@@ -4,9 +4,9 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME, ROOT, SETTINGS, die } from "./core.js";
-import { c } from "./ui.js";
-import { lang } from "./i18n.js";
+import { HOME, ROOT, SETTINGS, die } from "../core/core.js";
+import { c } from "../core/ui.js";
+import { lang } from "../core/i18n.js";
 
 const STATE = path.join(HOME, "update-check.json");
 const git = (...args) => spawnSync("git", ["-C", ROOT, ...args], { encoding: "utf8", timeout: 8000 });
@@ -54,7 +54,7 @@ export function checkUpdate({ maxAgeH = 12, notify = false } = {}) {
 
 // One notification through the shared helper (ekip icon, macOS app name "ekip").
 async function notifyRelease(local, latest) {
-  const { notify } = await import("./core.js");
+  const { notify } = await import("../core/core.js");
   notify(lang === "en" ? `ekip ${latest} is out` : `ekip ${latest} çıktı`, lang === "en" ? `You have ${local}. Run: ekip update` : `Sizdeki ${local}. Güncellemek için: ekip update`, { subtitle: lang === "en" ? "New version" : "Yeni sürüm", group: "ekip-update" });
 }
 
@@ -80,7 +80,7 @@ export function autoUpdate() {
   const to = localVersion();
   writeState({ ...readState(), at: 0, notified: to });
   if (git("rev-parse", "HEAD").stdout.trim() !== before) {
-    import("./core.js").then(({ notify }) => notify(lang === "en" ? `ekip updated to ${to}` : `ekip ${to} sürümüne güncellendi`, lang === "en" ? `from ${u.local}; restart the lead to load new hooks` : `${u.local} sürümünden; yeni hook'lar için lead'i yeniden başlatın`, { subtitle: lang === "en" ? "Automatic update" : "Otomatik güncelleme", group: "ekip-update" })).catch(() => {});
+    import("../core/core.js").then(({ notify }) => notify(lang === "en" ? `ekip updated to ${to}` : `ekip ${to} sürümüne güncellendi`, lang === "en" ? `from ${u.local}; restart the lead to load new hooks` : `${u.local} sürümünden; yeni hook'lar için lead'i yeniden başlatın`, { subtitle: lang === "en" ? "Automatic update" : "Otomatik güncelleme", group: "ekip-update" })).catch(() => {});
   }
   return { updated: true, from: u.local, to };
 }

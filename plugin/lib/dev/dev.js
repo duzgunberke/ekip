@@ -4,8 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { HOME, SETTINGS, die, saveSettings } from "./core.js";
-import { findProject, getProject, listProjects } from "./projects.js";
+import { HOME, SETTINGS, die, saveSettings } from "../core/core.js";
+import { findProject, getProject, listProjects } from "../projects/projects.js";
 
 // Which container is the shared dev Postgres, its superuser and the VPS file with per-project
 // passwords all come from data/config.json ("dev"), set once with `ekip dev init`.

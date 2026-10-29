@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/lib/prompt-context.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/lib/memory/prompt-context.js\"",
             "timeout": 6
           }
         ]

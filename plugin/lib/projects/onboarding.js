@@ -2,9 +2,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, SETTINGS, healthy, keyCounts, tdaiUp } from "./core.js";
+import { HOME, SETTINGS, healthy, keyCounts, tdaiUp } from "../core/core.js";
 import { findProject } from "./projects.js";
-import { t } from "./i18n.js";
+import { t } from "../core/i18n.js";
 
 const CACHE = path.join(HOME, "onboarding-cache.json");
 const TTL = 10 * 60_000;
@@ -38,7 +38,7 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   }
   // A newer release than this checkout (cached remote check, see update.js).
   try {
-    const u = (await import("./update.js")).checkUpdate();
+    const u = (await import("../ops/update.js")).checkUpdate();
     if (u.behind) gaps.unshift(gap("update", `Yeni ekip sürümü var: ${u.latest} (sizdeki ${u.local})`, "düzeltmeler ve yeni özellikler bu kurulumda yok", "ekip update"));
   } catch { /* offline */ }
   // Vectors: memories without embeddings are not found by search. The doctor measures it and

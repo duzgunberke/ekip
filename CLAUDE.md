@@ -39,7 +39,7 @@ running while the Mac is off, and serves the web panel.
   domains, ids or tokens into code, docs or examples; personal values go into `data/config.json`
   at runtime. Run `bash scripts/privacy-check.sh` before committing.
 - `node --check` every touched file. User-facing CLI strings are Turkish source strings passed
-  through `t()` with an English entry in `plugin/lib/i18n.js`.
+  through `t()` with an English entry in `plugin/lib/core/i18n.js`.
 - ekip may be running from this checkout: give workers that edit it `ekip run --worktree`, so a
   half-finished edit cannot break the running lead, panes or hooks.
 - Update `README.md`, `README.tr.md` and `docs/` when behaviour changes; keep the README's
