@@ -85,7 +85,8 @@ fs.mkdirSync(RUNS, { recursive: true });
 
 // ---- freellmapi server ------------------------------------------------------------------------
 
-export async function healthy(timeoutMs = 1500) {
+// 4 s: through the SSH tunnel to a busy server a working pool can take over a second; late is not down
+export async function healthy(timeoutMs = 4000) {
   try { return (await fetch(`${URL_ROOT}/health`, { signal: AbortSignal.timeout(timeoutMs) })).ok; } catch { return false; }
 }
 

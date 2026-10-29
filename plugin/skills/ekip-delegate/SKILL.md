@@ -49,3 +49,10 @@ description: Use when you want to split work across agents, save a quota, compar
 18. Say what was delegated, what was reviewed, what passed, and what remains
    open. “Done” means the result is integrated and reviewed, not merely
    returned by a worker.
+
+## Merging worker branches
+
+ekip may be running from the checkout you merge into: a conflict marker left in a module breaks the
+lead, the panes and the hooks until it is resolved. Merge a worker's branch in a separate worktree,
+run `node --check` and `bash scripts/smoke.sh` there, then fast-forward the main checkout. Never leave
+a merge half-done in the live checkout.

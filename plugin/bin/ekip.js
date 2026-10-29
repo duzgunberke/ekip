@@ -1308,8 +1308,13 @@ async function memory([sub = "status", ...rest]) {
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory/memory.js")).main([sub, ...rest]);
   if (REMOTE && sub !== "open") {
     const dir = `${REMOTE.dir}/tdai/deploy/global-images`;
-    const cmd = sub === "up" ? `cd ${dir} && ./start-memory-core.sh && ./start-memory-hub.sh && PROXY_FULL_STACK=1 ./start-proxy.sh`
-      : sub === "down" ? `cd ${dir} && ./stop-all.sh`
+    // Under a PaaS the memory stack is a managed service: start/stop it through the PaaS, not with the
+    // original scripts (which would recreate plain containers on the ports the service holds).
+    // "memoryService": { "coolify": "<service uuid>" } in data/config.json; the API is called on the server.
+    const svc = SETTINGS.memoryService?.coolify;
+    const coolify = (action) => `curl -s -X POST -H "Authorization: Bearer $(cat /root/.coolify-api-token)" http://127.0.0.1:8000/api/v1/services/${svc}/${action}; echo`;
+    const cmd = sub === "up" ? (svc ? coolify("start") : `cd ${dir} && ./start-memory-core.sh && ./start-memory-hub.sh && PROXY_FULL_STACK=1 ./start-proxy.sh`)
+      : sub === "down" ? (svc ? coolify("stop") : `cd ${dir} && ./stop-all.sh`)
       : "docker ps --format '{{.Names}}: {{.Status}}' | grep -E '^(tdai-|ekip-hub|freellmapi)'";
     const r = ssh(cmd, { stdio: sub === "status" ? "pipe" : "inherit" });
     if (sub === "status") console.log(`on ${REMOTE.ssh}:\n${r.stdout.trim() || "nothing running"}`);

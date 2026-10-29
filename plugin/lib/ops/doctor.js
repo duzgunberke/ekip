@@ -57,8 +57,8 @@ export async function main(args = []) {
     line(running ? "ok" : "bad", "VPS tüneli", running ? `${REMOTE.ssh} açık` : t("kapalı"));
     if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", t("tünel yeniden başlatıldı")); fixed.push(t("VPS tüneli yeniden başlatıldı")); } }
   }
-  const free = await healthy();
-  line(free ? "ok" : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}` : t("erişilemiyor"));
+  const t0 = Date.now(), free = await healthy(), slow = Date.now() - t0 > 1500;
+  line(free ? (slow ? "warn" : "ok") : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}${slow ? ` · ${t("yavaş")} (${((Date.now() - t0) / 1000).toFixed(1)} sn)` : ""}` : t("erişilemiyor"));
   if (!free) problems++;
   const embed = !!process.env.MEMORY_EMBEDDING_BASE_URL || (() => { try { return keyCounts({ timeout: 500 }).some(([p]) => p === "nvidia"); } catch { return false; } })();
   line(embed ? "ok" : "warn", t("vektör sağlayıcı"), embed ? t("vektörler açık") : t("anahtar kelimeye düşer") + " → ekip keys");
