@@ -25,7 +25,7 @@ step() { echo "== $1" | tee -a "$log"; }
 run() { docker exec "$name" bash -lc "$1" >> "$log" 2>&1; }
 
 step "isolated machine"
-docker run -d --privileged --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
+docker run -d --privileged --cpus 2 --memory 6g --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
 run 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq git sqlite3 tmux curl ca-certificates docker.io python3 sudo >/dev/null
 (dockerd > /var/log/dockerd.log 2>&1 &) ; for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info >/dev/null
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null
