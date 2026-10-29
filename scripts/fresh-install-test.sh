@@ -12,7 +12,8 @@ trap cleanup EXIT
 
 echo "== clean machine $vm"
 orb create ubuntu "$vm" >/dev/null
-in_vm() { orb run -m "$vm" bash -lc "$1"; }
+# orb runs commands in the Mac's current folder (shared disk): start every step in the VM's own home
+in_vm() { orb run -m "$vm" bash -lc "cd ~ && $1"; }
 
 echo "== prerequisites"
 # a fresh machine runs its own package updates at first boot: wait for the dpkg lock, retry, fail loudly
