@@ -31,8 +31,9 @@ run 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get instal
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null
 npm i -g @anthropic-ai/claude-code >/dev/null 2>&1; node -v; claude --version | head -1' || { result fail "prerequisites"; exit 1; }
 
+# A fresh init pulls the memory images and builds the panel image; on a busy host it took over 40 min.
 step "clone $ref and ekip init"
-run "git clone -q '$repo' /root/ekip && cd /root/ekip && git checkout -q '$ref' && git log -1 --format='%h %s' && timeout 2400 node plugin/bin/ekip.js init --no-keys < /dev/null" || { result fail "ekip init"; exit 1; }
+run "git clone -q '$repo' /root/ekip && cd /root/ekip && git checkout -q '$ref' && git log -1 --format='%h %s' && timeout 3600 node plugin/bin/ekip.js init --no-keys < /dev/null" || { rc=$?; [ $rc -eq 124 ] && result fail "ekip init (timed out after 60 min)" || result fail "ekip init"; exit 1; }
 
 step "memory stack up and patched"
 run 'for i in $(seq 1 40); do curl -sf http://127.0.0.1:8420/health >/dev/null && break; sleep 5; done; curl -sf http://127.0.0.1:8420/health >/dev/null
