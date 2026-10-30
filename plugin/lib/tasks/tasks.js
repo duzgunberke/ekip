@@ -7,13 +7,14 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { HOME, SETTINGS, die, sleep, notify } from "../core/core.js";
 import { c, mark, fit } from "../core/ui.js";
+import { painter, renderPane } from "./pane.js";
 import { bar as stateBar, barCells, glyph, icon, paint, rank, taskState } from "../core/status-style.js";
 import { leadId } from "../core/terminal.js";
 import { t as tr, lang } from "../core/i18n.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
-const write = (all) => { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(`${FILE}.tmp`, JSON.stringify(all, null, 2)); fs.renameSync(`${FILE}.tmp`, FILE); };
+const write = (all) => { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(`${FILE}.tmp`, JSON.stringify(all, null, 2)); fs.renameSync(`${FILE}.tmp`, FILE); writeTerminalStatus(all); };
 const now = () => new Date().toISOString();
 const cap = (x) => x.charAt(0).toLocaleUpperCase(lang === "en" ? "en" : "tr") + x.slice(1);
 const newId = () => `g${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 4)}`;
@@ -367,6 +368,41 @@ export function reapStale() {
 }
 
 export function active() { return read().filter((t) => t.status === "running"); }
+
+// data/terminal-status.json: the few numbers WezTerm's tab bar shows (waiting for you, stuck,
+// running) and the registered projects (tab titles name the project, not the folder). Rewritten
+// when a task changes, and by the task pane, only when something in it changed; the terminal reads
+// this small file instead of starting ekip every second.
+export const STATUS_FILE = path.join(HOME, "terminal-status.json");
+export function terminalStatus(all = read()) {
+  const n = { waiting: 0, blocked: 0, running: 0 };
+  for (const t of all.filter((x) => x.status === "running")) {
+    if (t.hold?.kind === "waiting-user") n.waiting++;
+    else if (t.hold || paused(t)) n.blocked++;
+    else n.running++;
+  }
+  // a tracked job without a running task of its own is running work too
+  const open = new Set(all.filter((x) => x.status === "running").map((x) => x.id));
+  try {
+    for (const f of fs.readdirSync(path.join(HOME, "tracks")).filter((x) => x.endsWith(".json"))) {
+      try { const j = JSON.parse(fs.readFileSync(path.join(HOME, "tracks", f), "utf8")); if (!j.endedAt && pidAlive(j.pid) && !open.has(j.taskId)) n.running++; } catch { /* half-written */ }
+    }
+  } catch { /* no tracked jobs */ }
+  let projects = [];
+  try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")).filter((p) => p?.name && p?.path).map((p) => ({ name: p.name, path: p.path })); } catch { /* none registered */ }
+  return { ...n, projects };
+}
+export function writeTerminalStatus(all) {
+  try {
+    const body = JSON.stringify(terminalStatus(all));
+    let old = "";
+    try { old = fs.readFileSync(STATUS_FILE, "utf8"); } catch { /* first write */ }
+    if (body === old) return false;
+    fs.writeFileSync(`${STATUS_FILE}.${process.pid}.tmp`, body);
+    fs.renameSync(`${STATUS_FILE}.${process.pid}.tmp`, STATUS_FILE);
+    return true;
+  } catch { return false; } // the terminal status is never worth failing a task command for
+}
 /** Every task in the file (ekip status reads finished ones too). */
 export function list() { return read(); }
 
@@ -428,53 +464,10 @@ function render(t) {
   return [head, line, ...steps, ...asked, ...workers, ...waiting, ...tail].join("\n");
 }
 
-// Two lines per task for a short pane: title + bar, then "n/m bitti" and what runs now. Finished
-// steps are only counted; the full view lists them when there is room.
-function renderCompact(t) {
-  const p = percent(t);
-  const e = eta(t);
-  const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s, t); return `${icon(st ? "stalled" : "running")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? paint("stalled", ` ${fmtDur(st)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
-  const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${icon("failed")} ${s.title}`);
-  const held = t.steps.filter((s) => HELD.includes(s.status)).map((s) => `${icon(s.status)} ${s.title} ${heldLabel(s)}`);
-  const state = t.status === "done" ? paint("done", tr("bitti")) : t.status === "failed" ? paint("failed", tr("takıldı")) : t.status === "cancelled" ? paint("cancelled", tr("iptal")) : t.hold || paused(t) ? runningState(t) : "";
-  const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
-  const head = fit(`${icon(stateOf(t))} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, Math.min(10, barCells()), stateOf(t))} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
-  const now = fit([...failed, ...held, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
-  if (t.status !== "running" && t.result?.text) return `${head}\n${fit(`    ${paint("done", `${tr("Sonuç")}:`)} ${t.result.text}${t.result.links?.length ? c.gray(`  ${t.result.links[0]}`) : ""}`)}`;
-  return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
-}
-
-// The last worker runs (`ekip run`), so the pane shows what the lead handed out and where each log
-// is even when a worker is not linked to a task: running ones, and finished ones for 15 minutes.
-function recentRuns(limit = 4) {
-  const dir = path.join(HOME, "runs");
-  let files;
-  try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".log")).map((f) => ({ f, st: fs.statSync(path.join(dir, f)) })); } catch { return []; }
-  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-  return files.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs).slice(0, 12).flatMap(({ f, st }) => {
-    const file = path.join(dir, f);
-    let text;
-    try { text = fs.readFileSync(file, "utf8"); } catch { return []; }
-    const exit = text.match(/\n\[exit (\d+)\][^\n]*\s*$/);
-    const pid = Number(text.match(/^pid: (\d+)$/m)?.[1]);
-    const running = !exit && (!pid || alive(pid));
-    if (!running && Date.now() - st.mtimeMs > 15 * 60 * 1000) return [];
-    const label = text.match(/^label: (.*)$/m)?.[1];
-    const task = text.split("\ntask:\n")[1]?.split("\n")[0] ?? "";
-    const tail = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("[exit")).at(-1) ?? "";
-    const via = f.slice(0, -4).split("Z-")[1] ?? "?";
-    const state = icon(running ? "running" : exit[1] === "0" ? "done" : "failed");
-    const head = fit(`  ${state} ${c.bold(via)} ${label && label !== "-" ? label : task.slice(0, 60)} ${c.gray(`· ${fmtDur(Date.now() - (running ? Date.parse(f.slice(0, 19).replace(/T(\d\d)-(\d\d)-(\d\d)/, "T$1:$2:$3") + "Z") : st.mtimeMs))}${running ? "" : lang === "en" ? " ago" : " önce"}`)}`);
-    return [`${head}\n${fit(`     ${c.gray(running ? tail : `log ${file}`)}`)}`];
-  }).slice(0, limit);
-}
-
-// One line for the pane header: running/capacity of every ready pool ("havuzlar: codex 2/2 ·
-// copilot 1/2 · free 0/3"). Which pools are ready is re-read every 30 s (it spawns `command -v`),
-// the running counts on every repaint.
+// Running/capacity of every ready pool, for the pane's footer. Which pools are ready is re-read
+// every 30 s (it spawns `command -v`), the running counts on every repaint.
 let ready = { at: 0, pools: [] };
-async function poolLine() {
+async function poolData() {
   try {
     const a = await import("../workers/agents.js");
     if (Date.now() - ready.at > 30_000) {
@@ -483,14 +476,63 @@ async function poolLine() {
       ready = { at: Date.now(), pools: [...a.readyPools(), ...(a.poolCapacity("claude") > 0 ? ["claude"] : []), "free"] };
     }
     const load = a.poolLoad();
-    const part = (n) => { const l = load[n] ?? { running: 0, capacity: a.poolCapacity(n) }; const s = `${n} ${l.running}/${l.capacity}`; return l.running >= l.capacity ? c.yellow(s) : l.running ? c.cyan(s) : c.gray(s); };
-    return fit(`  ${c.gray(`${tr("havuzlar")}${SETTINGS.mesai ? ` (${tr("mesai")})` : ""}:`)} ${ready.pools.map(part).join(c.gray(" · "))}`);
-  } catch { return ""; }
+    return ready.pools.map((n) => { const l = load[n] ?? { running: 0, capacity: a.poolCapacity(n) }; return { name: n, running: l.running, capacity: l.capacity }; });
+  } catch { return []; }
+}
+
+const hhmm = (ms) => new Date(ms).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const pctLabel = (n) => (lang === "en" ? `${n}%` : `%${n}`);
+
+/** A task as the pane's card model (plugin/lib/tasks/pane.js draws it). */
+export function cardOf(t) {
+  const state = stateOf(t), p = percent(t), e = eta(t);
+  const status = t.status === "done" ? tr("bitti") : t.status === "failed" ? tr("takıldı") : t.status === "cancelled" ? tr("iptal")
+    : t.hold?.kind === "waiting-user" ? tr("senden bekleniyor") : t.hold ? `${tr("engellendi")}${t.hold.reason ? `: ${t.hold.reason}` : ""}`
+      : paused(t) ? tr("duraklamış: çalışan süreç yok") : tr("sürüyor");
+  const when = [fmtDur((t.status === "running" ? Date.now() : Date.parse(t.endedAt ?? t.updatedAt)) - Date.parse(t.createdAt)), ...(e ? [tr("bitiş ~{time}", { time: hhmm(Date.parse(e)) })] : [])];
+  const steps = t.steps ?? [];
+  const cur = steps.find((s) => s.status === "running" || HELD.includes(s.status)) ?? (t.status === "running" ? steps.find((s) => s.status === "pending") : null);
+  const n = cur ? steps.indexOf(cur) + 1 : 0;
+  const note = !cur ? null : cur.status === "running" ? [cur.pct != null ? pctLabel(cur.pct) : "", cur.detail ?? ""].filter(Boolean).join(" · ") || null
+    : cur.status === "pending" ? tr("sırada") : null;
+  const stall = cur ? stalledFor(cur, t) : 0;
+  const alive = (w) => !w.pid || pidAlive(w.pid);
+  const workers = (t.status === "running" ? t.workers : []).filter((w) => OPEN_WORKER.includes(w.status) && alive(w)).map((w) => {
+    if (w.status === "queued") return { state: "queued", via: w.via ?? "auto", label: w.label, note: tr("kuyrukta (sıra {n})", { n: w.queue ?? "?" }) };
+    if (w.status === "waiting") return { state: "blocked", via: w.via ?? "auto", label: w.label, note: tr("koşul bekleniyor") };
+    let stale = false;
+    try { stale = !!w.log && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000; } catch { /* no log yet */ }
+    return { state: stale ? "stalled" : "running", via: w.via ?? "?", label: w.label && w.label !== t.title ? w.label : null, note: fmtDur(Date.now() - Date.parse(w.startedAt)) };
+  });
+  const ask = t.status === "running" && t.hold?.kind === "waiting-user" ? { question: t.ask?.question ?? t.hold.reason, options: t.ask?.options ?? [] } : null;
+  return {
+    id: t.id, state, title: t.title, project: t.project, pct: p, status, statusState: state, when,
+    step: cur ? { n, total: steps.length, title: cur.title, note } : null,
+    stalled: stall ? tr("{duration} boyunca ilerleme yok", { duration: fmtDur(stall) }) : null,
+    workers, ask, result: t.status !== "running" ? t.result?.text ?? null : null,
+  };
+}
+
+/** Everything the pane shows, from the task file, the digest (counts, tracked jobs, loose workers) and the pools. */
+export function paneModel({ tasks = [], digest = null, pools = [], version = null, at = Date.now() } = {}) {
+  const cards = tasks.map(cardOf);
+  const ids = new Set(tasks.map((t) => t.id));
+  const loose = [];
+  for (const x of digest?.running ?? []) {
+    if (ids.has(x.id)) continue;
+    const w = x.workers?.[0];
+    // a tracked job knows its percent: a card; a worker run without a task: one line
+    if (x.pct != null) cards.push({ id: x.id, state: "running", title: x.title, project: x.project, pct: x.pct, status: tr("sürüyor"), when: [...(w?.rate ? [w.rate] : []), ...(x.eta ? [tr("bitiş ~{time}", { time: hhmm(Date.parse(x.eta)) })] : [])], step: null, workers: w ? [{ state: "running", via: w.via, label: null, note: w.lastLine || null }] : [] });
+    else if (w) loose.push({ state: "running", via: w.via, label: x.title, note: w.since ? fmtDur(Date.now() - Date.parse(w.since)) : null });
+  }
+  const counts = digest ? { waiting: digest.waiting.length, stuck: digest.stuck.length, running: digest.running.length, done: digest.done.length } : { waiting: 0, stuck: 0, running: tasks.filter((t) => t.status === "running").length, done: 0 };
+  const recent = (digest?.done ?? []).slice(0, 3).map((d) => ({ title: d.title, result: d.result }));
+  return { clock: hhmm(at), version, counts, cards, loose, recent, pools, mesai: !!SETTINGS.mesai };
 }
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks/tasks.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/status-style.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
+const CODE = ["tasks/tasks.js", "tasks/pane.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/status-style.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
@@ -548,38 +590,44 @@ export async function main([sub = "ls", ...args]) {
   } else if (sub === "ls" || sub === "--watch" || sub === "watch") {
     const watching = sub !== "ls" || args.includes("--watch");
     const all = args.includes("--all");
-    // Watching draws on the alternate screen and repaints in place: clearing with 2J pushed every
-    // frame into iTerm's scrollback, so the pane kept scrolling. Output is clipped to the pane height.
-    if (watching) {
+    // --once: one frame of the pane on stdout (tests, screenshots), no alternate screen
+    const once = args.includes("--once");
+    const pick = () => read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 60 * 1000)
+      .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse()
+      .sort((a, b) => (rank(stateOf(a)) === 0 ? 0 : 1) - (rank(stateOf(b)) === 0 ? 0 : 1)); // waiting for the user: on top
+    if (!watching) {
+      try { reapDead(); } catch { /* never block the list */ }
+      const list = pick();
+      console.log(`${mark()}  ${c.gray(tr("görevler"))}\n\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n`);
+      return;
+    }
+    // Watching draws on the alternate screen and rewrites only the lines that changed (pane.js), so
+    // nothing scrolls and nothing flickers.
+    const draw = painter();
+    if (!once) {
       process.stdout.write("\x1b[?1049h\x1b[?25l");
       const restore = () => { process.stdout.write("\x1b[?25h\x1b[?1049l"); process.exit(0); };
       process.on("SIGINT", restore); process.on("SIGTERM", restore);
     }
-    let reconciled = 0;
+    let wake = null;
+    process.stdout.on("resize", () => wake?.());
+    let reconciled = 0, version = null;
     do {
       try { reapDead(); } catch { /* the pane never stops for this */ }
       // ghost runs on the hub (a worker killed with no word) are closed from here too, once a minute
-      if (watching && Date.now() - reconciled > 60_000) { reconciled = Date.now(); try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "reconcile"], { stdio: "ignore", detached: true }).unref(); } catch { /* best effort */ } }
-      const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 60 * 1000)
-        .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse()
-        .sort((a, b) => (rank(stateOf(a)) === 0 ? 0 : 1) - (rank(stateOf(b)) === 0 ? 0 : 1)); // waiting for the user: on top
-      const runs = watching ? recentRuns() : [];
-      const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";
-      const pools = watching ? await poolLine() : "";
-      // the short digest on top: what waits for the user, what is stuck, what runs, what finished
-      let digest = "";
-      if (watching) try { const dg = await import("./digest.js"); digest = `${dg.paneLines(await dg.collect()).join("\n")}\n`; } catch { /* the pane never stops for this */ }
-      let out = `${mark()}  ${c.gray(tr("görevler"))}\n${digest}${pools ? `${pools}\n` : ""}\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
-      // too tall for the pane: every task in two lines, so none is cut off below the edge
-      if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
-        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${digest}${pools ? `${pools}\n` : ""}${list.map(renderCompact).join("\n")}\n`;
-      if (watching) {
-        const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
-        const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));
-        process.stdout.write(`\x1b[H${lines.map((l) => `${l}\x1b[K`).join("\n")}\x1b[J`);
-      } else console.log(out);
-      if (watching) await sleep(2000);
-      if (watching && codeChanged()) await restartWatch();
-    } while (watching);
+      if (!once && Date.now() - reconciled > 60_000) { reconciled = Date.now(); try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "reconcile"], { stdio: "ignore", detached: true }).unref(); } catch { /* best effort */ } }
+      if (version == null) try { const dg = await import("./digest.js"); version = dg.cachedRelease(Infinity)?.version ?? (await import("../ops/update.js")).localVersion(); } catch { version = ""; }
+      let digest = null;
+      try { const dg = await import("./digest.js"); digest = await dg.collect(); } catch { /* the pane never stops for this */ }
+      try { writeTerminalStatus(read()); } catch { /* best effort */ }
+      const model = paneModel({ tasks: pick(), digest, pools: await poolData(), version });
+      const width = process.stdout.columns || Number(process.env.COLUMNS) || 100, height = process.stdout.rows || Number(process.env.LINES) || 30;
+      const lines = renderPane(model, { width, height: once ? Math.min(height, 200) : height });
+      if (once) { process.stdout.write(`${lines.join("\n")}\n`); break; }
+      draw(lines);
+      await new Promise((r) => { const timer = setTimeout(r, 2000); wake = () => { clearTimeout(timer); r(); }; });
+      wake = null;
+      if (codeChanged()) await restartWatch();
+    } while (true);
   } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | block ID "reason" [--step N] | wait ID "what the user decides" [--step N] | ask ID "question" [--option A]... | answer ID "choice" | unblock ID | result ID "result" [--link L]... | done ID ["result"] [--link L]... | fail|cancel ID [note]');
 }

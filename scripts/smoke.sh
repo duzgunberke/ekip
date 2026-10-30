@@ -15,6 +15,7 @@ run() {
 echo '== pool capacity test =='; node plugin/lib/workers/agents.test.mjs
 echo '== terminal back ends =='; node plugin/lib/core/terminal.test.mjs
 echo '== status styles =='; node plugin/lib/core/status-style.test.mjs
+echo '== task pane =='; node plugin/lib/tasks/pane.test.mjs
 echo '== WezTerm as the default terminal =='; node plugin/lib/ops/terminal.test.mjs
 echo '== terminal install --dry-run (WezTerm missing) =='
 out=$(XDG_CONFIG_HOME="$tmp/xdg" EKIP_WEZTERM="$tmp/no-wezterm" node plugin/bin/ekip.js terminal install --dry-run 2>&1); printf '%s\n' "$out"

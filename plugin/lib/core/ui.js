@@ -48,8 +48,8 @@ export const warn = (s) => process.stderr.write(`${c.yellow("ekip", process.stde
 // The logo in the terminal: the prompt (the lead, amber) fanning out to the team (teal).
 const LEAD = [[255, 180, 92], [247, 150, 74], [240, 123, 63], [240, 123, 63]];
 const TEAM = [45, 212, 191];
-const CHEVRON = ["  ▜█▄    ", "    ▜█▄  ", "    ▟█▀  ", "  ▟█▀    "];
-const FAN = ["     ╭──●", "─────┼──●", "     ╰──●", ""];
+export const CHEVRON = ["  ▜█▄    ", "    ▜█▄  ", "    ▟█▀  ", "  ▟█▀    "];
+export const FAN = ["     ╭──●", "─────┼──●", "     ╰──●", ""];
 export function banner(stream = process.stdout) {
   const text = [c.bold("ekip", stream), c.gray(t("tek terminal, tek Claude, koca bir ekip"), stream), "", ""];
   const lines = CHEVRON.map((ch, i) => `${c.rgb(LEAD[i], ch, stream)}${c.rgb(TEAM, FAN[i].padEnd(9), stream)}   ${text[i]}`.trimEnd());

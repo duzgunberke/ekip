@@ -219,20 +219,6 @@ export function render(d, rel) {
   return `${out.join("\n")}\n`;
 }
 
-/** Two or three lines for the top of the task pane: the counts, the first question and the first stuck job. */
-export function paneLines(d) {
-  const n = (k, label, color) => (d[k].length ? color(`${label} ${d[k].length}`) : c.gray(`${label} 0`));
-  const lines = [fit(`  ${[n("waiting", t("Senden beklenen"), c.red), n("stuck", t("Takılan"), c.yellow), n("running", t("Çalışan"), c.cyan), n("done", t("Biten (24 sa)"), c.green)].join(c.gray("  ·  "))}`)];
-  const w = d.waiting[0];
-  if (w) lines.push(fit(`  ${c.red("?")} ${w.question}${w.options.length ? c.gray(`  [${w.options.join(" / ")}]`) : ""}`));
-  const s = d.stuck[0];
-  if (s) lines.push(fit(`  ${s.failed ? c.red("✗") : c.yellow("⚠")} ${s.title}: ${c.gray(clip(s.why, 120))}`));
-  const rel = cachedRelease();
-  if (rel) lines.push(fit(`  ${c.gray(strip(releaseLine(rel)))}`));
-  return lines;
-}
-const strip = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
-
 export async function main(args = []) {
   const d = await collect();
   if (args.includes("--json")) { console.log(JSON.stringify({ ...d, release: await release() }, null, 2)); return 0; }
