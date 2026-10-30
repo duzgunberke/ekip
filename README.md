@@ -219,6 +219,12 @@ asks another to review a file, or hands over the next step. `ekip team up --open
 
 ## A terminal of its own (optional)
 
+<p align="center"><img src="docs/demo/terminal-wezterm.gif" alt="Typing ekip opens the lead in WezTerm: the Claude session on the left, two workers writing their logs on the right, the task pane below with running, queued, blocked, waiting-for-you and done tasks" width="100%"><br><sub><b>One command</b> · <code>ekip</code> opens the lead in WezTerm: workers on the right, live tasks below (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub></p>
+
+Type `ekip` and the lead opens in WezTerm with the worker panes on the right and the task pane
+below; you talk to Claude as before. `ekip init` sets it up, `ekip --here` stays in the terminal you
+are in, and iTerm2 keeps working.
+
 ekip runs in iTerm2 as before. If driving iTerm2 with AppleScript feels slow, or the plain terminal
 makes states hard to tell apart, `ekip terminal install` sets up **WezTerm** for ekip and
 `ekip terminal open` starts the lead in it: the lead on the left, worker panes in a column on the
@@ -237,9 +243,23 @@ and the lead starts where you are. `ekip --here` or `EKIP_TERMINAL=current` stay
 terminal for one start, `ekip terminal default wezterm|current` changes the setting, and
 subcommands such as `ekip run` or `ekip tasks` never switch terminals.
 
-In every terminal the states look the same: running teal ●, done green ✓, failed red ✗, blocked
-orange ■ with its reason, waiting for you yellow ? on top, paused grey ◌, queued blue ⧗ with its
-place. Without 256 colours it falls back to ASCII, and `NO_COLOR` is respected.
+In every terminal the states look the same; what waits for you is always on top:
+
+| State | Looks like | | State | Looks like |
+|---|---|---|---|---|
+| waiting for you | yellow `?` | | running | teal `●` |
+| blocked | orange `■` and why | | queued | blue `⧗` and its place |
+| failed | red `✗` | | done | green `✓` |
+| paused, no live worker | grey `◌` | | | |
+
+Without 256 colours it falls back to ASCII, and `NO_COLOR` is respected.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/demo/terminal-status.gif" alt="ekip status: running now, waiting for you, stuck, finished with results and links, and the release line"><br><sub><b>ekip status</b> · what runs, what waits for you, what is stuck, what finished</sub></td>
+    <td width="50%"><img src="docs/demo/terminal-track.gif" alt="ekip track: an upload with percent, speed and finish time that ends done, and a copy that warns it is slower than expected"><br><sub><b>ekip track</b> · a long upload with percent, speed and finish; a slow copy warns at once</sub></td>
+  </tr>
+</table>
 
 ## Quick start
 
