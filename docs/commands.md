@@ -19,6 +19,8 @@ Everyday
   ekip update                     bring in the newest release (shows what changed)
   ekip version                    this install's version and the newest release
   ekip show [--pid PID] <log...>  open a live pane on any log (--pid: the job survives its worker)
+  ekip track [--task ID] [--step N] --label "what" [--total N] [--measure "CMD"] [--stall MIN] [--eta-max MIN] [--show] [--wait] -- <command...>
+  ekip track ls [--all] | stop ID
   ekip project config NAME        create the project's shared .ekip/ folder (rules, review profile, checks)
 
 Workers
@@ -37,7 +39,7 @@ Development environment
 
 Projects and memory
   ekip project add|remove|move|scan|ls|show|sync|card
-  ekip project lesson NAME "lesson"   a corrected mistake, added to every worker brief
+  ekip project lesson NAME|genel "lesson"   a corrected mistake, added to every worker brief (genel: the lead's own)
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
   ekip skill ls|search|show|learn|prune|candidates|accept|reject
   ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
@@ -84,7 +86,9 @@ Every pool takes a limited number of workers at once (`poolConcurrency` in `data
 
 `ekip tasks` lists live tasks; `--watch` follows updates and `--all` includes closed tasks. The lead creates and updates tasks with `ekip task new`, `step`, `add`, `note`, `done`, `fail`, and `cancel`. A step can be marked `running`, `done`, `failed`, or `skipped`; `--pct`, `--note`, `--detail`, `--parallel`, and `--alive` provide progress context. `--alive` refreshes liveness during a long step. `ekip tasks sync` resends task state to the hub if the panel is stale. `ekip reconcile` closes runs whose processes disappeared without reporting.
 
-`ekip task block ID "reason"` marks the running (or next) step `blocked`, `ekip task wait ID "what the user decides"` marks it `waiting-user` and sends a notification; `--step N` picks the step. Neither shows a stall warning or an estimate, and a held task waits up to 72 hours instead of 6 before it is closed. `ekip task unblock ID` (or marking the step running) ends the hold. `ekip task cancel` and `done` also stop the task's live workers (SIGTERM to their `ekip run`). Every task command, the pane and the hub sync close workers whose process is gone, with the reason from their log; a task with a running step and no live worker for 5 minutes shows as "paused: no live worker".
+`ekip task block ID "reason"` marks the running (or next) step `blocked`, `ekip task wait ID "what the user decides"` marks it `waiting-user` and sends a notification; `--step N` picks the step. Neither shows a stall warning or an estimate, and a held task waits up to 72 hours instead of 6 before it is closed. `ekip task unblock ID` (or marking the step running) ends the hold. `ekip task cancel` and `done` also stop the task's live workers (SIGTERM to their `ekip run`). Every task command, the pane and the hub sync close workers whose process is gone, with the reason from their log; a task with a running step and no live worker for 5 minutes shows as "paused: no live worker" (10 minutes when the task never had a worker). Such an orphaned task is noted once on the task and comes first in the lead's next prompt as a mandatory action (close it or restart it under a live process).
+
+`ekip track` runs a long shell command as a watched job: `ekip track --task ID --step N --label "upload" --total 1.5G --stall 10 --eta-max 60 -- aws s3 cp big.mp4 s3://bucket/`. One argument after `--` is a shell line; several are quoted word by word. The command runs detached in its own process group with its output in `data/runs/<id>-track.log` (the task pane lists it like a worker; `--show` opens a pane on the log, `--wait` stays until it ends and exits with its code). Without `--step` it takes the running step, else the next pending one, else a new step named after the label. Every 30 seconds (`EKIP_TRACK_TICK_S`) it measures progress: a byte pair, a count (`3/12`, `[ 45/120]`), a percent or a byte count in the output, or the first number `--measure "CMD"` prints (a size like `1.2G` counts as bytes) against `--total` (bytes such as `1.5G`, or a count). The step gets the percent, the speed and the finish time in its detail line. With nothing to measure, new output counts as progress. No progress for `--stall` minutes (default 10) blocks the step with the last output line and sends a notification; progress back unblocks it. With `--eta-max MIN`, the speed of the first two minutes (`EKIP_TRACK_PROBE_S`) is checked once: a finish past the limit, or no measurable speed, is noted on the task with a notification. Exit 0 closes the step done; any other exit closes it failed with the last five output lines on the task, and a signal gets the likely cause (load, memory pressure, an outside signal). `ekip track ls` lists running and recent jobs (state in `data/tracks/`); `ekip track stop ID` (any unique part of the id) stops only that job's own process group. A cancelled task stops its tracked jobs too.
 
 ### Development databases
 
