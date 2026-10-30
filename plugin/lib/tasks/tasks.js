@@ -6,9 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { HOME, SETTINGS, die, sleep, notify } from "../core/core.js";
-import { c, dot, mark, progress, fit } from "../core/ui.js";
-import { t as tr, lang } from "../core/i18n.js";
+import { c, mark, fit } from "../core/ui.js";
+import { bar as stateBar, barCells, glyph, icon, paint, rank, taskState } from "../core/status-style.js";
 import { leadId } from "../core/terminal.js";
+import { t as tr, lang } from "../core/i18n.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -371,7 +372,8 @@ export function list() { return read(); }
 
 // ---- rendering ---------------------------------------------------------------------------------
 
-function bar(p, cells = 20) { return progress(p, cells); }
+function bar(p, cells = barCells(), state = "running") { return stateBar(state, p, cells); }
+const stateOf = (t) => taskState(t, { paused: t.status === "running" && !t.hold && paused(t) });
 
 // a running step whose pct/detail has not moved for 15 min is stalled, whatever its label says
 const STALL_MS = 15 * 60 * 1000;
@@ -385,37 +387,38 @@ export const stalledFor = (s, t) => (s.status === "running" && s.progressAt && D
 
 // "sürüyor", or what really holds it: blocked / waiting for the user / paused with no live worker.
 function runningState(t) {
-  if (t.hold?.kind === "waiting-user") return c.blue(tr("kullanıcı bekleniyor"));
-  if (t.hold) return c.magenta(tr("engellendi"));
-  if (paused(t)) return c.red(tr("duraklamış: çalışan ajan yok"));
-  return c.yellow(tr("sürüyor"));
+  if (t.hold?.kind === "waiting-user") return paint("waiting-user", tr("kullanıcı bekleniyor"));
+  if (t.hold) return paint("blocked", tr("engellendi"));
+  if (paused(t)) return paint("paused", tr("duraklamış: çalışan süreç yok"));
+  return paint("running", tr("sürüyor"));
 }
-const heldLabel = (s) => (s.status === "blocked" ? c.magenta : c.blue)(`${s.status === "blocked" ? tr("engellendi") : tr("kullanıcı bekleniyor")}${s.reason ? `: ${s.reason}` : ""}`);
+const heldLabel = (s) => paint(s.status, `${s.status === "blocked" ? tr("engellendi") : tr("kullanıcı bekleniyor")}${s.reason ? `: ${s.reason}` : ""}`);
 
 function render(t) {
   const p = percent(t);
   const e = eta(t);
   const elapsed = Date.now() - Date.parse(t.createdAt);
-  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : runningState(t);
-  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? (paused(t) ? "bad" : "warn") : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
-  const line = fit(`  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(tr("geçen {duration}", { duration: fmtDur(elapsed) }))}${e ? c.gray(` · ${tr("tahmini bitiş {time} ({duration} kaldı)", { time: new Date(e).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), duration: fmtDur(Date.parse(e) - Date.now()) })}`) : ""}`);
+  const st = stateOf(t);
+  const state = t.status === "done" ? paint("done", tr("bitti")) : t.status === "failed" ? paint("failed", tr("takıldı")) : t.status === "cancelled" ? paint("cancelled", tr("iptal")) : runningState(t);
+  const head = fit(`${icon(st)} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
+  const line = fit(`  ${bar(p, barCells(), st)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(tr("geçen {duration}", { duration: fmtDur(elapsed) }))}${e ? c.gray(` · ${tr("tahmini bitiş {time} ({duration} kaldı)", { time: new Date(e).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), duration: fmtDur(Date.parse(e) - Date.now()) })}`) : ""}`);
   const steps = t.steps.map((s, i) => {
-    const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : s.status === "blocked" ? c.magenta("⏸") : s.status === "waiting-user" ? c.blue("?") : c.gray("○");
+    const sym = icon(s.status === "running" && st === "paused" ? "paused" : s.status);
     const label = s.status === "running" || HELD.includes(s.status) ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
     const held = HELD.includes(s.status) ? `  ${heldLabel(s)}` : "";
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? (lang === "en" ? ` · ${s.pct}%` : ` · %${s.pct}`) : ""})`) : "";
     const stall = stalledFor(s, t);
-    const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`)}` : "";
+    const warn = stall ? `  ${paint("stalled", `${glyph("stalled")} ${fmtDur(stall)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`)}` : "";
     const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
-    return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${held}${det}`);
+    return fit(`    ${stall ? icon("stalled") : sym} ${i + 1}. ${label}${extra}${warn}${held}${det}`);
   });
   // A worker killed from outside never reports its end; its pid tells.
   const alive = (w) => !w.pid || pidAlive(w.pid);
   const waiting = t.workers.filter((w) => (w.status === "queued" || w.status === "waiting") && alive(w)).map((w) =>
-    fit(`    ${c.magenta("⏳")} ${w.via ?? "auto"}${w.label ? ` · ${w.label}` : ""} ${c.gray(w.status === "queued" ? tr("kuyrukta (sıra {n})", { n: w.queue ?? "?" }) : tr("koşul bekleniyor"))}${w.why ? c.gray(` · ${w.why}`) : ""}`));
+    fit(`    ${icon(w.status === "queued" ? "queued" : "blocked")} ${w.via ?? "auto"}${w.label ? ` · ${w.label}` : ""} ${paint(w.status === "queued" ? "queued" : "blocked", w.status === "queued" ? tr("kuyrukta (sıra {n})", { n: w.queue ?? "?" }) : tr("koşul bekleniyor"))}${w.why ? c.gray(` · ${w.why}`) : ""}`));
   const workers = t.workers.filter((w) => w.status === "running" && alive(w)).map((w) => {
     const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
-    return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? ` · ${lang === "en" ? "no output for 10 min" : "10 dk'dır çıktı yok"}` : ""}`)}`);
+    return fit(`    ${icon(stale ? "stalled" : "running")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? ` · ${lang === "en" ? "no output for 10 min" : "10 dk'dır çıktı yok"}` : ""}`)}`);
   });
   const last = t.notes.at(-1);
   // a question with options waits on the user; a finished task says what it produced
@@ -431,12 +434,12 @@ function renderCompact(t) {
   const p = percent(t);
   const e = eta(t);
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
-  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s, t); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
-  const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
-  const held = t.steps.filter((s) => HELD.includes(s.status)).map((s) => `${s.status === "blocked" ? c.magenta("⏸") : c.blue("?")} ${s.title} ${heldLabel(s)}`);
-  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : t.hold || paused(t) ? runningState(t) : "";
+  const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s, t); return `${icon(st ? "stalled" : "running")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? paint("stalled", ` ${fmtDur(st)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
+  const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${icon("failed")} ${s.title}`);
+  const held = t.steps.filter((s) => HELD.includes(s.status)).map((s) => `${icon(s.status)} ${s.title} ${heldLabel(s)}`);
+  const state = t.status === "done" ? paint("done", tr("bitti")) : t.status === "failed" ? paint("failed", tr("takıldı")) : t.status === "cancelled" ? paint("cancelled", tr("iptal")) : t.hold || paused(t) ? runningState(t) : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
-  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? (paused(t) ? "bad" : "warn") : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
+  const head = fit(`${icon(stateOf(t))} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, Math.min(10, barCells()), stateOf(t))} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
   const now = fit([...failed, ...held, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
   if (t.status !== "running" && t.result?.text) return `${head}\n${fit(`    ${c.green(`${tr("Sonuç")}:`)} ${t.result.text}${t.result.links?.length ? c.gray(`  ${t.result.links[0]}`) : ""}`)}`;
   return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
@@ -461,7 +464,7 @@ function recentRuns(limit = 4) {
     const task = text.split("\ntask:\n")[1]?.split("\n")[0] ?? "";
     const tail = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("[exit")).at(-1) ?? "";
     const via = f.slice(0, -4).split("Z-")[1] ?? "?";
-    const state = running ? c.cyan("⚙") : exit[1] === "0" ? c.green("✓") : c.red("✗");
+    const state = icon(running ? "running" : exit[1] === "0" ? "done" : "failed");
     const head = fit(`  ${state} ${c.bold(via)} ${label && label !== "-" ? label : task.slice(0, 60)} ${c.gray(`· ${fmtDur(Date.now() - (running ? Date.parse(f.slice(0, 19).replace(/T(\d\d)-(\d\d)-(\d\d)/, "T$1:$2:$3") + "Z") : st.mtimeMs))}${running ? "" : lang === "en" ? " ago" : " önce"}`)}`);
     return [`${head}\n${fit(`     ${c.gray(running ? tail : `log ${file}`)}`)}`];
   }).slice(0, limit);
@@ -558,7 +561,8 @@ export async function main([sub = "ls", ...args]) {
       // ghost runs on the hub (a worker killed with no word) are closed from here too, once a minute
       if (watching && Date.now() - reconciled > 60_000) { reconciled = Date.now(); try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "reconcile"], { stdio: "ignore", detached: true }).unref(); } catch { /* best effort */ } }
       const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 60 * 1000)
-        .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
+        .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse()
+        .sort((a, b) => (rank(stateOf(a)) === 0 ? 0 : 1) - (rank(stateOf(b)) === 0 ? 0 : 1)); // waiting for the user: on top
       const runs = watching ? recentRuns() : [];
       const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";
       const pools = watching ? await poolLine() : "";

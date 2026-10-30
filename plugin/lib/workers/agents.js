@@ -7,7 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DB, HOME, REMOTE, SETTINGS, SETTINGS_FILE, URL_ROOT, die, has, keyCounts, saveSettings, unifiedKey, up } from "../core/core.js";
-import { c, dot, fit } from "../core/ui.js";
+import { c, fit } from "../core/ui.js";
+import { icon, paint } from "../core/status-style.js";
 import { t } from "../core/i18n.js";
 
 const model = (o, flag = "--model") => (o.model ? [flag, o.model] : []);
@@ -333,14 +334,15 @@ export async function main([sub = "ls", ...names]) {
   if (sub === "ls") {
     for (const [n, a] of Object.entries(AGENTS).filter(([, a]) => !a.hidden?.())) {
       const s = state()[n];
-      const st = !has(a.bin) ? "off" : lastQuotaHit(n) ? "warn" : s?.ok ? "ok" : s ? "bad" : "warn";
+      // same symbols as the task pane: ready ✓, at its limit ■ (blocked), broken ✗, not tested ○, not installed ◌
+      const st = !has(a.bin) ? "paused" : lastQuotaHit(n) ? "blocked" : s?.ok ? "done" : s ? "failed" : "pending";
       const limit = has(a.bin) ? lastQuotaHit(n) : null;
       const opens = limit?.resetAt ? ` ${new Date(limit.resetAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : "";
-      const label = !has(a.bin) ? c.gray(t("kurulu değil")) : limit ? c.yellow(`${t("limitte")}${opens}`) : s?.ok ? c.green(t("hazır")) : s ? c.red(a.login ? t("giriş gerekiyor") : t("çalışmıyor")) : c.yellow(t("denenmedi"));
       const sc = poolScore(n);
       const perf = sc.runs ? c.gray(` · ${sc.runs} ${t("runs")}, ${Math.round(sc.rate * 100)}% ${t("success rate")}${sc.avgMin != null ? `, ${t("avg.")} ${sc.avgMin} ${t("min")}` : ""}${sc.cooling ? `, ${t("currently deprioritized")}` : ""}`) : "";
       const labelText = !has(a.bin) ? t("kurulu değil") : limit ? `${t("limitte")}${opens}` : s?.ok ? t("hazır") : s ? (a.login ? t("giriş gerekiyor") : t("çalışmıyor")) : t("denenmedi");
-      console.log(fit(`  ${dot(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(t(a.quota))}${perf}`));
+      const label = paint(st, labelText);
+      console.log(fit(`  ${icon(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(t(a.quota))}${perf}`));
     }
     console.log(fit(`\n  ${c.gray(t("auto sırası:"))} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
   } else if (sub === "install") {
@@ -369,6 +371,6 @@ async function test(names) {
     const ok = r.status === 0 && /\bOK\b/.test(r.stdout ?? "");
     // a passing test means the pool answers again: a recorded quota limit no longer holds
     setState(n, { ok, testedAt: new Date().toISOString(), ...(ok ? { limitUntil: undefined, limitMessage: undefined, limitAt: undefined } : {}) });
-    console.log(`  ${dot(ok ? "ok" : "bad")} ${n.padEnd(9)} ${ok ? c.green(t("hazır")) : c.red(`${t("sorun: ")}${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "no output"}`)}`);
+    console.log(`  ${icon(ok ? "done" : "failed")} ${n.padEnd(9)} ${ok ? paint("done", t("hazır")) : paint("failed", `${t("sorun: ")}${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "no output"}`)}`);
   }
 }
