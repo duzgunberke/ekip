@@ -631,12 +631,17 @@ async function projectKnowledge(o, runId) {
     ]);
     const [skills, facts, wiki] = [skillsT.value ?? [], factsT.value ?? [], wikiT?.value ?? null];
     const lines = [];
+    // lessons first, whatever the brief is about: they are what the user already had to correct
+    const projectLessons = proj ? (await import("../lib/projects/project-config.js")).lessons(proj) : "";
+    if (projectLessons) lines.push("Lessons from this project (mistakes the user corrected before; never repeat them):", projectLessons);
     const projectRules = proj ? (await import("../lib/projects/project-config.js")).rules(proj) : "";
     if (projectRules) lines.push("Project rules (.ekip/rules.md), follow them:", projectRules);
     // the project's own process skills (<project>/.claude/skills), ranked by word overlap with the brief
     const local = proj ? (await import("../lib/projects/project-skills.js")).projectSkills(proj.path, q).slice(0, 4) : [];
     if (local.length) lines.push("Project process skills: read the SKILL.md of each one that fits before you start, and follow it:", ...local.map((k) => `- ${k.name}: ${k.description.slice(0, 180)} (${k.file})`));
     if (skills.length) lines.push("Project skills that may apply (read one with: ekip skill show " + o.project + " <name>):", ...skills.map((k) => `- ${k.name}: ${String(k.description ?? "").slice(0, 200)}`));
+    // corrections the user made come before other facts
+    facts.sort((a, b) => /^Lesson \(the user corrected/.test(String(b.content ?? b)) - /^Lesson \(the user corrected/.test(String(a.content ?? a)));
     if (facts.length) lines.push("Known facts and decisions from this project's memory (verify before relying on them):", ...facts.map((f) => `- ${String(f.content ?? f).replace(/\s+/g, " ").slice(0, 300)}`));
     const pages = (Array.isArray(wiki) ? wiki : wiki?.results ?? wiki?.items ?? wiki?.data ?? []).slice(0, 3);
     if (pages.length) lines.push("Project wiki pages that match (read with the wiki_read MCP tool):", ...pages.map((w) => `- ${String(w.title ?? w.ref ?? w.path ?? w.id ?? "").slice(0, 120)}${w.snippet ? `: ${String(w.snippet).replace(/\s+/g, " ").slice(0, 160)}` : ""}`));
@@ -644,7 +649,8 @@ async function projectKnowledge(o, runId) {
     usage?.recordUse({ ...base, kind: "skill", hits: skills.length, names: skills.map((k) => k.name), ms: skillsT.ms });
     if (wikiT) usage?.recordUse({ ...base, kind: "wiki", hits: pages.length, names: pages.map((w) => String(w.title ?? w.ref ?? w.path ?? w.id ?? "")), ms: wikiT.ms });
     usage?.recordUse({ ...base, kind: "local-skill", hits: local.length, skills: local });
-    return lines.length ? redact(`\n\n## ${general ? "Knowledge from earlier work outside projects" : "Project knowledge"} (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000) : "";
+    // the lessons are on top and get room of their own on top of the usual 3,000 characters
+    return lines.length ? redact(`\n\n## ${general ? "Knowledge from earlier work outside projects" : "Project knowledge"} (ekip memory, added automatically)\n${lines.join("\n")}`).slice(0, 3000 + projectLessons.length) : "";
   } catch (e) { usage?.recordUse({ ...base, kind: "memory", hits: 0, error: e?.message }); return ""; /* memory down: the worker still gets the brief */ }
 }
 
