@@ -96,7 +96,7 @@ export function poolScore(via) {
 
 // Quota messages worth surfacing, newest log first; "Resets in 140h45m18s" gives the reopen time.
 export const QUOTA = [
-  /Individual quota reached[^\n"]*/, /You have no remaining credits[^\n"]*/, /exceeded your (?:current )?quota[^\n"]*/i,
+  /Individual quota reached[^\n"]*/, /You have no remaining credits[^\n"]*/, /exceeded your (?:current |monthly |daily |weekly )?quota[^\n"]*/i,
   /usage limit[^\n"]*reached[^\n"]*/i, /RESOURCE_EXHAUSTED[^\n"]*/,
   // codex: "You've hit your usage limit. … try again at Nov 28th, 2026 2:43 PM."; copilot/others: premium or monthly caps
   /hit your usage limit[^\n"]*/i, /premium requests?[^\n"]*(?:limit|exhausted|exceeded|used up)[^\n"]*/i, /monthly (?:limit|quota)[^\n"]*(?:reached|exceeded)[^\n"]*/i,
@@ -161,7 +161,9 @@ export function lastQuotaHit(via) {
       const at = tail.match(/try again at ([A-Z][a-z]{2,8} \d{1,2})(?:st|nd|rd|th)?,? (\d{4})(?: (\d{1,2}:\d{2} ?[AP]M))?/);
       const atMs = at ? Date.parse(`${at[1]} ${at[2]} ${at[3] ?? ""}`.trim()) : NaN;
       const parsed = inMs != null ? st.mtimeMs + inMs : Number.isFinite(atMs) ? atMs : null;
-      const resetAt = parsed ?? st.mtimeMs + DEFAULT_COOLDOWN_MS;
+      // a monthly quota comes back on the 1st (UTC), not in a few hours
+      const monthly = /monthly (?:quota|limit)|exceeded your monthly/i.test(hit) ? Date.UTC(new Date(st.mtimeMs).getUTCFullYear(), new Date(st.mtimeMs).getUTCMonth() + 1, 1) : null;
+      const resetAt = parsed ?? monthly ?? st.mtimeMs + DEFAULT_COOLDOWN_MS;
       if (resetAt < Date.now()) return null;
       return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: new Date(resetAt).toISOString() };
     }

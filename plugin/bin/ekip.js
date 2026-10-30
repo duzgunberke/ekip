@@ -317,7 +317,10 @@ function runStream(cmd, argv, opts, logFile, kind) {
 // successful report that merely mentions "429" or "quota" does not. LIMIT_RE (broad) only reads
 // the output of runs that already failed.
 const LIMIT_RE = /quota|rate.?limit|resource.?exhausted|usage limit|limit reached|too many requests|\b429\b|not logged in|unauthori[sz]ed|overloaded_error|no_providers_configured/i;
-const failed = (r) => r.code !== 0 || !r.out.trim() || (r.out.length < 600 && QUOTA.some((re) => re.test(r.out)));
+// A short answer that only announces work ("I'll run…", a bare tool call) is a worker that stopped
+// before doing the task (qwen did this on 30 Oct and the run counted as done).
+const stoppedEarly = (out) => out.trim().length < 500 && /\[tool_call|^\s*(I'll|I will|Let me|Şimdi|Önce)\b/im.test(out) && !/\b(done|fixed|changed|verified|report|bitti|tamam|değiştir)/i.test(out);
+const failed = (r) => r.code !== 0 || !r.out.trim() || stoppedEarly(r.out) || (r.out.length < 600 && QUOTA.some((re) => re.test(r.out)));
 
 // --plugin NAME: an installed Claude Code plugin; --skill NAME: a project or user skill,
 // wrapped as a one-skill plugin so --bare sessions can load it with --plugin-dir.
