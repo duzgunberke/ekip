@@ -70,7 +70,7 @@ EOF
 
 ## Setup and pool management (when the user asks)
 
-- `ekip init` is the one-time setup. `ekip status` shows the overall state.
+- `ekip init` is the one-time setup. `ekip status` shows what runs, waits for the user, is stuck or finished, and the release state; `ekip status --system` shows pools, memory and the panel.
 - Keys and logins:
   - `ekip keys` opens each free provider's key page so the user can paste a key.
   - `ekip agents login` signs in to codex, qwen and the other CLIs.

@@ -1156,11 +1156,16 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   \`ekip task step $id N done\` when it is done, \`failed\` / \`skipped\` when that happens; \`ekip task add $id "new step"\`
   if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
 - Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.
-- \`ekip task done $id "<one-line result>"\` at the end (\`ekip task fail $id "<why>"\` if you must stop).
+- \`ekip task done $id "<one-sentence result>" --link <file path or URL>\` at the end: the result and its
+  links show on the panel and in \`ekip status\` (\`ekip task fail $id "<why>"\` if you must stop). A
+  worker's report fills the result by itself; correct it with \`ekip task result $id "..." --link ...\`.
   \`ekip task cancel\` / \`done\` also stop that task's live workers.
-- Waiting is a state, not a stall: \`ekip task wait $id "<what the user must decide>"\` when you need the
-  user's answer (they get a notification), \`ekip task block $id "<what it waits for>"\` for a file,
-  another task or a quota; \`ekip task unblock $id\` when it moves again.
+- Every decision you ask the user in chat also goes on the panel: \`ekip task ask $id "<question>"
+  --option "<A>" --option "<B>"\`; when they answer, \`ekip task answer $id "<their choice>"\`.
+  \`ekip task block $id "<what it waits for>"\` for a file, another task or a quota; \`ekip task unblock
+  $id\` when it moves again.
+- When the user asks what is going on, run \`ekip status\` first and answer from its output, never from
+  memory.
 - Close what you open, the moment it is true: mark each step done when it is done, and the task done
   as soon as its result is reviewed. A task closes by itself when every step is done or its last worker
   ends with nothing pending, and is closed as failed after 6 hours without activity, but never leave
