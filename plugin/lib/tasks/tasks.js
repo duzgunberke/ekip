@@ -59,7 +59,7 @@ export function eta(t) {
   return new Date(Date.now() + since * (100 - p) / (p - p0)).toISOString();
 }
 
-const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? tr("<1 dk") : m < 60 ? tr("{n} dk", { n: m }) : tr("{h} sa {m} dk", { h: Math.floor(m / 60), m: m % 60 }); };
+export const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? tr("<1 dk") : m < 60 ? tr("{n} dk", { n: m }) : tr("{h} sa {m} dk", { h: Math.floor(m / 60), m: m % 60 }); };
 // Pushes in flight; ekip.js waits for them before it exits, or the update would be cut off.
 export const pending = new Set();
 
@@ -123,7 +123,7 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     if (rate !== undefined) s.rate = rate;
     if (etaAt !== undefined) s.etaAt = etaAt;
     if (status !== "running") delete s.etaAt;
-    if (HELD.includes(s.status) && !HELD.includes(status)) { delete s.reason; if (t.hold?.step === n) delete t.hold; }
+    if (HELD.includes(s.status) && !HELD.includes(status)) { delete s.reason; if (t.hold?.step === n) { delete t.hold; delete t.ask; } }
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
     if (status === "failed") notify(t.title, s.title, { subtitle: `⚠ ${lang === "en" ? "Step stalled" : "Adım takıldı"}${t.project ? ` · ${t.project}` : ""}`, group: t.id, open: SETTINGS.hubUrl ? `${SETTINGS.hubUrl}/tasks` : "" });
@@ -146,10 +146,84 @@ function autoClose(t) {
 
 export function addSteps(id, titles) { return update(id, (t) => t.steps.push(...titles.map((s) => ({ title: s, status: "pending" })))); }
 
+// ---- results and questions -----------------------------------------------------------------------
+
+const URL_RE = /\bhttps?:\/\/[^\s<>()\[\]"'`]+[^\s<>()\[\]"'`.,;:!?]/g;
+// an absolute or home path, or a relative one with a folder and an extension (src/a.ts, out/x.mp4:12)
+const PATH_RE = /(?:^|[\s(`'"])((?:~|\/)[\w.@+-]+(?:\/[\w.@+-]+)+|[\w.@+-]+(?:\/[\w.@+-]+)+\.[A-Za-z0-9]{1,8}(?::\d+)?)(?=$|[\s)`'",;:!?]|\.(?:\s|$))/g;
+
+/** Up to `max` links in a text: URLs first, then file paths (not the ones inside a URL). */
+export function findLinks(text, max = 3) {
+  const s = String(text ?? "");
+  const urls = s.match(URL_RE) ?? [];
+  const paths = [...s.replace(URL_RE, " ").matchAll(PATH_RE)].map((m) => m[1]).filter((p) => !/^\/\//.test(p));
+  return [...new Set([...urls, ...paths])].slice(0, max);
+}
+
+/**
+ * The result of a worker report in one short paragraph: the first one that says something (not a
+ * heading, a code block, a table or a bare "Done."), markdown removed, at most `max` characters.
+ */
+export function summarize(report, max = 300) {
+  const text = String(report ?? "").replace(/```[\s\S]*?```/g, "\n\n").replace(/\r/g, "");
+  const paras = text.split(/\n\s*\n/).map((p) => p.split("\n").filter((l) => !/^\s*(#{1,6}\s|\||[-*_]{3,}\s*$)/.test(l)).join(" "))
+    .map((p) => p.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").replace(/\*\*|__|`/g, "").replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)").replace(/\s+/g, " ").trim());
+  const p = paras.find((x) => x.replace(/[^\p{L}\p{N}]/gu, "").length >= 20) ?? paras.find(Boolean) ?? "";
+  if (p.length <= max) return p;
+  const cut = p.slice(0, max - 1);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max * 0.6))}…`;
+}
+
+/**
+ * ekip task done ID "result" --link X / ekip task result ID "result": what the task produced, shown
+ * as "Sonuç: …" with its links in the pane, `ekip status` and on the panel. A result the lead wrote
+ * is never replaced by one taken from a worker report (auto).
+ */
+export function setResult(id, text, links = [], { auto = false } = {}) {
+  return update(id, (t) => {
+    if (auto && t.result && !t.result.auto) return;
+    const clean = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    const all = [...new Set([...links, ...(auto ? [] : findLinks(clean))].map((l) => String(l).trim()).filter(Boolean))].slice(0, 5);
+    if (!clean && !all.length) return;
+    t.result = { text: clean, links: all, at: now(), ...(auto ? { auto: true } : {}) };
+  });
+}
+
+/** A worker's report becomes the task's result (and a note), until the lead writes its own. */
+export function autoResult(id, report, label) {
+  const text = summarize(report);
+  if (!text) return null;
+  const links = findLinks(report);
+  try {
+    setResult(id, text, links, { auto: true });
+    note(id, `${label ? `${label}: ` : ""}${tr("sonuç")}: ${text}${links.length ? ` (${links.join(", ")})` : ""}`);
+  } catch { /* unknown task: ignore */ }
+  return { text, links };
+}
+
+/**
+ * ekip task ask ID "question" --option A --option B: the task waits for the user's decision, shown
+ * at the top of the panel ("Senden beklenenler") and of `ekip status` until `ekip task answer`.
+ */
+export function ask(id, question, options = [], n = null) {
+  hold(id, "waiting-user", question, n);
+  return update(id, (t) => { if (t.status === "running") t.ask = { question, options: options.slice(0, 8), at: now() }; });
+}
+export function answer(id, choice) {
+  const t = update(id, (x) => {
+    const q = x.ask?.question ?? x.hold?.reason ?? "";
+    (x.answers ??= []).push({ question: q, answer: choice, at: now() });
+    if (x.answers.length > 20) x.answers.splice(0, x.answers.length - 20);
+    delete x.ask;
+  });
+  return unhold(id, `${tr("karar")}: ${choice}${t.answers.at(-1).question ? ` (${t.answers.at(-1).question})` : ""}`);
+}
+
 export function finish(id, status = "done", note) {
   const t = update(id, (x) => {
     stopWorkers(x, status === "done" ? (lang === "en" ? "task closed" : "görev kapatıldı") : (lang === "en" ? "task cancelled" : "görev iptal edildi"));
     delete x.hold;
+    delete x.ask;
     x.status = status;
     x.endedAt = now();
     for (const s of x.steps) if (s.status === "running" || HELD.includes(s.status) || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "pending" ? s.status : "failed", endedAt: now() });
@@ -274,6 +348,7 @@ export function unhold(id, note) {
   return update(id, (t) => {
     for (const s of t.steps.filter((x) => HELD.includes(x.status))) { s.status = "running"; s.progressAt = now(); delete s.reason; }
     delete t.hold;
+    delete t.ask;
     if (note) t.notes.push({ at: now(), text: note });
   });
 }
@@ -290,6 +365,8 @@ export function reapStale() {
 }
 
 export function active() { return read().filter((t) => t.status === "running"); }
+/** Every task in the file (ekip status reads finished ones too). */
+export function list() { return read(); }
 
 // ---- rendering ---------------------------------------------------------------------------------
 
@@ -303,7 +380,7 @@ const workerActive = (t) => (t?.workers ?? []).some((w) => {
   if (w.status !== "running" || !w.log) return false;
   try { return Date.now() - fs.statSync(w.log).mtimeMs < STALL_MS; } catch { return false; }
 });
-const stalledFor = (s, t) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS && !workerActive(t) ? Date.now() - Date.parse(s.progressAt) : 0);
+export const stalledFor = (s, t) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS && !workerActive(t) ? Date.now() - Date.parse(s.progressAt) : 0);
 
 // "sürüyor", or what really holds it: blocked / waiting for the user / paused with no live worker.
 function runningState(t) {
@@ -340,7 +417,11 @@ function render(t) {
     return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? ` · ${lang === "en" ? "no output for 10 min" : "10 dk'dır çıktı yok"}` : ""}`)}`);
   });
   const last = t.notes.at(-1);
-  return [head, line, ...steps, ...workers, ...waiting, ...(last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [])].join("\n");
+  // a question with options waits on the user; a finished task says what it produced
+  const asked = t.ask?.options?.length ? [fit(`    ${c.blue("?")} ${tr("seçenekler")}: ${t.ask.options.map((o, i) => `${c.cyan(`${String.fromCharCode(65 + i)})`)} ${o}`).join(c.gray("  ·  "))}`)] : [];
+  const result = t.status !== "running" && t.result?.text ? [fit(`    ${c.green(`${tr("Sonuç")}:`)} ${t.result.text}`), ...(t.result.links ?? []).map((l) => fit(`      ${c.under(l)}`))] : [];
+  const tail = result.length ? result : last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [];
+  return [head, line, ...steps, ...asked, ...workers, ...waiting, ...tail].join("\n");
 }
 
 // Two lines per task for a short pane: title + bar, then "n/m bitti" and what runs now. Finished
@@ -356,6 +437,7 @@ function renderCompact(t) {
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
   const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? (paused(t) ? "bad" : "warn") : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
   const now = fit([...failed, ...held, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
+  if (t.status !== "running" && t.result?.text) return `${head}\n${fit(`    ${c.green(`${tr("Sonuç")}:`)} ${t.result.text}${t.result.links?.length ? c.gray(`  ${t.result.links[0]}`) : ""}`)}`;
   return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
 }
 
@@ -404,7 +486,7 @@ async function poolLine() {
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks/tasks.js", "workers/agents.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
+const CODE = ["tasks/tasks.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
@@ -420,6 +502,8 @@ function restartWatch() {
 export async function main([sub = "ls", ...args]) {
   const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
   const rest = () => args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
+  // a repeated option: --link a --link b, --option A --option B
+  const many = (k) => args.flatMap((a, i) => (a === k && args[i + 1] != null ? [args[i + 1]] : []));
   if (sub === "new") {
     const t = create({ title: rest()[0], project: opt("--project"), steps: (opt("--steps") ?? "").split(";").map((s) => s.trim()).filter(Boolean) });
     console.log(t.id);
@@ -439,8 +523,23 @@ export async function main([sub = "ls", ...args]) {
   } else if (sub === "unblock" || sub === "resume") {
     const [id, ...text] = rest();
     unhold(id, text.join(" ") || undefined);
+  } else if (sub === "ask") {
+    const [id, ...text] = rest();
+    if (!id || !text.length) die('usage: ekip task ask ID "question" [--option A] [--option B] [--step N]');
+    ask(id, text.join(" "), many("--option"), opt("--step") ? Number(opt("--step")) : null);
+  } else if (sub === "answer") {
+    const [id, ...text] = rest();
+    if (!id || !text.length) die('usage: ekip task answer ID "the user\'s choice"');
+    answer(id, text.join(" "));
+  } else if (sub === "result") {
+    const [id, ...text] = rest();
+    if (!id || (!text.length && !many("--link").length)) die('usage: ekip task result ID "one-line result" [--link URL|PATH]...');
+    setResult(id, text.join(" "), many("--link"));
   } else if (sub === "done" || sub === "fail" || sub === "cancel") {
     const [id, ...text] = rest();
+    const links = many("--link");
+    // the closing sentence of a finished task is its result (with its links)
+    if (sub === "done" && (text.length || links.length)) setResult(id, text.join(" "), links);
     finish(id, sub === "done" ? "done" : sub === "fail" ? "failed" : "cancelled", text.join(" ") || undefined);
   } else if (sub === "ls" || sub === "--watch" || sub === "watch") {
     const watching = sub !== "ls" || args.includes("--watch");
@@ -462,10 +561,13 @@ export async function main([sub = "ls", ...args]) {
       const runs = watching ? recentRuns() : [];
       const runsBlock = runs.length ? `\n${c.gray(lang === "en" ? "workers" : "işçiler")}\n${runs.join("\n")}\n` : "";
       const pools = watching ? await poolLine() : "";
-      let out = `${mark()}  ${c.gray(tr("görevler"))}\n${pools ? `${pools}\n` : ""}\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
+      // the short digest on top: what waits for the user, what is stuck, what runs, what finished
+      let digest = "";
+      if (watching) try { const dg = await import("./digest.js"); digest = `${dg.paneLines(await dg.collect()).join("\n")}\n`; } catch { /* the pane never stops for this */ }
+      let out = `${mark()}  ${c.gray(tr("görevler"))}\n${digest}${pools ? `${pools}\n` : ""}\n${list.length ? list.map(render).join("\n\n") : c.gray(`  ${tr("aktif görev yok")}`)}\n${runsBlock}`;
       // too tall for the pane: every task in two lines, so none is cut off below the edge
       if (watching && out.split("\n").length > (process.stdout.rows || 40) - 1)
-        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${pools ? `${pools}\n` : ""}${list.map(renderCompact).join("\n")}\n`;
+        out = `${mark()}  ${c.gray(`${tr("görevler")} · ${list.length}`)}\n${digest}${pools ? `${pools}\n` : ""}${list.map(renderCompact).join("\n")}\n`;
       if (watching) {
         const rows = process.stdout.rows || 40, cols = process.stdout.columns || 120;
         const lines = out.split("\n").slice(0, rows - 1).map((l) => (l.replace(/\x1b\[[0-9;]*m/g, "").length > cols ? `${l.slice(0, cols - 1)}\x1b[0m` : l));
@@ -474,5 +576,5 @@ export async function main([sub = "ls", ...args]) {
       if (watching) await sleep(2000);
       if (watching && codeChanged()) await restartWatch();
     } while (watching);
-  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | block ID "reason" [--step N] | wait ID "what the user decides" [--step N] | unblock ID | done|fail|cancel ID [note]');
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | block ID "reason" [--step N] | wait ID "what the user decides" [--step N] | ask ID "question" [--option A]... | answer ID "choice" | unblock ID | result ID "result" [--link L]... | done ID ["result"] [--link L]... | fail|cancel ID [note]');
 }

@@ -229,6 +229,8 @@ const shellQuote = (a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, 
 function all() {
   try { return fs.readdirSync(DIR).filter((f) => f.endsWith(".json")).map((f) => load(f.slice(0, -5))).filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id))); } catch { return []; }
 }
+/** Every tracked job, finished ones included (ekip status). */
+export const jobs = () => all();
 /** Tracked jobs whose monitor is alive (the reaper and the hook count these as live work). */
 export const running = () => all().filter((x) => !x.endedAt && alive(x.pid));
 function find(ref) {

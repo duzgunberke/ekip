@@ -532,7 +532,9 @@ async function runOneTracked(o, via, id, tasks) {
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
   const why = r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? r.out.match(/\[ekip\] (işçi SIG\w+ sinyaliyle öldü[^\n]*)/)?.[1] ?? r.stopped ?? "başarısız oldu";
-  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why, r.model, r.via);
+  // a finished worker's report gives the task its result (first paragraph, up to three links) until the lead writes its own
+  const result = r.ok && tasks ? tasks.autoResult(o.taskId, r.out, o.label) : null;
+  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why ?? (result ? t("bitti, sonuç göreve yazıldı; lead inceliyor") : null), r.model, r.via);
   return r;
 }
 
@@ -1788,7 +1790,7 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip")}                          lead Claude session (your subscription); delegates work
   ${c.cyan("ekip --free")}                   lead on free models (when Claude limits run out)
   ${c.cyan("ekip --safe")}                   ask before taking actions (default: automatic)
-  ${c.cyan("ekip status")}                   pools, memory, panel, team, recent runs
+  ${c.cyan("ekip status")} ${c.gray("[--system]")}        what runs, waits for you, is stuck, finished; release (--system: pools, memory)
   ${c.cyan("ekip limits")}                   pool limits and where a new task will go
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
@@ -1834,7 +1836,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
   ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
-  ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
+  ${c.cyan("ekip durum")} ${c.gray("[--system]")}         ne çalışıyor, senden ne bekleniyor, ne takıldı, ne bitti; yayın (--system: havuzlar, hafıza)
   ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
   ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
@@ -1999,7 +2001,8 @@ switch (cmd) {
     else if (rest[0] && rest[0] !== "--all") await key(rest);
     else await keyWizard({ all: rest[0] === "--all" });
     break;
-  case "status": await status(); break;
+  // the work digest; --system: pools, memory, panel and recent runs
+  case "status": case "durum": if (rest.includes("--system") || rest.includes("--sistem")) await status(); else code = await (await import("../lib/tasks/digest.js")).main(rest); break;
   case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys") }); break;
   case "memory": await memory(rest); break;
   case "team": await team(rest); break;
