@@ -85,7 +85,9 @@ export async function syncHub() {
 
 export function create({ title, project, steps = [] }) {
   if (!title) die('usage: ekip task new "title" [--project NAME] [--steps "a; b; c"]');
-  const t = { id: newId(), title, project: project ?? null, status: "running", createdAt: now(), updatedAt: now(), steps: steps.map((s) => ({ title: s, status: "pending" })), workers: [], notes: [] };
+  // the lead that opened it (its terminal session), so that lead is the one reminded to keep it true
+  const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null;
+  const t = { id: newId(), title, project: project ?? null, status: "running", createdAt: now(), updatedAt: now(), steps: steps.map((s) => ({ title: s, status: "pending" })), workers: [], notes: [], ...(lead ? { lead } : {}) };
   const all = read();
   all.push(t);
   write(all);

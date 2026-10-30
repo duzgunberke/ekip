@@ -76,12 +76,32 @@ const withTimeout = (pr, ms) => Promise.race([pr, new Promise((r) => setTimeout(
 const timed = async (pr) => { const t0 = Date.now(); const value = await pr; return { value, ms: Date.now() - t0 }; };
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+// Tasks this lead opened that stopped moving: done work left open, or a step nobody advanced. The
+// user watches them on the panel and should never have to say "this is still open"; the reminder
+// comes with every message until each one is updated or closed.
+const lastMove = (t) => Math.max(...[t.updatedAt, t.p0At, t.progressAt, ...(t.steps ?? []).map((x) => x.at ?? x.updatedAt)].map((x) => Date.parse(x ?? "") || 0));
+function staleTasks(home) {
+  try {
+    const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null;
+    const file = path.join(home, "tasks.json");
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    return JSON.parse(fs.readFileSync(file, "utf8")).filter((t) => t.status === "running" && (!t.lead || t.lead === lead)
+      && Date.now() - lastMove(t) > 20 * 60_000
+      && !(t.workers ?? []).some((w) => w.status === "running" && w.pid && alive(w.pid)));
+  } catch { return []; }
+}
+
 export async function main() {
   const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
   const prompt = String(input.prompt ?? "");
+  const stale = staleTasks((await import("../core/core.js")).HOME);
+  const emit = (text) => { if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text.slice(0, 6000) } })); };
+  const staleNote = stale.length
+    ? `## Open tasks that stopped moving (update or close them now, before anything else)\n${stale.map((t) => `- ${t.id} "${t.title}": ${t.steps.filter((x) => x.status !== "done" && x.status !== "skipped").map((x, i) => `${x.title} (${x.status})`).join(", ") || "all steps done"}; last update ${Math.round((Date.now() - lastMove(t)) / 60000)} min ago`).join("\n")}\nIf the work is done: mark the steps and \`ekip task done <id> "<result>"\`. If it goes on: mark the running step or add a note. If it failed: \`ekip task fail <id> "<why>"\`.`
+    : "";
   // system notifications (finished background tasks, agent results) arrive as prompts too: they are
   // not the user asking anything and only pulled in noise
-  if (prompt.trim().length < 8 || prompt.startsWith("/") || /^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION)/.test(prompt)) return;
+  if (prompt.trim().length < 8 || prompt.startsWith("/") || /^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION)/.test(prompt)) return emit(staleNote);
   const { listProjects, findProject } = await import("../projects/projects.js");
   const projects = listProjects().filter((p) => p.tdai?.agentId);
   let hits = mentioned(prompt, projects).slice(0, 2);
@@ -92,7 +112,7 @@ export async function main() {
   // Work outside any project (a one-off ask, a repo that is not registered) is remembered in the
   // general space; it is searched for every such message, so nothing done there is lost.
   if (!hits.length) { const g = mem.generalProject(); if (g.tdai?.agentId) hits = [{ p: g, by: "general" }]; }
-  if (!hits.length) return;
+  if (!hits.length) return emit(staleNote);
   const parts = await Promise.all(hits.map(async ({ p, by }) => {
     const [memoriesT, skillsT, wikiT] = await Promise.all([
       // facts only: the raw conversation search scans tens of thousands of vectors and did not fit
@@ -138,7 +158,7 @@ export async function main() {
     return lines.length > 1 ? lines.join("\n") : null;
   }));
   const body = parts.filter(Boolean).join("\n\n");
-  if (!body) return;
+  if (!body) return emit(staleNote);
   // The rule comes with the context, so analysing first does not depend on anyone remembering it.
   const rule = "Before you plan, answer, delegate or spend tokens on work in this project, analyse with what is below: read the process skills that fit, check the facts, search memory_search / wiki_search for anything missing, and explore code through the code graph. Pass what matters into every worker brief. Then do the work.";
   // Several projects (or the general space next to one) may be meant: let the user pick instead of guessing
@@ -153,7 +173,7 @@ export async function main() {
     ? `\n\nThis message matches more than one project (${named.map((h) => `${h.p.name}${h.by === "topic" ? " (by topic, not named)" : ""}`).join(", ")}). Unless the request already makes the scope clear, ask the user once, before planning, with AskUserQuestion (multiSelect: true): one option per project above with its relevant skills in the description, plus related tool/skill groups you see fit (e.g. the VPS/dev environment skill). Then use only what they picked. Do not ask again for the same request.`
     : "";
   const context = redact(`ekip project context for this message (retrieved by relevance; verify before relying on it).\n${rule}${ask}\n\n${body}`);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context.slice(0, 6000) } }));
+  emit(staleNote ? `${staleNote}\n\n${context}` : context);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
