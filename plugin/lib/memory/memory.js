@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, SETTINGS, TDAI_PORTS, adminKey, die } from "../core/core.js";
+import { HOME, ROOT, SETTINGS, TDAI_PORTS, adminKey, die } from "../core/core.js";
 import { getProject, listProjects, updateProject, findProject } from "../projects/projects.js";
 import { redact } from "../core/redact.js";
 
@@ -464,7 +464,9 @@ export function projectsMentioned(text, projects) {
   const counts = {};
   for (const p of projects) {
     const n = p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`--project[ =]${n}\\b|\\\\?"project\\\\?"\\s*:\\s*\\\\?"${n}\\\\?"|${p.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|\\b)`, "g");
+    // ekip's own path appears in every session that runs workers (logs under data/runs): not a mention
+    const ownPath = path.resolve(p.path) === path.resolve(ROOT) ? "" : `|${p.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|\\b)`;
+    const re = new RegExp(`--project[ =]${n}\\b|\\\\?"project\\\\?"\\s*:\\s*\\\\?"${n}\\\\?"${ownPath}`, "g");
     const k = (text.match(re) ?? []).length;
     if (k) counts[p.name] = k;
   }

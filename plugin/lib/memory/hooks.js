@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { HOME } from "../core/core.js";
+import { HOME, ROOT as REPO_ROOT } from "../core/core.js";
 import { lang } from "../core/i18n.js";
 import { findProject } from "../projects/projects.js";
 import { setupGaps } from "../projects/onboarding.js";
@@ -89,13 +89,19 @@ export async function main([sub, ...rest] = []) {
         const counts = mem.projectsMentioned(fs.readFileSync(transcript, "utf8"), list);
         // projects the session really worked on, not ones it only listed in passing
         const total = Object.values(counts).reduce((a, b) => a + b, 0);
-        for (const x of list.filter((x) => (counts[x.name] ?? 0) >= Math.max(5, total * 0.05))) {
+        // the project the session is about, and others only when they are a real share of it (a fifth of
+        // the main one): a music video session that opens one file of another project is not about it
+        const top = Math.max(0, ...Object.values(counts));
+        for (const x of list.filter((x) => (counts[x.name] ?? 0) >= Math.max(5, total * 0.05, top * 0.2))) {
+          // ekip's own folder shows up in every session that uses it (worker logs under data/runs):
+          // for ekip only an explicit mention counts, never its path
+          const infra = path.resolve(x.path) === path.resolve(REPO_ROOT);
           // a name that is also an everyday word ("ekip" is Turkish for team) matched unrelated research;
           // such names count only with the project's path or an explicit --project / "project": mention
           const esc = x.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const plain = x.name.length >= 5 && !COMMON_WORDS.has(x.name.toLowerCase());
           const named = new RegExp(plain ? `\\b${esc}\\b` : `--project[ =]${esc}\\b|"project"\\s*:\\s*"${esc}"`, "i");
-          const r = await mem.capture(x, transcript, sessionId, { only: (l) => named.test(l) || l.includes(x.path) });
+          const r = await mem.capture(x, transcript, sessionId, { only: (l) => named.test(l) || (!infra && l.includes(x.path)) });
           console.log(`${new Date().toISOString()} ${x.name} ${sessionId} (from home): ${JSON.stringify(r)}`);
         }
       }
