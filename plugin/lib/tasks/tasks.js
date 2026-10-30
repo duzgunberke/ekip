@@ -422,8 +422,8 @@ function render(t) {
   });
   const last = t.notes.at(-1);
   // a question with options waits on the user; a finished task says what it produced
-  const asked = t.ask?.options?.length ? [fit(`    ${c.blue("?")} ${tr("seçenekler")}: ${t.ask.options.map((o, i) => `${c.cyan(`${String.fromCharCode(65 + i)})`)} ${o}`).join(c.gray("  ·  "))}`)] : [];
-  const result = t.status !== "running" && t.result?.text ? [fit(`    ${c.green(`${tr("Sonuç")}:`)} ${t.result.text}`), ...(t.result.links ?? []).map((l) => fit(`      ${c.under(l)}`))] : [];
+  const asked = t.ask?.options?.length ? [fit(`    ${icon("waiting-user")} ${tr("seçenekler")}: ${t.ask.options.map((o, i) => `${c.cyan(`${String.fromCharCode(65 + i)})`)} ${o}`).join(c.gray("  ·  "))}`)] : [];
+  const result = t.status !== "running" && t.result?.text ? [fit(`    ${paint("done", `${tr("Sonuç")}:`)} ${t.result.text}`), ...(t.result.links ?? []).map((l) => fit(`      ${c.under(l)}`))] : [];
   const tail = result.length ? result : last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [];
   return [head, line, ...steps, ...asked, ...workers, ...waiting, ...tail].join("\n");
 }
@@ -441,7 +441,7 @@ function renderCompact(t) {
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
   const head = fit(`${icon(stateOf(t))} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, Math.min(10, barCells()), stateOf(t))} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
   const now = fit([...failed, ...held, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
-  if (t.status !== "running" && t.result?.text) return `${head}\n${fit(`    ${c.green(`${tr("Sonuç")}:`)} ${t.result.text}${t.result.links?.length ? c.gray(`  ${t.result.links[0]}`) : ""}`)}`;
+  if (t.status !== "running" && t.result?.text) return `${head}\n${fit(`    ${paint("done", `${tr("Sonuç")}:`)} ${t.result.text}${t.result.links?.length ? c.gray(`  ${t.result.links[0]}`) : ""}`)}`;
   return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
 }
 
