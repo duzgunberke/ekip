@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DB, HOME, REMOTE, SETTINGS, URL_ROOT, die, has, keyCounts, saveSettings, unifiedKey, up } from "../core/core.js";
+import { DB, HOME, REMOTE, SETTINGS, SETTINGS_FILE, URL_ROOT, die, has, keyCounts, saveSettings, unifiedKey, up } from "../core/core.js";
 import { c, dot, fit } from "../core/ui.js";
 import { t } from "../core/i18n.js";
 
@@ -72,6 +72,14 @@ export const AGENTS = {
 const state = () => SETTINGS.agents ?? {};
 const setState = (name, patch) => saveSettings({ agents: { ...state(), [name]: { ...state()[name], ...patch } } });
 
+// Strong pools run frontier models on their own accounts; the rest (free-pool harnesses, free
+// models) are fine for small, mechanical work but fail at long debugging. `ekip run --min-tier
+// strong` never falls to a weak one; "strongPools" in data/config.json overrides the list.
+const STRONG = ["agy", "codex", "gemini", "copilot", "claude"];
+export const isStrong = (via) => (SETTINGS.strongPools ?? STRONG).includes(via);
+/** Pools that answer from the pooled free-tier models (freellmapi). */
+export const onFreePool = (via) => via === "free" || !!AGENTS[via]?.free;
+
 // Per-pool outcomes of real runs (data/pool-stats.json), so --via auto learns which pools deliver.
 const STATS = () => path.join(HOME, "pool-stats.json");
 const readStats = () => { try { return JSON.parse(fs.readFileSync(STATS(), "utf8")); } catch { return {}; } };
@@ -100,6 +108,8 @@ export const QUOTA = [
   /usage limit[^\n"]*reached[^\n"]*/i, /RESOURCE_EXHAUSTED[^\n"]*/,
   // codex: "You've hit your usage limit. … try again at Nov 28th, 2026 2:43 PM."; copilot/others: premium or monthly caps
   /hit your usage limit[^\n"]*/i, /premium requests?[^\n"]*(?:limit|exhausted|exceeded|used up)[^\n"]*/i, /monthly (?:limit|quota)[^\n"]*(?:reached|exceeded)[^\n"]*/i,
+  // "usage limit, try again at 3:15 PM" / "rate limit … try again in 2 hours": no "reached" in it
+  /(?:usage|rate) limit[^\n"]*try again (?:at|in) [^\n"]*/i,
 ];
 
 // No reset time in the message: assume the quota is back this long after the failure.
@@ -108,7 +118,7 @@ const UNITS = { d: 86400, h: 3600, m: 60, s: 1 };
 
 /** "Resets in 140h45m18s", "2h 45m", "5 days": milliseconds, or null when nothing parseable. */
 export function parseResetIn(text) {
-  const m = text.match(/Resets? in\s+((?:\d+\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])[\s,]*(?:and\s+)?)+)/i);
+  const m = text.match(/(?:Resets?|try again) in\s+((?:\d+\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])[\s,]*(?:and\s+)?)+)/i);
   if (!m) return null;
   let sec = 0;
   for (const u of m[1].matchAll(/(\d+)\s*([a-z]+)/gi)) sec += +u[1] * UNITS[u[2][0].toLowerCase()];
@@ -133,11 +143,63 @@ function logSegments(file, st) {
 }
 
 /**
+ * A quota message in a worker's output and when the pool reopens: "Resets in 140h", "try again in
+ * 2 hours", "try again at Nov 28th, 2026 2:43 PM", "try again at 3:15 PM" (the next such time),
+ * an ISO time, a monthly cap (the 1st, UTC), else six hours. null when the text has no quota error.
+ */
+export function quotaInfo(text, atMs = Date.now(), hit = QUOTA.map((re) => text.match(re)?.[0]).find(Boolean)) {
+  if (!hit) return null;
+  const inMs = parseResetIn(text);
+  // "try again at Nov 28th, 2026 2:43 PM" (codex) is an absolute reopen time
+  const at = text.match(/try again at ([A-Z][a-z]{2,8} \d{1,2})(?:st|nd|rd|th)?,? (\d{4})(?: (\d{1,2}:\d{2} ?[AP]M))?/);
+  const iso = text.match(/try again (?:at|after) (\d{4}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)/i);
+  const clock = text.match(/try again at (\d{1,2}):(\d{2}) ?([AP]M)?/i);
+  let atMsParsed = at ? Date.parse(`${at[1]} ${at[2]} ${at[3] ?? ""}`.trim()) : iso ? Date.parse(iso[1].replace(" ", "T")) : NaN;
+  if (!Number.isFinite(atMsParsed) && clock) {
+    const d = new Date(atMs);
+    let h = Number(clock[1]) % (clock[3] ? 12 : 24);
+    if (clock[3]?.toUpperCase() === "PM") h += 12;
+    d.setHours(h, Number(clock[2]), 0, 0);
+    if (d.getTime() <= atMs) d.setDate(d.getDate() + 1);
+    atMsParsed = d.getTime();
+  }
+  const parsed = inMs != null ? atMs + inMs : Number.isFinite(atMsParsed) ? atMsParsed : null;
+  // a monthly quota comes back on the 1st (UTC), not in a few hours
+  const monthly = /monthly (?:quota|limit)|exceeded your monthly/i.test(hit) ? Date.UTC(new Date(atMs).getUTCFullYear(), new Date(atMs).getUTCMonth() + 1, 1) : null;
+  const resetAt = parsed ?? monthly ?? atMs + DEFAULT_COOLDOWN_MS;
+  return { message: hit.slice(0, 140), at: new Date(atMs).toISOString(), resetAt: new Date(resetAt).toISOString() };
+}
+
+/**
+ * Written when a worker run ends on a quota error: the pool shows "limited until <time>" and auto
+ * skips it, even after its log has scrolled out of the newest ones. A later success clears it.
+ */
+export function recordLimit(via, info) {
+  if (!AGENTS[via] || !info) return;
+  patchFresh(via, { limitUntil: info.resetAt, limitMessage: info.message, limitAt: info.at });
+}
+export function clearLimit(via) {
+  if (state()[via]?.limitUntil) patchFresh(via, { limitUntil: undefined, limitMessage: undefined, limitAt: undefined });
+}
+// A worker run lives for an hour; its settings in memory are older than config.json by then, so
+// this patch re-reads the file first instead of writing the stale copy back.
+function patchFresh(name, patch) {
+  let cfg;
+  try { cfg = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")); } catch { return; /* unreadable mid-write: the run logs still carry the limit */ }
+  const agents = cfg.agents ?? {};
+  cfg.agents = SETTINGS.agents = { ...agents, [name]: { ...agents[name], ...patch } };
+  const tmp = `${SETTINGS_FILE}.${process.pid}.tmp`;
+  try { fs.writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`); fs.renameSync(tmp, SETTINGS_FILE); } catch { /* read-only data dir */ }
+}
+
+/**
  * The pool's last quota error in its run logs, until a later attempt succeeds or the reset time
  * passes. A `--via auto` log holds several pools; each attempt counts for its own pool, by its own
  * [exit] line.
  */
 export function lastQuotaHit(via) {
+  const own = state()[via];
+  if (own?.limitUntil && Date.parse(own.limitUntil) > Date.now()) return { message: own.limitMessage ?? "", at: own.limitAt ?? null, resetAt: own.limitUntil };
   const runs = path.join(HOME, "runs");
   let files = [];
   try { files = fs.readdirSync(runs).filter((f) => f.endsWith(".log")).sort().reverse().slice(0, 40); } catch { return null; }
@@ -156,16 +218,11 @@ export function lastQuotaHit(via) {
       // exit 0 clears the pool, unless it is a short run that only reports the quota (as failed() sees it)
       if (exit === "0" && !(hit && seg.text.replace(/^\$[^\n]*\n/, "").length < 600)) return null;
       if (!hit) continue;
-      const inMs = parseResetIn(tail);
-      // "try again at Nov 28th, 2026 2:43 PM" (codex) is an absolute reopen time
-      const at = tail.match(/try again at ([A-Z][a-z]{2,8} \d{1,2})(?:st|nd|rd|th)?,? (\d{4})(?: (\d{1,2}:\d{2} ?[AP]M))?/);
-      const atMs = at ? Date.parse(`${at[1]} ${at[2]} ${at[3] ?? ""}`.trim()) : NaN;
-      const parsed = inMs != null ? st.mtimeMs + inMs : Number.isFinite(atMs) ? atMs : null;
-      // a monthly quota comes back on the 1st (UTC), not in a few hours
-      const monthly = /monthly (?:quota|limit)|exceeded your monthly/i.test(hit) ? Date.UTC(new Date(st.mtimeMs).getUTCFullYear(), new Date(st.mtimeMs).getUTCMonth() + 1, 1) : null;
-      const resetAt = parsed ?? monthly ?? st.mtimeMs + DEFAULT_COOLDOWN_MS;
+      const info = quotaInfo(tail, st.mtimeMs, hit);
+      if (!info) return null;
+      const resetAt = Date.parse(info.resetAt);
       if (resetAt < Date.now()) return null;
-      return { message: hit.slice(0, 140), at: new Date(st.mtimeMs).toISOString(), resetAt: new Date(resetAt).toISOString() };
+      return info;
     }
   }
   return null;
@@ -310,7 +367,8 @@ async function test(names) {
     if (a.free) await up({ quiet: true });
     const r = spawnSync(a.bin, a.argv("Reply with exactly: OK", { cwd: process.cwd(), model: null }), { encoding: "utf8", timeout: 180_000 });
     const ok = r.status === 0 && /\bOK\b/.test(r.stdout ?? "");
-    setState(n, { ok, testedAt: new Date().toISOString() });
+    // a passing test means the pool answers again: a recorded quota limit no longer holds
+    setState(n, { ok, testedAt: new Date().toISOString(), ...(ok ? { limitUntil: undefined, limitMessage: undefined, limitAt: undefined } : {}) });
     console.log(`  ${dot(ok ? "ok" : "bad")} ${n.padEnd(9)} ${ok ? c.green(t("hazır")) : c.red(`${t("sorun: ")}${(r.stderr || r.stdout || "").trim().split("\n").slice(-1)[0]?.slice(0, 140) ?? "no output"}`)}`);
   }
 }
