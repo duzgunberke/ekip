@@ -313,8 +313,12 @@ export function openSessions() {
     end try
   end repeat
   return out
-end tell`], { encoding: "utf8" });
-  return new Set((r.stdout ?? "").split("\n").map((x) => x.trim()).filter(Boolean));
+end tell`], { encoding: "utf8", timeout: 15_000 });
+  // A busy iTerm2 (or a slow machine) can make osascript fail or time out. That is "unknown", not
+  // "no sessions": callers treat null as "assume the panes are still open", so a slow answer never
+  // opens a duplicate task pane (30 Oct: one lead collected four identical task panes this way).
+  if (r.status !== 0 || r.error || !(r.stdout ?? "").trim()) return null;
+  return new Set(r.stdout.split("\n").map((x) => x.trim()).filter(Boolean));
 }
 
 // In iTerm2, worker and log panes open in one column to the right of the lead: the first one splits
@@ -330,7 +334,7 @@ export function openPane(command, { below = false, title = "" } = {}) {
   let column = [];
   try { column = JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch { /* first pane */ }
   const open = openSessions();
-  column = column.filter((id) => open.has(id));
+  if (open) column = column.filter((id) => open.has(id));
   const shellCmd = `/bin/zsh -lc ${JSON.stringify(command)}`;
   const name = title ? `\n    tell n to set name to ${JSON.stringify(title)}` : "";
   const split = (anchor, how) => `tell application "iTerm2"
@@ -365,7 +369,8 @@ end tell`;
 // Whether an iTerm2 session with this id is still open (the user may have closed the pane).
 export function paneAlive(id) {
   if (!id || process.platform !== "darwin") return false;
-  return openSessions().has(id);
+  const open = openSessions();
+  return open ? open.has(id) : true;
 }
 
 // The live task pane under the lead (iTerm2): opened when the lead starts, and again on a new task
@@ -376,9 +381,14 @@ export function ensureTaskPane() {
   const flag = path.join(HOME, "panes", `${lead}-tasks`);
   const prev = fs.existsSync(flag) ? fs.readFileSync(flag, "utf8").trim() : "";
   if (prev && paneAlive(prev)) return;
+  // Several ekip commands can start at once (a burst of `ekip task new`); only one may open the pane.
+  const lock = `${flag}.lock`;
+  try { if (Date.now() - fs.statSync(lock).mtimeMs > 60_000) fs.rmSync(lock, { recursive: true, force: true }); } catch { /* no lock */ }
+  try { fs.mkdirSync(path.dirname(flag), { recursive: true }); fs.mkdirSync(lock); } catch { return; }
+  try { const again = fs.existsSync(flag) ? fs.readFileSync(flag, "utf8").trim() : ""; if (again && again !== prev && paneAlive(again)) { fs.rmSync(lock, { recursive: true, force: true }); return; } } catch { /* first pane */ }
   const id = openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} tasks --watch`, { below: true, title: "ekip · görevler" });
-  fs.mkdirSync(path.dirname(flag), { recursive: true });
-  fs.writeFileSync(flag, id ?? "");
+  if (id) fs.writeFileSync(flag, id);
+  fs.rmSync(lock, { recursive: true, force: true });
 }
 
 export function openTerminal(command) {
