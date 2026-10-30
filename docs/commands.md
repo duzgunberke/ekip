@@ -22,7 +22,8 @@ Everyday
   ekip track [--task ID] [--step N] --label "what" [--total N] [--measure "CMD"] [--stall MIN] [--eta-max MIN] [--show] [--wait] -- <command...>
   ekip track ls [--all] | stop ID
   ekip project config NAME        create the project's shared .ekip/ folder (rules, review profile, checks)
-  ekip terminal install [--dry-run]|open|status  optional: ekip's own terminal (WezTerm, colours, fast panes)
+  ekip terminal install [--dry-run]|open|default wezterm|current|status  ekip's own terminal (WezTerm, colours, fast panes)
+  ekip --here                     start the lead in this terminal even when the default is WezTerm
 
 Workers
   ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"
@@ -102,6 +103,8 @@ Every pool takes a limited number of workers at once (`poolConcurrency` in `data
 ### Terminal
 
 `ekip terminal install` installs WezTerm with `brew install --cask wezterm` (or prints how, without Homebrew or off macOS) and writes `~/.config/wezterm/ekip.lua` (`$XDG_CONFIG_HOME` is honoured): the dark brand theme, a 14 pt font, the open tasks in the tab bar and the status line, and keys on Cmd+Alt (Ctrl+Alt off macOS): `T` task pane under the lead (focuses it when it is open), `D` a pane in the right-hand column, `S` one more under it, `E` a new ekip lead in a tab, `Z` zoom, arrows move between panes. Without a `wezterm.lua` it writes a small one that loads `ekip.lua`; an existing one is never changed, and the command prints the two lines to add. `--dry-run` only prints what it would do. `ekip terminal open` starts the lead in WezTerm in the current folder; `ekip terminal status` shows the detected terminal and the config state; `ekip terminal config` prints `ekip.lua`. The doctor and the lead start suggest it once to iTerm2 users, and to Terminal.app users as the way to get a task pane.
+
+On macOS `ekip init` offers WezTerm once (default yes; `--yes` installs, `--no-terminal` skips, no question without a terminal or with `CI` set) and then runs the same install. `ekip terminal install` and the init step save `"terminal": "wezterm"`; `ekip terminal default wezterm|current` changes it and `ekip terminal status` shows it (`EKIP_TERMINAL` overrides it per shell). With `wezterm`, a bare `ekip` (only flags) started outside WezTerm opens the lead in a new WezTerm window in the same folder (`EKIP_*` variables and `CLAUDE_CONFIG_DIR` carried along), waits up to 10 s for a new pane in `wezterm cli --no-auto-start list`, and then closes only where it was started: the iTerm2 session named by `ITERM_SESSION_ID`, or the Terminal.app tab with the same tty (its window when it is the only tab), with a detached `osascript` one second after ekip has exited, so no "process running" prompt appears. Other terminals, tmux and anything off macOS stay open with a note. When the window does not appear nothing is closed and the lead starts in place with the reason. `ekip --here`, `EKIP_TERMINAL=current`, `-p`/`--print`, `--member`, an SSH login or a pipe keep the lead where it is. Subcommands (`ekip run`, `ekip tasks`, `ekip status`, …), worker panes and hooks never switch terminals; inside WezTerm `ekip` runs as before.
 
 States in the task pane, `ekip tasks` and `ekip agents` share one table (`plugin/lib/core/status-style.js`): running teal ●, done green ✓, failed red ✗, blocked orange ■ with the reason, waiting for the user yellow ? (listed first), paused or orphaned grey ◌ ("no process is working on it"), queued blue ⧗ with the place. Progress bars take the task's colour and get shorter in narrow panes. Without 256 colours or truecolor the symbols turn into ASCII (`* + x # ? o ~`), also with `EKIP_ASCII=1`; `NO_COLOR`, a pipe or `TERM=dumb` drop the colour.
 
