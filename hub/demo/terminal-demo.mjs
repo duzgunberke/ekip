@@ -115,7 +115,7 @@ function html(text) {
   let out = "", st = {}, open = false;
   const flush = () => {
     if (open) out += "</span>";
-    const css = [st.fg && `color:${st.fg}`, st.bold && "font-weight:700", st.dim && "opacity:.6", st.under && "text-decoration:underline", st.italic && "font-style:italic"].filter(Boolean).join(";");
+    const css = [st.fg && `color:${st.fg}`, st.bg && `background:${st.bg};display:inline-block`, st.bold && "font-weight:700", st.dim && "opacity:.6", st.under && "text-decoration:underline", st.italic && "font-style:italic"].filter(Boolean).join(";");
     open = !!css;
     if (css) out += `<span style="${css}">`;
   };
@@ -136,6 +136,9 @@ function html(text) {
       else if (k >= 30 && k <= 37) st.fg = ANSI16[k - 30];
       else if (k >= 90 && k <= 97) st.fg = BRIGHT[k - 90];
       else if (k === 38 && n[i + 1] === 2) { st.fg = `rgb(${n[i + 2]},${n[i + 3]},${n[i + 4]})`; i += 4; }
+      else if (k === 49) st.bg = null;
+      else if (k === 48 && n[i + 1] === 2) { st.bg = `rgb(${n[i + 2]},${n[i + 3]},${n[i + 4]})`; i += 4; }
+      else if (k === 48 && n[i + 1] === 5) { const v = n[i + 2]; st.bg = v >= 232 ? `rgb(${8 + (v - 232) * 10},${8 + (v - 232) * 10},${8 + (v - 232) * 10})` : C.card; i += 2; }
       else if (k === 38 && n[i + 1] === 5) { const v = n[i + 2] - 16; st.fg = `rgb(${Math.floor(v / 36) * 51},${Math.floor(v / 6) % 6 * 51},${v % 6 * 51})`; i += 2; }
     }
     flush();
@@ -169,13 +172,18 @@ class Shell {
   }
 }
 
+// The tab bar as ekip.lua draws it: the mark, one tab per project (amber edge on the active one),
+// the open tasks on the right with short labels (zero counts faint).
 function tabBar(at, { title, counts, width }) {
   const n = counts;
-  const tab = `<span style="background:${C.card};color:${C.text};padding:0 10px;display:inline-block">${n.waiting ? `<b style="color:${C.waiting};font-weight:400"> ?${n.waiting}</b>` : ""}${n.blocked ? `<b style="color:${C.blocked};font-weight:400"> ■${n.blocked}</b>` : ""}${n.running ? `<b style="color:${C.team};font-weight:400"> ●${n.running}</b>` : ""} ${esc(title)} </span>`;
-  const right = `<span style="color:${C.lead}">❯ </span><span style="color:${C.team}">ekip&nbsp;&nbsp;</span>${n.waiting ? `<span style="color:${C.waiting}">? ${n.waiting} ${t("seni bekliyor")}&nbsp;&nbsp;</span>` : ""}${n.blocked ? `<span style="color:${C.blocked}">■ ${n.blocked} ${t("engelli")}&nbsp;&nbsp;</span>` : ""}<span style="color:${n.running ? C.team : C.muted}">● ${n.running} ${t("çalışıyor")}&nbsp;</span>`;
-  return { at, html: `<div style="display:flex;justify-content:space-between;width:${width}px;white-space:pre">${tab}<span>${right}</span></div>` };
+  const mark = `&nbsp;&nbsp;<span style="color:${C.lead}">❯ </span><b style="color:${C.team}">ekip</b>&nbsp;&nbsp;&nbsp;`;
+  const tab = `<span style="background:${C.card};color:${C.text};display:inline-block"><span style="color:${C.lead}">▎</span><b> ${esc(title)}&nbsp;&nbsp;</b></span>`;
+  const item = (k, sym, color, label) => `<span style="color:${n[k] ? color : "#5B6472"}">${sym} ${n[k]} ${label}</span>`;
+  const right = [item("waiting", "?", C.waiting, t("bekleyen")), item("blocked", "■", C.blocked, t("takılan")), item("running", "●", C.team, t("çalışan"))].join("&nbsp;&nbsp;&nbsp;");
+  return { at, html: `<div style="display:flex;justify-content:space-between;width:${width}px;white-space:pre"><span>${mark}${tab}</span><span>${right}&nbsp;&nbsp;</span></div>` };
 }
-const countsOf = (tasks) => tasks.filter((x) => x.status === "running").reduce((n, x) => (x.hold?.kind === "waiting-user" ? n.waiting++ : x.hold ? n.blocked++ : n.running++, n), { running: 0, waiting: 0, blocked: 0 });
+// what the tab bar shows: the terminal status file ekip itself wrote for this moment
+const statusCounts = () => { try { const j = JSON.parse(fs.readFileSync(path.join(HOME, "terminal-status.json"), "utf8")); return { waiting: j.waiting, blocked: j.blocked, running: j.running }; } catch { return { waiting: 0, blocked: 0, running: 0 }; } };
 
 /** The page: a macOS window frame around the layers, with `show(t)` picking each layer's frame. */
 function page(scene) {
@@ -303,8 +311,8 @@ async function hero() {
   const pane = [], tabs = [];
   states.forEach((s, k) => {
     writeState(s);
-    pane.push({ at: keys[k], text: ekip(["tasks", "--watch"], { cols: cols(taskRect[2]), rows: rowsOf(taskRect[3]), seconds: 2.5 }) });
-    tabs.push(tabBar(keys[k], { title: "ekip · payments-api", counts: countsOf(s.tasks), width: ww - 2 }));
+    pane.push({ at: keys[k], text: ekip(["tasks", "--watch", "--once"], { cols: cols(taskRect[2]), rows: rowsOf(taskRect[3]) }) });
+    tabs.push(tabBar(keys[k], { title: "payments-api", counts: statusCounts(), width: ww - 2 }));
   });
 
   // the lead: a Claude Code session the user talks to as before
@@ -384,7 +392,7 @@ async function hero() {
     { ...splitV([wx + 1, taskRect[1] - 1, ww - 2, 1]), from: 1.75, fade: 0.4 },
     { ...term(taskRect, [{ at: 0, text: "" }, ...pane], { size: 13 }), from: 1.75, fade: 0.4, style: "filter:brightness(.92)" },
   ];
-  await capture({ name: "hero", width: W, height: H, duration: 18.5, layers }, { mp4: "terminal-wezterm.mp4", gif: "terminal-wezterm.gif", fps: 12, gifFps: 10, stills: [{ at: 10.5, file: "terminal-wezterm-layout.png" }] });
+  await capture({ name: "hero", width: W, height: H, duration: 18.5, layers }, { mp4: "terminal-wezterm.mp4", gif: "terminal-wezterm.gif", fps: 12, gifFps: 10 });
 }
 
 // ---- `ekip status` -------------------------------------------------------------------------------
@@ -460,8 +468,8 @@ async function track() {
   });
   states.forEach((s, k) => {
     writeState(s);
-    pane.push({ at: keys[k], text: ekip(["tasks", "--watch"], { cols, rows, seconds: 2.5 }) });
-    tabs.push(tabBar(keys[k], { title: "ekip · storefront-web", counts: countsOf(s.tasks), width: ww - 2 }));
+    pane.push({ at: keys[k], text: ekip(["tasks", "--watch", "--once"], { cols, rows }) });
+    tabs.push(tabBar(keys[k], { title: "storefront-web", counts: statusCounts(), width: ww - 2 }));
   });
   const ls = ekip(["track", "ls"], { cols: Math.floor((shellRect[2] - 28) / (14 * 0.602)), rows: 30 });
 
@@ -479,7 +487,7 @@ async function track() {
   const mark = fs.readFileSync(path.join(root, "docs/brand/logo-mark.svg"), "utf8");
   const toast = { rect: [W - 440, 250, 400, 96], raw: true, from: keys[2] + 0.2, until: keys[2] + 4.2, fade: 0.25, style: "border-radius:16px;background:rgba(40,43,51,.96);box-shadow:0 12px 40px rgba(0,0,0,.5);border:1px solid #3A3F4A", frames: [{ at: 0, html: `<div style="display:flex;gap:12px;padding:14px 16px;font:13px/1.35 -apple-system,BlinkMacSystemFont,'Inter',sans-serif;color:#ECEEF2"><img src="data:image/svg+xml;base64,${Buffer.from(mark).toString("base64")}" style="width:38px;height:38px;border-radius:9px;background:#0E1014;padding:4px;box-sizing:border-box"><div style="min-width:0"><b>Copy raw footage to the NAS</b><div style="color:#F5A524">⚠ ${t("Beklenenden yavaş")}</div><div style="color:#C9CED8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:310px">speed ${nas.rate}, takes ${t("{h} sa {m} dk", { h: Math.floor(takes / 60), m: takes % 60 })}; limit 60 min</div></div></div>` }] };
   const layers = [
-    ...windowFrame(win, { title: "ekip · storefront-web", tabs: [tabBar(0, { title: "ekip · storefront-web", counts: { running: 0, waiting: 0, blocked: 0 }, width: ww - 2 }), ...tabs] }),
+    ...windowFrame(win, { title: "ekip · storefront-web", tabs: [tabBar(0, { title: "storefront-web", counts: { running: 0, waiting: 0, blocked: 0 }, width: ww - 2 }), ...tabs] }),
     term(shellRect, sh.frames, { scroll: true }),
     splitV([wx + 1, taskRect[1] - 1, ww - 2, 1]),
     { ...term(taskRect, [{ at: 0, text: "" }, ...pane], { size: 13 }), style: "filter:brightness(.92)" },
