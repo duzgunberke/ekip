@@ -13,7 +13,7 @@ description: Use when linking, checking, operating, or updating the optional eki
    registration changes.
 4. Queue background work with `ekip job "task" --project NAME`; inspect queued
    jobs with `ekip job ls` and `ekip job show ID`.
-5. Check local and linked service state with `ekip status` and run `ekip
+5. Check local and linked service state with `ekip status --system` and run `ekip
    doctor` for diagnosed setup gaps.
 6. For the live panel, inspect its health and logs in the PaaS. Health probes
    should allow slow first responses; a slow answer is not automatically a dead

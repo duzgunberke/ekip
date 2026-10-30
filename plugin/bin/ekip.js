@@ -532,7 +532,9 @@ async function runOneTracked(o, via, id, tasks) {
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
   const why = r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? r.out.match(/\[ekip\] (işçi SIG\w+ sinyaliyle öldü[^\n]*)/)?.[1] ?? r.stopped ?? "başarısız oldu";
-  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why, r.model, r.via);
+  // a finished worker's report gives the task its result (first paragraph, up to three links) until the lead writes its own
+  const result = r.ok && tasks ? tasks.autoResult(o.taskId, r.out, o.label) : null;
+  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why ?? (result ? t("bitti, sonuç göreve yazıldı; lead inceliyor") : null), r.model, r.via);
   return r;
 }
 
@@ -1154,11 +1156,16 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   \`ekip task step $id N done\` when it is done, \`failed\` / \`skipped\` when that happens; \`ekip task add $id "new step"\`
   if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
 - Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.
-- \`ekip task done $id "<one-line result>"\` at the end (\`ekip task fail $id "<why>"\` if you must stop).
+- \`ekip task done $id "<one-sentence result>" --link <file path or URL>\` at the end: the result and its
+  links show on the panel and in \`ekip status\` (\`ekip task fail $id "<why>"\` if you must stop). A
+  worker's report fills the result by itself; correct it with \`ekip task result $id "..." --link ...\`.
   \`ekip task cancel\` / \`done\` also stop that task's live workers.
-- Waiting is a state, not a stall: \`ekip task wait $id "<what the user must decide>"\` when you need the
-  user's answer (they get a notification), \`ekip task block $id "<what it waits for>"\` for a file,
-  another task or a quota; \`ekip task unblock $id\` when it moves again.
+- Every decision you ask the user in chat also goes on the panel: \`ekip task ask $id "<question>"
+  --option "<A>" --option "<B>"\`; when they answer, \`ekip task answer $id "<their choice>"\`.
+  \`ekip task block $id "<what it waits for>"\` for a file, another task or a quota; \`ekip task unblock
+  $id\` when it moves again.
+- When the user asks what is going on, run \`ekip status\` first and answer from its output, never from
+  memory.
 - Close what you open, the moment it is true: mark each step done when it is done, and the task done
   as soon as its result is reviewed. A task closes by itself when every step is done or its last worker
   ends with nothing pending, and is closed as failed after 6 hours without activity, but never leave
@@ -1788,7 +1795,7 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip")}                          lead Claude session (your subscription); delegates work
   ${c.cyan("ekip --free")}                   lead on free models (when Claude limits run out)
   ${c.cyan("ekip --safe")}                   ask before taking actions (default: automatic)
-  ${c.cyan("ekip status")}                   pools, memory, panel, team, recent runs
+  ${c.cyan("ekip status")} ${c.gray("[--system]")}        what runs, waits for you, is stuck, finished; release (--system: pools, memory)
   ${c.cyan("ekip limits")}                   pool limits and where a new task will go
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
@@ -1834,7 +1841,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
   ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
-  ${c.cyan("ekip status")}                   havuzlar, hafıza, panel, ekip, son çalıştırmalar
+  ${c.cyan("ekip durum")} ${c.gray("[--system]")}         ne çalışıyor, senden ne bekleniyor, ne takıldı, ne bitti; yayın (--system: havuzlar, hafıza)
   ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
   ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
@@ -1999,7 +2006,8 @@ switch (cmd) {
     else if (rest[0] && rest[0] !== "--all") await key(rest);
     else await keyWizard({ all: rest[0] === "--all" });
     break;
-  case "status": await status(); break;
+  // the work digest; --system: pools, memory, panel and recent runs
+  case "status": case "durum": if (rest.includes("--system") || rest.includes("--sistem")) await status(); else code = await (await import("../lib/tasks/digest.js")).main(rest); break;
   case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys") }); break;
   case "memory": await memory(rest); break;
   case "team": await team(rest); break;

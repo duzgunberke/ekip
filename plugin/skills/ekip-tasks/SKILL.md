@@ -35,7 +35,11 @@ description: Use when tracking work in the ekip task panel, starting a multi-ste
 14. Before closing, check `ekip tasks` and make sure each step reflects reality.
 
 15. Close the task the moment its result has been reviewed: `ekip task done ID
-   "one-line result"`. Use `ekip task fail ID "why"` if the work cannot be
+   "one-sentence result" --link <file or URL>`. The result and links show on the
+   panel and in `ekip status`. Use `ekip task fail ID "why"` if the work cannot be
    completed.
+   A decision you ask the user in chat also goes on the panel: `ekip task ask ID
+   "question" --option "A" --option "B"`, then `ekip task answer ID "choice"`.
+   When the user asks what is going on, answer from `ekip status`.
 16. “Done” means no step is left pending or running and the panel shows the
    reviewed result.

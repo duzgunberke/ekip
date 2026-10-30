@@ -20,6 +20,16 @@ id=$(head -1 <<<"$out" | tr -d '\r')
 [[ -n "$id" ]]
 run plugin/bin/ekip.js task step "$id" 1 done
 run plugin/bin/ekip.js task done "$id"
+printf '%s\n' '== task result, question, status digest =='
+id=$(node plugin/bin/ekip.js task new digest --steps 'a; b' | head -1 | tr -d '\r')
+run plugin/bin/ekip.js task ask "$id" "Devam edilsin mi?" --option Evet --option Hayır
+EKIP_LANG=tr run plugin/bin/ekip.js status --offline | tee "$tmp/status.out"
+for part in 'Şimdi çalışan' 'Senden beklenen (1)' 'Takılan' 'Son 24 saatte biten' 'ekip sürümü ve yayın' 'A) Evet'; do grep -q "$part" "$tmp/status.out"; done
+run plugin/bin/ekip.js task answer "$id" Evet
+run plugin/bin/ekip.js task done "$id" "Özet hazır" --link docs/commands.md --link https://example.com/x
+EKIP_LANG=tr run plugin/bin/ekip.js status --offline | tee "$tmp/status.out"
+grep -q 'Sonuç: Özet hazır' "$tmp/status.out"; grep -q 'https://example.com/x' "$tmp/status.out"; grep -q 'Senden beklenen (0)' "$tmp/status.out"
+echo '== hub release endpoint test =='; node --test hub/src/release.test.mjs
 for args in 'review --project x --dry-run' 'dev ls'; do
   echo "== $args (expected config error) =="
   read -r -a parts <<< "$args"

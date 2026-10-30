@@ -115,6 +115,12 @@ night. ekip handles that itself, so you never have to chase it.
 - **Waiting is not stalling.** `ekip task block ID "why"` and `ekip task wait ID "what you decide"`
   mark a task blocked or waiting for you (you get a notification); neither shows a stall warning or
   an estimate.
+- **Decisions stay on the panel.** When the lead asks you something in chat it also runs `ekip task
+  ask ID "question" --option A --option B`; the question and its options sit at the top of the panel
+  and of `ekip status` until you answer.
+- **Every finished task says what it produced.** `ekip task done ID "result" --link <file or URL>`,
+  or, by itself, the first paragraph and the paths/URLs of the worker's report: "Result: …" with
+  clickable links in the pane, `ekip status` and the panel.
 - **Work waits for its turn.** `ekip run --after ID` or `--when "CMD"` waits in the background until
   a task or run finished, or a shell test passes. Heavy local work (`--heavy`, or a brief about a
   render) takes one of the machine's slots (from cores and memory, `maxLocalWorkers`) and queues
@@ -143,6 +149,11 @@ night. ekip handles that itself, so you never have to chase it.
   skills workers actually opened, and run success with and without knowledge (signals, not proof).
 - **Nothing runs out of sight.** Workers open in a pane, and any long job the lead starts itself
   gets one too (`ekip show <log>`).
+- **One screen answers "what is going on?"** `ekip status` (`ekip durum`) shows what runs now
+  (percent, speed, finish, last output line), what waits for you, what is stuck and what ekip did
+  about it, what finished in the last 24 hours with its result and links, and ekip's own release
+  (version, main under test or passed, hub up to date). The task pane and the panel's task page show
+  the same digest on top, questions in red and stuck work in orange.
 - **A pool whose quota ran out leaves the rotation** until it resets, instead of failing every job sent
   to it; the reset time is read from the CLI's own message and `ekip agents` shows when it comes back.
 - **Workers keep out of each other's way.** Every brief tells them to stop only processes they

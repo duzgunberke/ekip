@@ -6,6 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import { Auth } from "./auth.js";
 import { CodeMap } from "./codemap.js";
+import { releaseInfo } from "./release.js";
 import { openStore, trim } from "./store.js";
 import { Worker } from "./worker.js";
 
@@ -39,6 +40,10 @@ const cfg = {
   tdaiUrl: stripSlash(env.TDAI_PROXY_URL),
   tdaiUserKey: env.TDAI_USER_KEY ?? "",
   githubToken: env.GITHUB_TOKEN ?? "",
+  // ekip's CI state (scripts/ci/vps-ci-poll.sh: last-sha, result.json) for GET /api/ci and /api/release
+  ciDir: env.EKIP_CI_DIR || path.join(DATA, "ci"),
+  // the commit this hub was built from (Docker build arg SOURCE_COMMIT, or set by hand)
+  commit: env.EKIP_HUB_COMMIT || env.SOURCE_COMMIT || null,
   // TencentDB knowledge service (code graphs) for the panel's code map.
   knowledgeUrl: stripSlash(env.KNOWLEDGE_URL ?? "http://tdai-memory-hub:8424"),
 };
@@ -47,6 +52,7 @@ if (cfg.hubToken.length < 16) { console.error("EKIP_HUB_TOKEN must be set (at le
 if (cfg.hubPassword.length < (DEMO ? 1 : 10)) { console.error(`EKIP_HUB_PASSWORD must be set (at least ${DEMO ? 1 : 10} characters)`); process.exit(1); }
 
 fs.mkdirSync(DATA, { recursive: true });
+const STARTED = new Date().toISOString();
 function serverSecret() {
   if (env.EKIP_HUB_SECRET) return env.EKIP_HUB_SECRET;
   const f = path.join(DATA, "secret");
@@ -279,7 +285,8 @@ function cleanTask(b) {
       const st = str(s.status, 20, `steps[${i}].status`, { required: true });
       if (!STEP_STATUS.includes(st)) bad(`steps[${i}].status must be one of ${STEP_STATUS.join(", ")}`);
       return { title: str(s.title, 200, `steps[${i}].title`, { required: true }), status: st, pct: pctOf(s.pct, `steps[${i}].pct`), startedAt: ts(s.startedAt, `steps[${i}].startedAt`), endedAt: ts(s.endedAt, `steps[${i}].endedAt`),
-        progressAt: ts(s.progressAt, `steps[${i}].progressAt`), detail: str(s.detail, 300, `steps[${i}].detail`) ?? null, reason: str(s.reason, 500, `steps[${i}].reason`) ?? null };
+        progressAt: ts(s.progressAt, `steps[${i}].progressAt`), detail: str(s.detail, 300, `steps[${i}].detail`) ?? null, reason: str(s.reason, 500, `steps[${i}].reason`) ?? null,
+        rate: str(s.rate, 40, `steps[${i}].rate`) ?? null, etaAt: ts(s.etaAt, `steps[${i}].etaAt`) };
     }),
     workers: arr(b.workers, 100, "workers").map((w, i) => ({
       runId: str(w.runId, 128, `workers[${i}].runId`) ?? null,
@@ -295,6 +302,10 @@ function cleanTask(b) {
     hold: b.hold && typeof b.hold === "object" && HOLD_KIND.includes(b.hold.kind) ? { kind: b.hold.kind, reason: str(b.hold.reason, 500, "hold.reason") ?? "", at: ts(b.hold.at, "hold.at") } : null,
     // the Mac checks the pids: a running step with no live worker left
     paused: b.paused === true,
+    // what the task produced (ekip task done/result, or a worker's report) and the decision it waits for
+    result: b.result && typeof b.result === "object" ? { text: str(b.result.text, 500, "result.text") ?? "", links: (Array.isArray(b.result.links) ? b.result.links : []).slice(0, 5).map((l, i) => str(l, 500, `result.links[${i}]`) ?? "").filter(Boolean), at: ts(b.result.at, "result.at"), auto: b.result.auto === true } : null,
+    ask: b.ask && typeof b.ask === "object" ? { question: str(b.ask.question, 500, "ask.question") ?? "", options: (Array.isArray(b.ask.options) ? b.ask.options : []).slice(0, 8).map((o, i) => str(o, 200, `ask.options[${i}]`) ?? "").filter(Boolean), at: ts(b.ask.at, "ask.at") } : null,
+    answers: arr(Array.isArray(b.answers) ? b.answers.slice(-20) : null, 20, "answers").map((a, i) => ({ question: str(a.question, 500, `answers[${i}].question`) ?? "", answer: str(a.answer, 500, `answers[${i}].answer`) ?? "", at: ts(a.at, `answers[${i}].at`) })),
     notes: arr(b.notes, 200, "notes").map((n, i) => ({ at: ts(n.at, `notes[${i}].at`), text: str(n.text, 2000, `notes[${i}].text`) ?? "" })),
     pct: pctOf(b.pct, "pct") ?? 0,
     eta: ts(b.eta, "eta"),
@@ -575,9 +586,11 @@ async function api(req, res, url) {
 
   // ekip's own CI (scripts/ci on this server): the last fresh-install result, log tail included
   if (p === "/api/ci" && m === "GET") {
-    try { return send(res, 200, JSON.parse(fs.readFileSync(path.join(DATA, "ci", "result.json"), "utf8"))); }
+    try { return send(res, 200, JSON.parse(fs.readFileSync(path.join(cfg.ciDir, "result.json"), "utf8"))); }
     catch { return send(res, 200, { status: "none" }); }
   }
+  // ekip's release state: main's last commit, whether it is under test, the commit this hub runs
+  if (p === "/api/release" && m === "GET") return send(res, 200, releaseInfo(cfg.ciDir, { commit: cfg.commit, startedAt: STARTED }));
   if (p === "/api/heartbeat" && m === "POST") {
     const b = await readJson(req, 200_000);
     const client = str(b.client, 100, "client", { required: true });

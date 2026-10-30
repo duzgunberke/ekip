@@ -28,6 +28,11 @@ COPY --chown=root:root package.json ./
 COPY --chown=root:root src ./src
 COPY --from=web --chown=root:root /src/public ./public
 
+# the commit this image is built from (Coolify passes SOURCE_COMMIT): the panel and `ekip status` say
+# whether the hub runs main's last commit
+ARG SOURCE_COMMIT=""
+ENV EKIP_HUB_COMMIT=${SOURCE_COMMIT}
+
 ENV NODE_ENV=production \
     PORT=7777 \
     EKIP_DATA=/data \

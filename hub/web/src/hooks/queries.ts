@@ -5,6 +5,7 @@ import type {
   LimitsSnapshot,
   Project,
   ProjectRepos,
+  ReleaseInfo,
   RepoGraph,
   Run,
   SavingsSnapshot,
@@ -26,6 +27,7 @@ export const qk = {
   job: (id: string) => ['jobs', id] as const,
   runs: ['runs'] as const,
   tasks: ['tasks'] as const,
+  release: ['release'] as const,
 }
 
 export const useStatus = () =>
@@ -141,5 +143,13 @@ export const useTasks = () =>
     queryKey: qk.tasks,
     queryFn: ({ signal }) => api<Task[]>('/api/tasks?limit=200', { signal }),
     refetchInterval: (q) => (q.state.data?.some((t) => t.status === 'running') ? 2_500 : 10_000),
+    refetchIntervalInBackground: false,
+  })
+
+export const useRelease = () =>
+  useQuery({
+    queryKey: qk.release,
+    queryFn: ({ signal }) => api<ReleaseInfo>('/api/release', { signal }),
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   })
