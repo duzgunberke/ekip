@@ -12,10 +12,11 @@
 //   ekip status | up | down | logs
 import { spawn, spawnSync } from "node:child_process";
 import {
-  askSecret, CONFIG, DB, DEPS, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
+  askSecret, CONFIG, DB, DEPS, notify, FREELLMAPI_REPO, FREE_CLAUDE_HOME, FREE_DIR, FREE_NODE, HOME, KEYLESS, LOG, PID, PORT, REPO, RUNS, SETTINGS, SETTINGS_FILE, TDAI_PORTS, URL_ROOT, VENDOR, adminKey, ask, clone, containerRunning, depDir, die, down, has, healthy, key, keyCounts, openTerminal, openUrl, readConfig, saveSettings, sh, sleep, sql, tdaiDeploy, tdaiUp, unifiedKey, up, writeConfig,
 } from "../lib/core/core.js";
 import { POINTER, REMOTE, ROOT, TDAI_CONTAINER_SH, TUNNEL_LABEL, ensureTaskPane, openPane, restartFree, ssh, tdaiContainer } from "../lib/core/core.js";
-import { AGENTS, QUOTA, autoOrder, main as agentsMain, poolLoad, poolMark, recordStat } from "../lib/workers/agents.js";
+import { AGENTS, QUOTA, autoOrder, clearLimit, isStrong, main as agentsMain, onFreePool, poolLoad, poolMark, quotaInfo, recordLimit, recordStat } from "../lib/workers/agents.js";
+import { killCause } from "../lib/workers/slots.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
 import { main as vpsMain } from "../lib/hub/vps.js";
@@ -148,6 +149,15 @@ const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR
   --label T  a short name for the worker in the task view
   --no-watch don't open a pane that shows the worker live
   --worktree run on its own git worktree and branch (for work on code that is running right now)
+  --min-tier strong   never fall back to a weak pool (free-pool harnesses, free models)
+  --no-fallback-free  never fall back to the free pool (a pool asked for by name still runs)
+  --heavy | --light   the run renders/encodes on this machine (takes a machine slot) or not;
+                      default: heavy when the brief mentions a render, encode or similar
+  --after ID          start once task ID or run ID finished successfully (waits in the background)
+  --when "CMD"        start once the shell command CMD exits 0 (checked every 30 s, background)
+  --foreground        with --after/--when: wait in this process instead of the background
+  --resume RUN        run RUN's brief again (same task and label), told to continue the half-done work
+  --retry-on-kill     a worker killed by a signal (load, memory) is restarted once when the load drops
 The worker's final report is printed to stdout; its full log is under data/runs/.`;
 
 function parseRun(args) {
@@ -166,11 +176,22 @@ function parseRun(args) {
     else if (a === "--task") o.taskId = args[++i];
     else if (a === "--label") o.label = args[++i];
     else if (a === "--watch") o.watch = true;
+    else if (a === "--min-tier") { o.minTier = args[++i]; if (o.minTier !== "strong" && o.minTier !== "any") die("--min-tier takes strong or any"); }
+    else if (a === "--no-fallback-free") o.noFallbackFree = true;
+    else if (a === "--heavy") o.heavy = true;
+    else if (a === "--light") o.heavy = false;
+    else if (a === "--after") o.after = args[++i];
+    else if (a === "--when") o.when = args[++i];
+    else if (a === "--foreground") o.foreground = true;
+    else if (a === "--resume") o.resume = args[++i];
+    else if (a === "--retry-on-kill") o.retryOnKill = true;
+    else if (a === "--brief-file") o.task = fs.readFileSync(args[++i], "utf8");
     else if (a.startsWith("--")) die(`unknown option ${a} (ekip run --help)`);
     else if (a === "-") o.task = fs.readFileSync(0, "utf8");
     else if (o.task == null) o.task = a;
     else o.task += ` ${a}`;
   }
+  if (o.resume) resumeBrief(o, args);
   if (!o.task?.trim()) die('usage: ekip run [--via auto|agy|free|claude|a,b,c] [--project NAME | --cwd DIR] [--model M] [--plugin NAME] [--skill NAME] "task"   (or - to read the task from stdin)');
   o.vias = o.via.split(",").map((v) => v.trim()).filter(Boolean);
   for (const v of o.vias) if (!VIAS.includes(v)) die(`--via takes ${VIAS.join(", ")} or a comma list of them`);
@@ -181,6 +202,25 @@ function parseRun(args) {
   } else o.project = registry().filter((x) => o.cwd === x.path || o.cwd.startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0]?.name ?? null;
   if (!fs.existsSync(o.cwd)) die(`no such directory: ${o.cwd}`);
   return o;
+}
+
+// --resume RUN: the brief of an earlier run (as its log header kept it, before project knowledge
+// was added), with the same task link and label, and a note to continue rather than start over.
+const RESUME_NOTE = "NOTE: a previous attempt at this task was interrupted before it finished. Look at the half-finished changes in the working tree first (git status, git diff, new files, partial outputs) and continue from where it stopped; do not start over or redo finished parts.\n\n";
+function resumeBrief(o, args) {
+  const name = path.basename(o.resume).replace(/\.log$/, "");
+  const file = fs.existsSync(o.resume) ? o.resume : path.join(RUNS, `${name}.log`);
+  if (!fs.existsSync(file)) die(`no run log ${name} (data/runs)`);
+  const text = fs.readFileSync(file, "utf8");
+  const field = (k) => { const v = text.match(new RegExp(`^${k}: (.*)$`, "m"))?.[1]; return v && v !== "-" ? v : null; };
+  const body = text.split("\ntask:\n")[1] ?? "";
+  const end = body.search(/\n\n(?:\[ekip pool |\$ |▸ |\[exit )/);
+  const brief = (end >= 0 ? body.slice(0, end) : body).trim();
+  if (!brief) die(`run ${name} has no brief in its log`);
+  o.task = `${RESUME_NOTE}${brief.startsWith("NOTE: a previous attempt") ? brief.slice(RESUME_NOTE.length) : brief}${o.task ? `\n\n${o.task}` : ""}`;
+  o.taskId ??= field("taskId");
+  o.label ??= field("label");
+  if (!args.includes("--project") && !args.includes("--cwd") && field("cwd") && fs.existsSync(field("cwd"))) o.cwd = field("cwd");
 }
 
 // The project registry (written by `ekip project add`); empty until projects are registered.
@@ -194,6 +234,9 @@ const WORKER_BRIEF = [
   "Finish with a short report: what you changed (files), what you verified and how, and anything left open.",
   // a worker once revoked a signing certificate to get past an error; the account owner got Apple's email
   "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
+  // a worker stopped its own render with pkill -f and killed the renders of two other workers
+  "Other workers run on this machine at the same time: stop only processes you started yourself, by their PID (kill <pid>). Never use pkill, killall or kill by name or pattern.",
+  "A long job you start and must leave running after you finish (a render, a queue) is started in the background with its output in a log, then registered with `ekip show --pid <PID> <log>`; it survives when you stop. Never sit polling a long job yourself for many minutes.",
   "",
   "TASK:",
 ].join("\n");
@@ -204,11 +247,20 @@ const workerBrief = (cwd) => (spawnSync("git", ["-C", cwd, "rev-parse", "--is-in
 // Watchdog for every worker: one that prints nothing for EKIP_IDLE_MIN minutes (default 15) or runs
 // past EKIP_TIMEOUT_MIN (default 90) is stopped, so a hung CLI never sits on a task for hours; the
 // task gets the reason and the lead re-dispatches. Exit code 124, like timeout(1).
+// Silence is measured on the whole process tree: a worker that waits for a long job it started (a
+// render queue that prints nothing for minutes) is not idle while that job burns CPU.
 function watchdog(child, log) {
   const idleMs = Number(process.env.EKIP_IDLE_MIN ?? SETTINGS.idleMin ?? 15) * 60_000;
   const maxMs = Number(process.env.EKIP_TIMEOUT_MIN ?? SETTINGS.timeoutMin ?? 90) * 60_000;
-  const t0 = Date.now(); let seen = Date.now(), why = null;
+  const t0 = Date.now(); let seen = Date.now(), printed = Date.now(), why = null, cpu = 0, busyNoted = false;
   const tick = setInterval(() => {
+    // 3 s of CPU in a 30 s tick (a tenth of a core) anywhere in the tree counts as work
+    const now = treeCpu(child.pid);
+    if (now - cpu >= 3) {
+      seen = Date.now();
+      if (Date.now() - printed >= idleMs && !busyNoted) { log.write("\n[ekip] çıktı yok ama alt süreçler çalışıyor (CPU); sessiz sayılmıyor\n"); busyNoted = true; }
+    }
+    cpu = Math.max(cpu, now);
     const idle = Date.now() - seen, total = Date.now() - t0;
     if (idle < idleMs && total < maxMs) return;
     why = idle >= idleMs ? `${Math.round(idle / 60000)} dk sessiz kaldı, durduruldu` : `${Math.round(total / 60000)} dk sınırını aştı, durduruldu`;
@@ -216,14 +268,39 @@ function watchdog(child, log) {
     killTree(child, "SIGTERM"); setTimeout(() => killTree(child, "SIGKILL"), 10_000).unref();
   }, 30_000);
   tick.unref();
-  return { alive: () => { seen = Date.now(); }, stop: () => clearInterval(tick), why: () => why };
+  return { alive: () => { seen = printed = Date.now(); busyNoted = false; }, stop: () => clearInterval(tick), why: () => why };
 }
 
 // Workers run in their own process group: the watchdog and a stop signal kill the whole group, so a
 // grandchild holding the pipes cannot keep the run alive.
+// Processes a worker handed over with `ekip show --pid` are left alive (with their children).
 const liveKids = new Set();
 function killTree(child, sig) {
-  try { process.kill(-child.pid, sig); } catch { try { child.kill(sig); } catch { /* already gone */ } }
+  const kept = detachedPids();
+  const procs = kept.size ? processTable() : null;
+  if (!procs) { try { process.kill(-child.pid, sig); } catch { try { child.kill(sig); } catch { /* already gone */ } } return; }
+  const tree = treeOf(procs, child.pid), keep = new Set();
+  for (const p of procs) if (kept.has(p.pid)) for (const q of treeOf(procs, p.pid)) keep.add(q.pid);
+  for (const p of tree) if (!keep.has(p.pid)) { try { process.kill(p.pid, sig); } catch { /* gone */ } }
+}
+
+// pid, ppid, pgid and CPU seconds of every process ("ps -A"); null when ps is unavailable.
+function processTable() {
+  const r = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,time="], { encoding: "utf8", timeout: 5000 });
+  if (r.status !== 0) return null;
+  const secs = (t) => { const [d, rest] = t.includes("-") ? t.split("-") : [0, t]; return Number(d) * 86400 + rest.split(":").reduce((a, x) => a * 60 + Number(x), 0); };
+  return r.stdout.trim().split("\n").map((l) => l.trim().split(/\s+/)).map(([pid, ppid, pgid, time]) => ({ pid: +pid, ppid: +ppid, pgid: +pgid, cpu: secs(time ?? "0") || 0 }));
+}
+// A worker's processes: its own group (it runs detached) plus any descendant that left the group.
+function treeOf(procs, root) {
+  const out = new Map(procs.filter((p) => p.pid === root || p.pgid === root).map((p) => [p.pid, p]));
+  for (let grew = true; grew;) { grew = false; for (const p of procs) if (!out.has(p.pid) && out.has(p.ppid)) { out.set(p.pid, p); grew = true; } }
+  return [...out.values()];
+}
+const treeCpu = (root) => { const procs = processTable(); return procs ? treeOf(procs, root).reduce((a, p) => a + p.cpu, 0) : 0; };
+const DETACHED = () => path.join(HOME, "detached.json");
+function detachedPids() {
+  try { return new Set(JSON.parse(fs.readFileSync(DETACHED(), "utf8")).map((x) => x.pid).filter((pid) => { try { process.kill(pid, 0); return true; } catch { return false; } })); } catch { return new Set(); }
 }
 
 // Spawns a worker and calls done(code, note) once: on a spawn error (missing binary), on close, or
@@ -232,28 +309,34 @@ function spawnWorker(cmd, argv, opts, done) {
   const child = spawn(cmd, argv, { ...opts, detached: true, stdio: ["ignore", "pipe", "pipe"] });
   liveKids.add(child);
   let ended = false, grace = null;
-  const end = (code, note = "") => {
+  const end = (code, note = "", sig = null) => {
     if (ended) return;
     ended = true; clearTimeout(grace); liveKids.delete(child);
     child.stdout?.destroy(); child.stderr?.destroy();
-    done(code, note);
+    // a CLI killed by a signal leaves its children behind: stop them too (ekip show --pid jobs stay)
+    if (sig) killTree(child, "SIGTERM");
+    done(code, note, sig);
   };
-  const codeOf = (code, sig) => code ?? (sig ? 143 : 1);
+  // killed by a signal: 128 + its number, like a shell (143 SIGTERM, 137 SIGKILL)
+  const codeOf = (code, sig) => code ?? (sig ? 128 + (os.constants.signals[sig] ?? 15) : 1);
   child.on("error", (e) => end(e.code === "ENOENT" ? 127 : 1, `${cmd}: ${e.message}`));
-  child.on("exit", (code, sig) => { grace = setTimeout(() => end(codeOf(code, sig)), 2000); });
-  child.on("close", (code, sig) => end(codeOf(code, sig)));
+  child.on("exit", (code, sig) => { grace = setTimeout(() => end(codeOf(code, sig), "", sig), 2000); });
+  child.on("close", (code, sig) => end(codeOf(code, sig), "", sig));
   return child;
 }
+
+// A worker CLI that died by a signal ekip did not send: say so in the log with the likely cause.
+const killNote = (sig, code, dog) => (sig && !dog.why() && !stopping ? `[ekip] işçi ${sig} sinyaliyle öldü (çıkış ${code}); olası neden: ${killCause(code)}` : "");
 
 function runChild(cmd, argv, opts, logFile) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n`);
     let out = "";
-    const child = spawnWorker(cmd, argv, opts, (code, note) => {
-      dog.stop(); if (note) { out += `\n${note}`; log.write(`\n${note}`); }
+    const child = spawnWorker(cmd, argv, opts, (code, note, sig) => {
+      dog.stop(); note = [note, killNote(sig, code, dog)].filter(Boolean).join("\n"); if (note) { out += `\n${note}`; log.write(`\n${note}`); }
       if (dog.why()) { code = 124; out += `\n${dog.why()}`; }
-      log.end(`\n[exit ${code}]\n`); resolve({ code, out });
+      log.end(`\n[exit ${code}]\n`); resolve({ code, out, signal: dog.why() ? null : sig });
     });
     const dog = watchdog(child, log);
     child.stdout.on("data", (d) => { dog.alive(); out += d; log.write(d); });
@@ -275,12 +358,12 @@ function runStream(cmd, argv, opts, logFile, kind) {
     const log = fs.createWriteStream(logFile, { flags: "a" });
     log.write(`$ ${cmd} ${argv.map((a) => (a.length > 80 ? `${a.slice(0, 77)}...` : a)).join(" ")}\n\n`);
     let buf = "", raw = "", final = "", lastStep = -1, steps = new Map(), loggedModel = false;
-    const child = spawnWorker(cmd, argv, opts, (code, note) => {
-      dog.stop(); if (note) { raw += `\n${note}`; log.write(`\n${note}`); }
+    const child = spawnWorker(cmd, argv, opts, (code, note, sig) => {
+      dog.stop(); note = [note, killNote(sig, code, dog)].filter(Boolean).join("\n"); if (note) { raw += `\n${note}`; log.write(`\n${note}`); }
       if (dog.why()) { code = 124; raw += `\n${dog.why()}`; }
       if (kind === "agy" && steps.size) final = [...steps.entries()].sort((a, b) => a[0] - b[0]).at(-1)[1];
       log.end(`\n\n[exit ${code}]\n`);
-      resolve({ code, out: final.trim() ? final : raw });
+      resolve({ code, out: final.trim() ? final : raw, signal: dog.why() ? null : sig });
     });
     const onEvent = (e) => {
       const reportedModel = e.model ?? e.response?.model ?? e.message?.model ?? e.data?.model;
@@ -417,11 +500,39 @@ async function runVia(via, o, logFile) {
 
 const git = (cwd, args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 
+// A heavy run (local render, encode) first takes a machine slot (lib/workers/slots.js) and waits in
+// line while none is free; the task shows "queued (n)". A worker killed by a signal is restarted
+// once with --retry-on-kill, after the load has come down.
 async function runOne(o, via, id) {
+  const tasks = o.taskId ? await import("../lib/tasks/tasks.js") : null;
+  let release = null;
+  if (o.heavy ?? (await import("../lib/workers/slots.js")).looksHeavy(o.task)) {
+    const slots = await import("../lib/workers/slots.js");
+    release = await slots.acquire(id, { onWait: ({ position, reason, holders }) => {
+      const why = reason === "load" ? t("makine yükü çok yüksek") : t("{n} ağır iş çalışıyor (sınır {max})", { n: holders, max: slots.maxHeavy() });
+      say(`${t("kuyrukta (sıra {n})", { n: position })} · ${why}`);
+      tasks?.holdWorker(o.taskId, { runId: id, via, label: o.label ?? null, pid: process.pid }, { status: "queued", queue: position, why });
+    } });
+  }
+  try {
+    let r = await runOneTracked(o, via, id, tasks);
+    if (!r.ok && r.killed && o.retryOnKill && !stopping) {
+      const slots = await import("../lib/workers/slots.js");
+      warn(t("işçi sinyalle öldü; yük düşünce bir kez yeniden başlatılıyor"));
+      await slots.calm();
+      const again = `${new Date().toISOString().replace(/[:.]/g, "-")}-${via}`;
+      r = await runOneTracked({ ...o, task: `${RESUME_NOTE}${o.task}` }, via, again, tasks);
+    }
+    return r;
+  } finally { release?.(); }
+}
+
+async function runOneTracked(o, via, id, tasks) {
   const r = await runOneInner(o, via, id);
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
-  if (o.taskId) (await import("../lib/tasks/tasks.js")).endWorker(o.taskId, id, r.ok ? "done" : "failed", r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? "başarısız oldu", r.model, r.via);
+  const why = r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? r.out.match(/\[ekip\] (işçi SIG\w+ sinyaliyle öldü[^\n]*)/)?.[1] ?? r.stopped ?? "başarısız oldu";
+  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why, r.model, r.via);
   return r;
 }
 
@@ -436,7 +547,9 @@ function onStop() {
     stopping = true;
     for (const child of liveKids) killTree(child, "SIGTERM");
     for (const [id, r] of activeRuns) {
-      try { fs.appendFileSync(path.join(RUNS, `${id}.log`), "\n[exit 143] durduruldu\n"); } catch { /* gone */ }
+      try { fs.appendFileSync(path.join(RUNS, `${id}.log`), `\n[exit 143] durduruldu (${sig})\n`); } catch { /* gone */ }
+      // the task must not keep a ghost "running" worker: say who stopped it and how
+      if (r.taskId) { try { (await import("../lib/tasks/tasks.js")).endWorker(r.taskId, id, "cancelled", `${sig} ${t("sinyaliyle durduruldu")}`, r.model, r.via); } catch { /* task gone */ } }
       try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: r.project, via: r.via, label: r.label, brief: r.task, status: "cancelled" }); } catch { /* usage logging must never affect shutdown */ }
       await postRun({ ...r, status: "cancelled", report: "durduruldu", finishedAt: new Date().toISOString() });
       await uploadRunLog(id, path.join(RUNS, `${id}.log`));
@@ -539,7 +652,7 @@ async function runOneInner(o, via, id) {
   process.env.EKIP_PARENT_RUN = id;
   const logFile = path.join(RUNS, `${id}.log`);
   if (o.taskId) (await import("../lib/tasks/tasks.js")).linkWorker(o.taskId, { runId: id, via, model: o.model ?? null, label: o.label ?? null, log: logFile, pid: process.pid });
-  fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
+  fs.writeFileSync(logFile, `cwd: ${o.cwd}\nproject: ${o.project ?? "-"}\nlabel: ${o.label ?? "-"}\ntaskId: ${o.taskId ?? "-"}\npid: ${process.pid}\ntask:\n${o.task}\n\n`);
   if (o.project) {
     const { SETTINGS } = await import("../lib/core/core.js");
     if (SETTINGS.dev?.projects?.[o.project]) o.task += `\n\nDevelopment DB/redis: source ${path.join((await import("../lib/projects/projects.js")).getProject(o.project)?.path ?? o.cwd, ".env.ekip-dev")}; never use production DATABASE_URL.`;
@@ -550,14 +663,19 @@ async function runOneInner(o, via, id) {
   }
   try { (await import("../lib/projects/skillgen.js")).recordRunStart({ project: o.project, label: o.label, via, brief: o.task, runId: id, skills: o.skills }); } catch { /* usage logging must never affect a run */ }
   await postRun({ id, via, project: o.project, task: o.task, model: o.model ?? null, status: "running", report: "" });
-  activeRuns.set(id, { id, via, project: o.project, task: o.task, label: o.label, model: o.model ?? null, logFile });
+  activeRuns.set(id, { id, via, project: o.project, task: o.task, label: o.label, model: o.model ?? null, logFile, taskId: o.taskId ?? null });
   const upload = () => uploadRunLog(id, logFile);
   const uploadTimer = setInterval(upload, 60_000); uploadTimer.unref();
   onStop();
   // Show the worker live in its own terminal window (off with --no-watch or "watch": false).
   if ((o.watch ?? SETTINGS.watch ?? true) && process.platform === "darwin") openPane(`${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} watch ${JSON.stringify(logFile)}`, { title: `ekip · ${o.label ?? via}` });
-  const order = via === "auto" ? autoOrder() : [via];
-  let last = null, lastVia = via;
+  // --min-tier strong / --no-fallback-free: pools the run may fall back to (a pool asked for by name always runs)
+  const allowed = (v) => v === via || ((o.minTier !== "strong" || isStrong(v)) && (!o.noFallbackFree || !onFreePool(v)));
+  const order = (via === "auto" ? autoOrder() : [via]).filter(allowed);
+  if (!order.length) { clearInterval(uploadTimer); fs.appendFileSync(logFile, "\n[exit 1] uygun havuz yok\n"); return { ok: false, via, out: t("--min-tier/--no-fallback-free ile uygun havuz yok (ekip agents)"), logFile, model: null }; }
+  const tasks = o.taskId ? await import("../lib/tasks/tasks.js") : null;
+  const when = (iso) => new Date(iso).toLocaleString(lang === "tr" ? "tr-TR" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  let last = null, lastVia = via, idleRuns = [], stopped = null;
   for (let i = 0; i < order.length; i++) {
     const v = order[i];
     say(`${c.bold(v, process.stderr)} ${t("çalışıyor")} ${c.gray(`· ${o.project ?? o.cwd} · log ${logFile}`, process.stderr)}`);
@@ -569,18 +687,41 @@ async function runOneInner(o, via, id) {
     const ok = !failed(last);
     recordStat(v, ok, Date.now() - t0);
     if (stopping) break;
-    if (ok) { clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
+    if (ok) { clearLimit(v); clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload(); return { ok: true, via: v, out: last.out.trim(), logFile, model }; }
     warn(`${c.bold(v, process.stderr)} ${t("başarısız")} (exit ${last.code}): ${c.gray(last.out.trim().split("\n").slice(-3).join(" | ").slice(0, 300), process.stderr)}`);
+    // a quota message with its reopen time goes into the pool state, so `ekip agents` and auto see it
+    const quota = quotaInfo(last.out.slice(-4000));
+    if (quota) recordLimit(v, quota);
     // A pool asked for by name that is out of quota hands the task on instead of failing it: the
     // next pools of the auto order (limited ones are already left out; never the headless Claude)
     if (via !== "auto" && i === order.length - 1 && LIMIT_RE.test(last.out.slice(-4000))) {
-      const rest = autoOrder().filter((x) => !order.includes(x) && x !== "claude");
+      const rest = autoOrder().filter((x) => !order.includes(x) && x !== "claude" && allowed(x));
       if (rest.length) { warn(`${c.bold(v, process.stderr)} ${t("kotası dolu; sıradaki havuza geçiliyor")}: ${rest.join(" → ")}`); order.push(...rest); }
     }
+    // A pool that went silent until the watchdog stopped it says the brief is too much for the
+    // pools after it that are weaker: they are dropped, and a second silent pool in a row ends the
+    // chain with the task blocked, instead of four pools idling 15 minutes each.
+    if (last.code === 124 && /sessiz kaldı/.test(last.out)) {
+      idleRuns.push(v);
+      const rest = order.slice(i + 1), strong = rest.filter(isStrong);
+      order.splice(i + 1, order.length, ...strong);
+      if (idleRuns.length >= 2 || (rest.length && !strong.length)) {
+        stopped = t("{pools} sessiz kalıp durduruldu; zayıf havuzlar bu işte başarısız sayıldı. Brief'i bölün ya da güçlü bir havuz seçin (--via, --min-tier strong)", { pools: idleRuns.join(", ") });
+        break;
+      }
+    } else idleRuns = [];
+    const next = order[i + 1];
+    if (next && o.taskId) {
+      const why = quota ? t("{pool} kotası bitti (yenilenme: {at})", { pool: v, at: when(quota.resetAt) }) : last.code === 124 ? `${v}: ${last.out.match(/\d+ dk (sessiz kaldı|sınırını aştı)/)?.[0] ?? t("durduruldu")}` : t("{pool} başarısız (çıkış {code})", { pool: v, code: last.code });
+      const dropped = last.code === 124 && /sessiz kaldı/.test(last.out) ? ` · ${t("zayıf havuzlar atlandı")}` : "";
+      tasks.note(o.taskId, `${why} → ${t("{pool} havuzuna geçildi", { pool: next })}${dropped}`);
+    }
   }
+  if (stopped && o.taskId) tasks.hold(o.taskId, "blocked", stopped, null, { alert: true });
+  else if (stopped) notify("ekip", stopped, { subtitle: o.label ?? o.project ?? "" });
   clearInterval(uploadTimer); const model = o.model ?? modelFromLog(logFile); await upload();
   // a failed run belongs to the last pool tried ("auto" is only the requested mode)
-  return { ok: false, via: lastVia, out: last?.out.trim() ?? "", logFile, model };
+  return { ok: false, via: lastVia, out: `${last?.out.trim() ?? ""}${stopped ? `\n${stopped}` : ""}`, logFile, model, killed: !!last?.signal && !stopping, stopped };
 }
 
 function modelFromLog(file) {
@@ -635,7 +776,8 @@ async function run(args) {
   args = args.filter((a) => a !== "--allow-nested");
   const depth = Number(process.env.EKIP_RUN_DEPTH ?? 0);
   if (depth >= 2 && !allowNested) die("İç içe işçi sınırı: --allow-nested ile açıkça izin verin.");
-  if (depth > 0 && !allowNested) {
+  // a run that waited in the background (--after/--when) was already counted by the process that queued it
+  if (depth > 0 && !allowNested && !process.env.EKIP_QUEUED) {
     const parent = process.env.EKIP_PARENT_RUN ?? "unknown";
     if (!reserveChildRun(parent, Number(SETTINGS.maxChildRuns ?? 6))) die("Bu üst işçi için çocuk çalıştırma sınırı doldu; testleri --dry-run veya mock ile yapın.");
   }
@@ -643,6 +785,10 @@ async function run(args) {
   process.env.EKIP_RUN_DEPTH = String(depth + 1);
   process.env.EKIP_PARENT_RUN = process.env.EKIP_PARENT_RUN || `${Date.now()}-${process.pid}`;
   await reconcileRuns().catch(() => {});
+  // --after / --when: the run waits for its condition in a background process of its own, so it
+  // starts even when the lead's turn (or terminal) is over; the task shows what it waits for.
+  if ((o.after || o.when) && !o.foreground && !process.env.EKIP_QUEUED) return queueInBackground(o, args);
+  if (o.after || o.when) { const ok = await waitForCondition(o); if (!ok) return 1; }
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
   // --worktree: one pool, but on its own branch like a race, so a worker that edits code that is
   // running right now (ekip itself, a dev server) cannot break it halfway through
@@ -676,6 +822,78 @@ async function run(args) {
   }
   process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
   return results.some((r) => r.ok) ? 0 : 1;
+}
+
+// The background copy of a run with --after/--when: same options, the brief in a file (stdin is
+// gone by then), its stdout in data/queued/. Prints where to look and returns at once.
+function queueInBackground(o, args) {
+  const dir = path.join(HOME, "queued");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const briefFile = path.join(dir, `${stamp}.brief`), outFile = path.join(dir, `${stamp}.out`);
+  fs.writeFileSync(briefFile, o.task);
+  // the brief goes by file: drop the task words, "-" and an earlier --brief-file / --resume from the args
+  const keep = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (["--brief-file", "--resume"].includes(a)) { i++; continue; }
+    if (a === "-" || !a.startsWith("--")) { if (i > 0 && TAKES_VALUE.includes(args[i - 1])) keep.push(a); continue; }
+    keep.push(a);
+  }
+  const fd = fs.openSync(outFile, "a");
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "run", ...keep, "--brief-file", briefFile, ...(o.taskId && !keep.includes("--task") ? ["--task", o.taskId] : []), ...(o.label && !keep.includes("--label") ? ["--label", o.label] : []), ...(!keep.includes("--cwd") && !keep.includes("--project") ? ["--cwd", o.cwd] : [])],
+    // the depth this process had: the queued copy counts itself again when it starts
+    { detached: true, stdio: ["ignore", fd, fd], env: { ...process.env, EKIP_QUEUED: "1", EKIP_RUN_DEPTH: String(Math.max(0, Number(process.env.EKIP_RUN_DEPTH ?? 1) - 1)) } });
+  child.unref();
+  console.log(t("kuyruğa alındı: {what} başlar (pid {pid}); rapor: {out}", { what: conditionText(o), pid: child.pid, out: outFile }));
+  return 0;
+}
+const conditionText = (o) => [o.after && t("{ref} bitince", { ref: o.after }), o.when && t("`{cmd}` başarılı olunca", { cmd: o.when })].filter(Boolean).join(t(" ve "));
+const TAKES_VALUE = ["--via", "--cwd", "--model", "--plugin", "--skill", "--project", "--task", "--label", "--min-tier", "--after", "--when"];
+
+// --after ID: a task (ekip task new) or a run (its log name in data/runs) that has to finish well.
+function afterState(ref) {
+  let tasks = [];
+  try { tasks = JSON.parse(fs.readFileSync(path.join(HOME, "tasks.json"), "utf8")); } catch { /* none */ }
+  const task = tasks.find((x) => x.id === ref);
+  if (task) return task.status === "done" ? "done" : task.status === "running" ? "pending" : "failed";
+  const name = path.basename(ref).replace(/\.log$/, "");
+  let file = path.join(RUNS, `${name}.log`);
+  if (!fs.existsSync(file)) { const hit = fs.readdirSync(RUNS).filter((f) => f.startsWith(name) && f.endsWith(".log")).sort().at(-1); if (!hit) return "unknown"; file = path.join(RUNS, hit); }
+  const text = fs.readFileSync(file, "utf8");
+  const exit = text.match(/\n\[exit (-?\d+)\][^\n]*\s*$/)?.[1];
+  if (exit != null) return exit === "0" ? "done" : "failed";
+  const pid = Number(text.match(/^pid: (\d+)$/m)?.[1]);
+  try { process.kill(pid, 0); return "pending"; } catch { return "failed"; }
+}
+
+/** Waits until --after / --when holds (checked every 30 s, at most "waitMaxH" hours, default 24). */
+async function waitForCondition(o) {
+  const what = conditionText(o);
+  const tasks = o.taskId ? await import("../lib/tasks/tasks.js") : null;
+  const waitId = `wait-${process.pid}`;
+  tasks?.holdWorker(o.taskId, { runId: waitId, via: o.via, label: o.label ?? null, pid: process.pid }, { status: "waiting", why: what });
+  tasks?.hold(o.taskId, "blocked", t("koşul bekleniyor: {what}", { what }), null, { alert: false });
+  const deadline = Date.now() + Number(SETTINGS.waitMaxH ?? 24) * 3600_000;
+  let fail = null;
+  for (;;) {
+    if (o.after) {
+      const st = afterState(o.after);
+      if (st === "unknown") { fail = t("{ref} diye bir görev ya da çalıştırma yok", { ref: o.after }); break; }
+      if (st === "failed") { fail = t("{ref} başarısız bitti; bu iş başlatılmadı", { ref: o.after }); break; }
+      if (st === "done" && !o.when) break;
+    }
+    if (o.when && (!o.after || afterState(o.after) === "done") && spawnSync("sh", ["-c", o.when], { cwd: o.cwd, stdio: "ignore", timeout: 120_000 }).status === 0) break;
+    if (Date.now() > deadline) { fail = t("koşul {h} saat içinde sağlanmadı: {what}", { h: SETTINGS.waitMaxH ?? 24, what }); break; }
+    await sleep(30_000);
+  }
+  if (tasks) {
+    // the placeholder worker goes; the real run links itself under its own id
+    if (fail) tasks.endWorker(o.taskId, waitId, "failed", fail); else tasks.dropWorker(o.taskId, waitId);
+    if (fail) tasks.hold(o.taskId, "blocked", fail, null, { alert: true }); else tasks.unhold(o.taskId, t("koşul sağlandı: {what}", { what }));
+  }
+  if (fail) warn(fail);
+  return !fail;
 }
 
 // ekip mesai on|off|status (lib/workers/mesai.js); `ekip mesai all "task"` races the task on every
@@ -1661,8 +1879,20 @@ switch (cmd) {
   // ekip show LOG...: a long job started outside `ekip run` (an import, a render, a script) gets the
   // same live pane next to the lead, so nothing runs out of sight.
   case "show": {
+    // --pid PID: the job keeps running when the worker that started it is stopped (killTree skips it)
+    const pidAt = rest.indexOf("--pid"), keepPid = pidAt >= 0 ? Number(rest[pidAt + 1]) : null;
+    if (pidAt >= 0) {
+      if (!keepPid) die("kullanım: ekip show --pid <PID> <log>");
+      const f = path.join(HOME, "detached.json");
+      let list = [];
+      try { list = JSON.parse(fs.readFileSync(f, "utf8")); } catch { /* first one */ }
+      list = list.filter((x) => { try { process.kill(x.pid, 0); return true; } catch { return false; } });
+      list.push({ pid: keepPid, at: new Date().toISOString(), run: process.env.EKIP_PARENT_RUN ?? null });
+      fs.writeFileSync(f, JSON.stringify(list));
+      rest.splice(pidAt, 2);
+    }
     const files = rest.filter((f) => !f.startsWith("-")).map((f) => path.resolve(f));
-    if (!files.length) die("kullanım: ekip show <log> [log...]  (logları canlı izleyen bir panel açar)");
+    if (!files.length) die("kullanım: ekip show [--pid PID] <log> [log...]  (logları canlı izleyen bir panel açar)");
     openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`, { title: `ekip · ${rest.find((x) => x.startsWith("--title="))?.slice(8) ?? path.basename(files[0])}` });
     break;
   }
@@ -1701,7 +1931,7 @@ switch (cmd) {
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks/tasks.js");
-    try { t.reapStale(); } catch { /* never block a task command */ }
+    try { t.reapDead(); t.reapStale(); } catch { /* never block a task command */ }
     if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
