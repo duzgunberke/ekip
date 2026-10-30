@@ -214,6 +214,14 @@ kitty'ye tercih edildi: MIT lisanslı, Homebrew cask ile kurulur, bölmeleri ek 
 satırından listeler ve böler, Lua ile ayarlanır; kitty de çalışır (`kitty @`, remote control açıkken)
 ama ikinci sırada.
 
+macOS'ta `ekip init` onu bir kez kurmayı önerir (`--yes` sormadan kurar, `--no-terminal` atlar).
+Kurulduktan sonra başka bir terminalde `ekip` yazınca lead aynı klasörde yeni bir WezTerm
+penceresinde açılır; pencere açıldığında yalnız yazdığınız iTerm2 oturumu ya da Terminal.app sekmesi
+kapanır (diğer terminaller açık kalır ve bunu söyler). WezTerm açılmazsa hiçbir şey kapanmaz, lead
+bulunduğunuz terminalde başlar. `ekip --here` ya da `EKIP_TERMINAL=current` o seferlik mevcut
+terminalde kalır, `ekip terminal default wezterm|current` ayarı değiştirir; `ekip run`, `ekip tasks`
+gibi alt komutlar terminal değiştirmez.
+
 Her terminalde durumlar aynı görünür: çalışıyor camgöbeği ●, bitti yeşil ✓, hata kırmızı ✗,
 engellendi turuncu ■ ve nedeni, sizi bekliyor sarı ? en üstte, duraklamış gri ◌, kuyrukta mavi ⧗ ve
 sırası. 256 renk yoksa düz ASCII'ye düşer, `NO_COLOR`'a uyar.
@@ -224,7 +232,7 @@ macOS, Node 22+, Docker ve [Claude Code](https://claude.com/claude-code) gerekir
 
 ```bash
 git clone https://github.com/duzgunberke/ekip.git && cd ekip
-node plugin/bin/ekip.js init     # servisler, plugin, MCP sunucuları, worker CLI'ları, ücretsiz model anahtarları ve projeleriniz
+node plugin/bin/ekip.js init     # servisler, plugin, MCP sunucuları, worker CLI'ları, ücretsiz model anahtarları, projeleriniz ve WezTerm
 ekip                             # lideri başlatın; ne isterseniz sorun
 ```
 

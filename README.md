@@ -229,6 +229,14 @@ left alone. WezTerm was picked over kitty because it is MIT licensed, installs w
 lists and splits panes from the command line without extra settings, and is configured in Lua;
 kitty works too (`kitty @`, with remote control on) but stays second.
 
+On macOS `ekip init` offers to install it once (`--yes` installs without asking, `--no-terminal`
+skips). Once it is set up, typing `ekip` in another terminal opens the lead in a new WezTerm window
+in the same folder and, when that window is up, closes only the iTerm2 session or Terminal.app tab
+you typed it in (other terminals stay open and say so). If WezTerm does not open, nothing is closed
+and the lead starts where you are. `ekip --here` or `EKIP_TERMINAL=current` stays in the current
+terminal for one start, `ekip terminal default wezterm|current` changes the setting, and
+subcommands such as `ekip run` or `ekip tasks` never switch terminals.
+
 In every terminal the states look the same: running teal ●, done green ✓, failed red ✗, blocked
 orange ■ with its reason, waiting for you yellow ? on top, paused grey ◌, queued blue ⧗ with its
 place. Without 256 colours it falls back to ASCII, and `NO_COLOR` is respected.
@@ -239,7 +247,7 @@ Needs macOS, Node 22+, Docker and [Claude Code](https://claude.com/claude-code).
 
 ```bash
 git clone https://github.com/duzgunberke/ekip.git && cd ekip
-node plugin/bin/ekip.js init     # services, plugin, MCP servers, worker CLIs, free model keys, your projects
+node plugin/bin/ekip.js init     # services, plugin, MCP servers, worker CLIs, free model keys, your projects, WezTerm
 ekip                             # start the lead; ask for anything
 ```
 

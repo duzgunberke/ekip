@@ -1285,6 +1285,13 @@ async function heartbeat() {
 }
 
 async function lead(args) {
+  // `terminal: "wezterm"` (ekip init, ekip terminal default): a lead started in another terminal
+  // opens in a WezTerm window and closes the tab it was started from; `ekip --here` or
+  // EKIP_TERMINAL=current stay here. Only the lead moves; subcommands, panes and hooks never do.
+  const plan = (await import("../lib/ops/terminal.js")).handoffPlan(args);
+  args = args.filter((a) => a !== "--here");
+  if (plan.move && await (await import("../lib/ops/terminal.js")).handoff(args)) return 0;
+  if (plan.why) console.log(c.yellow(t("WezTerm açılamadı ({why}); lead bu terminalde açılıyor", { why: plan.why })));
   let free = false, member = false;
   while (args[0] === "--free" || args[0] === "--member") {
     if (args[0] === "--free") free = true; else member = true;
@@ -1347,7 +1354,7 @@ function findOldNode() {
 
 const step = (n, t) => console.log(`\n${c.magenta(`━━ ${n}.`)} ${c.bold(t)}`);
 
-async function init({ skipKeys = false } = {}) {
+async function init({ skipKeys = false, args = [] } = {}) {
   if (process.platform === "darwin" && has("brew") && !has("terminal-notifier")) spawnSync("brew", ["install", "terminal-notifier"], { stdio: "ignore", timeout: 120_000 });
   const self = fs.realpathSync(process.argv[1]);
   step(1, "prerequisites");
@@ -1451,6 +1458,11 @@ async function init({ skipKeys = false } = {}) {
     if (lh.remoteLinked()) console.log(`ok (linked hub: ${SETTINGS.hubUrl})`);
     else { await lh.up(); await hub(["push"]).catch(() => {}); }
   } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip hub local`); }
+  // macOS: ekip's own terminal, offered once (--yes installs, --no-terminal skips); `ekip` then opens in it
+  if (process.platform === "darwin" && !args.includes("--no-terminal")) {
+    step(12, t("ekip'in kendi terminali (WezTerm)"));
+    try { await (await import("../lib/ops/terminal.js")).initTerminal(args); } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip terminal install`); }
+  }
   console.log("\nDone. Open a new terminal and run: ekip");
   const onboarding = await import("../lib/projects/onboarding.js");
   onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd(), refresh: true }), { heading: true });
@@ -1797,13 +1809,14 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip")}                          lead Claude session (your subscription); delegates work
   ${c.cyan("ekip --free")}                   lead on free models (when Claude limits run out)
   ${c.cyan("ekip --safe")}                   ask before taking actions (default: automatic)
+  ${c.cyan("ekip --here")}                   start the lead in this terminal, not in WezTerm
   ${c.cyan("ekip status")} ${c.gray("[--system]")}        what runs, waits for you, is stuck, finished; release (--system: pools, memory)
   ${c.cyan("ekip limits")}                   pool limits and where a new task will go
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           check and repair tunnel, pools, graph, wiki, memory
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
   ${c.cyan("ekip stats")} ${c.gray("[project] [--days N] [--json]")} how memory, wiki, skills and code graph are used
   ${c.cyan("ekip statusline")} ${c.gray("[on|off]")} ekip's line under the Claude Code prompt (off removes it)
-  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|status")} optional: ekip's own terminal (WezTerm, colours, fast panes)
+  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|default wezterm|current|status")} ekip's own terminal (WezTerm); with "default wezterm" ekip opens in it (ekip --here: stay)
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
@@ -1835,7 +1848,7 @@ ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Setup")}
-  ${c.cyan("ekip init")}                     one-time setup
+  ${c.cyan("ekip init")}                     one-time setup (--yes, --no-terminal, --no-keys)
   ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         free provider API keys (opens provider pages)
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `.split("\n").map((line) => fit(line)).join("\n") : `${banner()}
@@ -1844,12 +1857,13 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip")}                          lead Claude oturumu (aboneliğin); işi kendisi dağıtır
   ${c.cyan("ekip --free")}                   lead ücretsiz modellerle (Claude limitin bitince)
   ${c.cyan("ekip --safe")}                   lead izin sorarak çalışsın (varsayılan: sormadan)
+  ${c.cyan("ekip --here")}                   lead WezTerm'e geçmeden bu terminalde açılsın
   ${c.cyan("ekip durum")} ${c.gray("[--system]")}         ne çalışıyor, senden ne bekleniyor, ne takıldı, ne bitti; yayın (--system: havuzlar, hafıza)
   ${c.cyan("ekip limits")}                   hangi havuz limitte, yeni iş hangi modele gider
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
   ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
   ${c.cyan("ekip stats")} ${c.gray("[proje] [--days N] [--json]")} hafıza, wiki, beceri ve kod grafiği ne kadar kullanılıyor
-  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|status")} isteğe bağlı: ekip'in kendi terminali (WezTerm, renkli, hızlı bölmeler)
+  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|default wezterm|current|status")} ekip'in kendi terminali (WezTerm); "default wezterm" ile ekip onda açılır (ekip --here: burada kal)
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
@@ -1880,7 +1894,7 @@ ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Kurulum")}
-  ${c.cyan("ekip init")}                     tek seferlik kurulum
+  ${c.cyan("ekip init")}                     tek seferlik kurulum (--yes, --no-terminal, --no-keys)
   ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         ücretsiz sağlayıcı anahtarları (sayfaları açar)
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `.split("\n").map((line) => fit(line)).join("\n");
@@ -1910,7 +1924,7 @@ const nearest = (word) => COMMANDS.map((x) => [x, distance(word, x)]).filter(([x
 // `ekip -help`, `ekip --status`, `ekip -doctor`: a dashed ekip command runs that command; a dashed
 // word close to one (`--stats`) gets a suggestion instead of a Claude "unknown option" error.
 let [cmd, ...rest] = process.argv.slice(2);
-if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "-h", "--help"].includes(cmd)) {
+if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "--here", "-h", "--help"].includes(cmd)) {
   const word = cmd.replace(/^-+/, "").split("=")[0];
   const flags = claudeFlags();
   // Claude's long flags always take two dashes, so `-status` / `-help` can only mean ekip.
@@ -2013,7 +2027,7 @@ switch (cmd) {
     break;
   // the work digest; --system: pools, memory, panel and recent runs
   case "status": case "durum": if (rest.includes("--system") || rest.includes("--sistem")) await status(); else code = await (await import("../lib/tasks/digest.js")).main(rest); break;
-  case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys") }); break;
+  case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys"), args: rest }); break;
   case "memory": await memory(rest); break;
   case "team": await team(rest); break;
   case "up": await up(); break;

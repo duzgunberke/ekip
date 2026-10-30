@@ -39,14 +39,24 @@ flowchart LR
 
 ## Optional: ekip's own terminal
 
-ekip works in iTerm2 (recommended so far) and opens panes there with AppleScript. For a faster,
-more colourful setup, let ekip install WezTerm and its config:
+ekip works in iTerm2 and opens panes there with AppleScript. For a faster, more colourful setup,
+ekip installs WezTerm and its config. On macOS `ekip init` asks once ("Install ekip's own terminal
+(WezTerm)? [Y/n]", default yes; `--yes` installs without asking, `--no-terminal` skips, a
+non-interactive run never asks). It runs the same steps as:
 
 ```bash
 ekip terminal install --dry-run   # what it would do
 ekip terminal install             # brew install --cask wezterm, then ~/.config/wezterm/ekip.lua
 ekip terminal open                # start the lead in WezTerm
 ```
+
+Both save `"terminal": "wezterm"` in `data/config.json`. From then on `ekip` typed in iTerm2 or
+Terminal.app starts the lead in a new WezTerm window (same folder, ekip's variables), waits up to
+10 seconds for its pane to show up in `wezterm cli list`, then closes only the session or tab it was
+typed in. Other terminals are not closed. If the window does not appear, nothing is closed and the
+lead starts in the current terminal with the reason. `ekip --here` or `EKIP_TERMINAL=current` stays
+put for one start; `ekip terminal default current` turns it off, `ekip terminal default wezterm` back
+on; `ekip terminal status` shows the setting. Subcommands, worker panes and hooks never switch.
 
 Your own `~/.wezterm.lua` or `~/.config/wezterm/wezterm.lua` is not changed; if you have one, add the
 two lines the command prints before `return config`. Without Homebrew the command prints the install
