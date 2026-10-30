@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { HOME, SETTINGS, healthy, keyCounts, tdaiUp } from "../core/core.js";
 import { findProject } from "./projects.js";
+import { detect } from "../core/terminal.js";
 import { t } from "../core/i18n.js";
 
 const CACHE = path.join(HOME, "onboarding-cache.json");
@@ -82,7 +83,17 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   if (!env.ghInstalled) gaps.push(gap("gh", "GitHub CLI (gh) kurulu değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "brew install gh && gh auth login", "info"));
   else if (!env.ghAuth) gaps.push(gap("gh-auth", "gh oturumu açık değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "gh auth login"));
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) gaps.push(gap("hub", "Hub bağlı değil", "web paneli ve Mac kapalıyken çalışan iş kuyruğu kullanılamıyor", "ekip hub local (bu bilgisayarda) ya da ekip hub link <url> <token> (VPS)", "info"));
-  if (process.platform === "darwin" && process.env.TERM_PROGRAM !== "iTerm.app") gaps.push(gap("pane", "Görev bölmesi bu terminalde açılamıyor", "görevleri terminalin altında canlı izleyemezsiniz", "ekip status", "info"));
+  // panes open in iTerm2, WezTerm and kitty; elsewhere ekip's own terminal is the fix. In iTerm2 it
+  // is only offered once (optional: iTerm2 keeps working), never when WezTerm is already in use.
+  const term = detect();
+  if (process.platform === "darwin" && term === "none") gaps.push(gap("pane", "Görev bölmesi bu terminalde açılamıyor", "görevleri terminalin altında canlı izleyemezsiniz; ekip'in kendi terminali (WezTerm) bunu açar", "ekip terminal install", "info"));
+  else if (term === "iterm" && !SETTINGS.terminal) {
+    const offered = path.join(HOME, "terminal-offered");
+    if (!fs.existsSync(offered)) {
+      gaps.push(gap("terminal", "İsteğe bağlı: ekip'in kendi terminali (WezTerm)", "renkli durumlar ve AppleScript'siz, hızlı görev bölmeleri; iTerm2 aynen çalışmaya devam eder", "ekip terminal install", "info"));
+      try { fs.writeFileSync(offered, new Date().toISOString()); } catch { /* shown again next time */ }
+    }
+  }
   try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(CACHE, JSON.stringify({ at: Date.now(), cwd: real, gaps })); } catch { /* cache is best effort */ }
   return gaps;
 }

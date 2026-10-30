@@ -1318,6 +1318,8 @@ async function lead(args) {
     // Tasks, workers and their logs are visible under the lead from the start, not only after its
     // first task ("taskPane": false in data/config.json turns this off).
     ensureTaskPane();
+    // WezTerm / kitty: an "ekip" tab title, so ekip's WezTerm config shows the task counts on it
+    try { const term = await import("../lib/core/terminal.js"); if (["wezterm", "kitty"].includes(term.detect())) term.setTitle(null, `ekip · ${here?.name ?? path.basename(process.cwd())}`); } catch { /* cosmetic */ }
   }
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);
@@ -1801,6 +1803,7 @@ ${c.bold("Everyday")}
   ${c.cyan("ekip savings")}                  measure work routed outside Claude
   ${c.cyan("ekip stats")} ${c.gray("[project] [--days N] [--json]")} how memory, wiki, skills and code graph are used
   ${c.cyan("ekip statusline")} ${c.gray("[on|off]")} ekip's line under the Claude Code prompt (off removes it)
+  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|status")} optional: ekip's own terminal (WezTerm, colours, fast panes)
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
@@ -1846,6 +1849,7 @@ ${c.bold("Günlük")}
   ${c.cyan("ekip doctor")} ${c.gray("[--fix]")}           her şeyi kontrol et (ve onar): tünel, havuzlar, graph, wiki, hafıza
   ${c.cyan("ekip savings")}                  Claude dışındaki işleri ölç
   ${c.cyan("ekip stats")} ${c.gray("[proje] [--days N] [--json]")} hafıza, wiki, beceri ve kod grafiği ne kadar kullanılıyor
+  ${c.cyan("ekip terminal")} ${c.gray("install [--dry-run]|open|status")} isteğe bağlı: ekip'in kendi terminali (WezTerm, renkli, hızlı bölmeler)
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
@@ -1977,6 +1981,7 @@ switch (cmd) {
   case "limits": case "limitler": await (await import("../lib/workers/limits.js")).main(rest); break;
   case "savings": await (await import("../lib/workers/savings.js")).report(rest); break;
   case "statusline": code = await (await import("../lib/ops/statusline.js")).main(rest); break;
+  case "terminal": code = (await (await import("../lib/ops/terminal.js")).main(rest)) ?? 0; break;
   case "stats": code = await (await import("../lib/memory/usage.js")).main(rest); break;
   case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
   case "task": case "tasks": {

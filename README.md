@@ -217,6 +217,22 @@ Short tasks run headless and report back. Long-lived agents can open in their ow
 **team members** and message each other through [hoptell](https://github.com/EminUZUN/hoptell): one
 asks another to review a file, or hands over the next step. `ekip team up --open` starts them.
 
+## A terminal of its own (optional)
+
+ekip runs in iTerm2 as before. If driving iTerm2 with AppleScript feels slow, or the plain terminal
+makes states hard to tell apart, `ekip terminal install` sets up **WezTerm** for ekip and
+`ekip terminal open` starts the lead in it: the lead on the left, worker panes in a column on the
+right, the task pane below, in ekip's dark theme, with the open tasks (waiting for you, blocked,
+running) in the tab bar. ekip drives it with `wezterm cli`, which answers in milliseconds with a JSON
+pane list, so a busy machine can no longer open the same task pane twice. Your own `wezterm.lua` is
+left alone. WezTerm was picked over kitty because it is MIT licensed, installs with a Homebrew cask,
+lists and splits panes from the command line without extra settings, and is configured in Lua;
+kitty works too (`kitty @`, with remote control on) but stays second.
+
+In every terminal the states look the same: running teal ●, done green ✓, failed red ✗, blocked
+orange ■ with its reason, waiting for you yellow ? on top, paused grey ◌, queued blue ⧗ with its
+place. Without 256 colours it falls back to ASCII, and `NO_COLOR` is respected.
+
 ## Quick start
 
 Needs macOS, Node 22+, Docker and [Claude Code](https://claude.com/claude-code).

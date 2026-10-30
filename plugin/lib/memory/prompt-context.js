@@ -80,7 +80,10 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // user watches them on the panel and should never have to say "this is still open"; the reminder
 // comes with every message until each one is updated or closed.
 const lastMove = (t) => Math.max(...[t.updatedAt, t.p0At, t.progressAt, ...(t.steps ?? []).map((x) => x.at ?? x.updatedAt)].map((x) => Date.parse(x ?? "") || 0));
-const mine = (t) => { const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null; return !t.lead || t.lead === lead; };
+// the lead's id as terminal.js leadId() records it (inlined: this hook runs on every message and
+// stays off core.js)
+const leadOf = (env = process.env) => (env.WEZTERM_PANE ? `wezterm-${env.WEZTERM_PANE}` : env.KITTY_WINDOW_ID ? `kitty-${env.KITTY_WINDOW_ID}` : env.ITERM_SESSION_ID?.split(":")[1] ?? env.TERM_SESSION_ID ?? null);
+const mine = (t) => !t.lead || t.lead === leadOf();
 function staleTasks(home) {
   try {
     const file = path.join(home, "tasks.json");
