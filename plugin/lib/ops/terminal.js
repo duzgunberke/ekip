@@ -130,7 +130,8 @@ local function project(dir, title)
   return title ~= "" and title or "ekip"
 end
 
-local MAX_TAB = 28
+-- the active tab's name keeps up to 28 columns, the others 16, so the counts on the right still fit
+local MAX_TAB, MAX_OTHER = 28, 16
 local function tab_name(tab)
   local pane = tab.active_pane
   local dir = folder(pane.current_working_dir)
@@ -201,8 +202,8 @@ end
 
 -- Tabs: the project's name with room around it; the active tab sits on the card colour.
 wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
-  local name = middle(tab_name(tab), math.max(4, max_width - 4))
   local active = tab.is_active
+  local name = middle(tab_name(tab), math.max(4, math.min(active and MAX_TAB or MAX_OTHER, max_width - 4)))
   return {
     { Background = { Color = active and C.card or C.bg } },
     { Foreground = { Color = active and C.lead or C.bg } }, { Text = active and "▎" or " " },
@@ -252,11 +253,12 @@ wezterm.on("update-status", function(window, pane)
   if ok and size then cols = size.cols end
   local used = 9
   local mw = window:mux_window()
+  local active = window:active_tab():tab_id()
   for _, t in ipairs(mw and mw:tabs() or {}) do
     local p = t:active_pane()
     local name = (t:get_title() or ""):gsub("^ekip · ", "")
     if name == "" then name = project(folder(p:get_current_working_dir()), p:get_title()) end
-    used = used + width(middle(name, MAX_TAB)) + 4
+    used = used + width(middle(name, t:tab_id() == active and MAX_TAB or MAX_OTHER)) + 4
   end
   local room = cols - used - 2
   for _, v in ipairs(counts_variants(n)) do
