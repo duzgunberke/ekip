@@ -32,6 +32,8 @@ function fakeWez(panes, { fail = false } = {}) {
   const calls = [];
   let next = 10;
   const run = (bin, args) => {
+    assert.equal(args[1], "--no-auto-start");
+    args = [args[0], ...args.slice(2)];
     calls.push(args);
     if (fail) return { status: 1, stdout: "", stderr: "connection refused" };
     if (args[1] === "list") return { status: 0, stdout: JSON.stringify(panes) };

@@ -62,7 +62,8 @@ export function weztermBin(env = process.env) {
 
 export function wezterm({ run = run0, env = process.env } = {}) {
   const bin = weztermBin(env);
-  const cli = (args) => run(bin, ["cli", ...args], { timeout: 5000, env });
+  // --no-auto-start: outside a running WezTerm, `wezterm cli` would start a background mux server
+  const cli = (args) => run(bin, ["cli", "--no-auto-start", ...args], { timeout: 5000, env });
   const lead = env.WEZTERM_PANE != null ? String(env.WEZTERM_PANE) : null;
   const self = {
     name: "wezterm",
@@ -253,7 +254,7 @@ end tell`;
 
 // A new window in the terminal ekip runs in (Terminal.app when there is none to split).
 export function openTerminal(command, { run = run0, env = process.env } = {}) {
-  if (detect(env) === "wezterm") { run(weztermBin(env), ["cli", "spawn", "--new-window", "--", ...paneShell(command)], { stdio: "ignore", timeout: 5000 }); return; }
+  if (detect(env) === "wezterm") { run(weztermBin(env), ["cli", "--no-auto-start", "spawn", "--new-window", "--", ...paneShell(command)], { stdio: "ignore", timeout: 5000 }); return; }
   if (process.platform !== "darwin") { console.log(`run in a new terminal: ${command}`); return; }
   const app = env.TERM_PROGRAM === "iTerm.app" ? "iTerm" : "Terminal";
   const script = app === "iTerm"
