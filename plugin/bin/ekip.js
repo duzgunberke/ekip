@@ -1169,6 +1169,18 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   re-dispatch at once with a sharper brief or a strong pool; for a long render, raise the limit on
   that run instead of waiting. A worker that was cut off: \`ekip run --resume <run id>\`.
 - The same failure twice = stop: find the root cause before another attempt; no blind retries.
+- Every shell command that may take more than a minute (an upload, an encode, a sync, a queue
+  script) runs through \`ekip track --task $id --step N --label "<what>" -- <command>\`, never as a bare
+  long job in a Bash background shell: track measures progress, speed and finish, blocks the step
+  when nothing moves (\`--stall MIN\`, default 10) and closes it done or failed when the command
+  ends. Give it \`--total\` (bytes or count) and, when the output has no percent, \`--measure "<cmd
+  printing work done>"\`. \`--wait\` in a Bash background call wakes you when it ends.
+- Before a big transfer or render, time a small sample first (one file, a few seconds of video),
+  work out the full duration, and pass \`--eta-max <minutes>\`; track warns at once when the real speed
+  would miss it. Never tell the user something "is uploading" without having looked at its progress.
+- Never answer a mistake with "my fault" and move on. Say its root cause and what now prevents it
+  permanently in ekip or the project, and put that in place in the same turn (\`ekip project lesson\`,
+  \`--min-tier\`, \`ekip track\`, a project rule, a check).
 - Never let a model wait on something long (a render queue, other workers, a file to appear): chain
   it with \`ekip run --after <task|run id>\` or \`--when "<shell test>"\`, which waits in the background
   and starts the run when the condition holds; or write a small script.
@@ -1213,8 +1225,8 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
-- A long job you start yourself outside \`ekip run\` (an import, a render, a loop) is opened with
-  \`ekip show <log...>\` right away, so the user sees it in a pane like any worker.
+- A long job you start yourself outside \`ekip run\` (an import, a render, a loop) runs through
+  \`ekip track\` (above); \`ekip show <log...>\` only opens a pane on a log that already exists.
 - A worker that edits code that is running right now (ekip itself, a live dev server) gets
   \`--worktree\`; merge its branch after review.
 - Tasks never look frozen or skipped: mark every step you start, let long reporters pass \`--alive\`
