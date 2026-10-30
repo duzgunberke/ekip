@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { HOME, SETTINGS, die, sleep, notify } from "../core/core.js";
 import { c, dot, mark, progress, fit } from "../core/ui.js";
 import { t as tr, lang } from "../core/i18n.js";
+import { leadId } from "../core/terminal.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -98,7 +99,7 @@ export async function syncHub() {
 export function create({ title, project, steps = [] }) {
   if (!title) die('usage: ekip task new "title" [--project NAME] [--steps "a; b; c"]');
   // the lead that opened it (its terminal session), so that lead is the one reminded to keep it true
-  const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null;
+  const lead = leadId();
   const t = { id: newId(), title, project: project ?? null, status: "running", createdAt: now(), updatedAt: now(), steps: steps.map((s) => ({ title: s, status: "pending" })), workers: [], notes: [], ...(lead ? { lead } : {}) };
   const all = read();
   all.push(t);
