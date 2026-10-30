@@ -9,11 +9,16 @@ import path from "node:path";
 import { HOME, ROOT, SETTINGS, ask, die, has, saveSettings } from "../core/core.js";
 import { TASK_TITLE, detect, paneShell, parseWeztermList, weztermBin } from "../core/terminal.js";
 import { c } from "../core/ui.js";
+import { writeTerminalStatus } from "../tasks/tasks.js";
 import { t } from "../core/i18n.js";
 
 export const configDir = (env = process.env) => path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "wezterm");
 // WezTerm reads the first of these that exists
 const userConfigs = (env = process.env) => [...(env.WEZTERM_CONFIG_FILE ? [env.WEZTERM_CONFIG_FILE] : []), path.join(os.homedir(), ".wezterm.lua"), path.join(configDir(env), "wezterm.lua")];
+const FONT_DIRS = [path.join(os.homedir(), "Library/Fonts"), "/Library/Fonts"];
+export function jetbrainsInstalled(dirs = FONT_DIRS) {
+  return dirs.some((d) => { try { return fs.readdirSync(d).some((f) => /^JetBrainsMono/i.test(f)); } catch { return false; } });
+}
 export function weztermInstalled(env = process.env) {
   if (env.EKIP_WEZTERM) return fs.existsSync(env.EKIP_WEZTERM);
   return has("wezterm") || fs.existsSync("/Applications/WezTerm.app");
@@ -33,8 +38,13 @@ require("ekip").apply(config)
 return config
 `;
 
-/** ekip.lua: a module with apply(config). Colours from docs/brand.md (dark). */
-export function ekipLua({ tasksFile = path.join(HOME, "tasks.json") } = {}) {
+/**
+ * ekip.lua: a module with apply(config). Colours from docs/brand.md (dark). The tab bar shows the
+ * ekip mark on the left, one tab per project (the registered ekip project's name, else the folder,
+ * "~" for home) and the open tasks on the right (? waiting for you, ■ stuck, ● running), read from
+ * data/terminal-status.json, which ekip rewrites when a task changes: no ekip process per second.
+ */
+export function ekipLua({ statusFile = path.join(HOME, "terminal-status.json") } = {}) {
   const tasksPane = paneShell(ekipCmd(["tasks", "--watch"]), { title: TASK_TITLE, role: "tasks" });
   return `-- ekip's WezTerm settings, written by \`ekip terminal install\` and rewritten by every install:
 -- keep your own settings in wezterm.lua, after require("ekip").apply(config).
@@ -42,13 +52,13 @@ local wezterm = require("wezterm")
 local act = wezterm.action
 local M = {}
 
-local TASKS = ${lua(tasksFile)}
+local STATUS = ${lua(statusFile)}
 local EKIP = ${lua(["/bin/zsh", "-lc", ekipCmd()])}
 local TASK_PANE = ${lua(tasksPane)}
 local TASK_TITLE = ${lua(TASK_TITLE)}
-local L = { running = ${lua(t("çalışıyor"))}, waiting = ${lua(t("seni bekliyor"))}, blocked = ${lua(t("engelli"))} }
+local L = { waiting = ${lua(t("bekleyen"))}, blocked = ${lua(t("takılan"))}, running = ${lua(t("çalışan"))} }
 local C = {
-  bg = "#0E1014", card = "#15181E", text = "#ECEEF2", muted = "#98A1B0", border = "#252A33",
+  bg = "#0E1014", card = "#15181E", text = "#ECEEF2", muted = "#98A1B0", border = "#252A33", faint = "#5B6472",
   lead = "#FFA95E", team = "#2DD4BF", done = "#3FCF7A", failed = "#F2555A", blocked = "#F5A524",
   waiting = "#FACC15", queued = "#60A5FA",
 }
@@ -58,29 +68,76 @@ local function decode(s)
   return wezterm.json_parse(s)
 end
 
--- Open tasks from ekip's tasks.json: running, waiting for the user, blocked (read at most every 2 s).
-local cache = { at = -1, n = { running = 0, waiting = 0, blocked = 0 } }
-local function counts()
+-- data/terminal-status.json, read at most once a second; missing or broken: nothing to show.
+local cache = { at = -1, v = { waiting = 0, blocked = 0, running = 0, projects = {} } }
+local function status()
   local now = os.time()
-  if now - cache.at < 2 then return cache.n end
-  local n = { running = 0, waiting = 0, blocked = 0 }
-  local f = io.open(TASKS, "r")
+  if now == cache.at then return cache.v end
+  local v = { waiting = 0, blocked = 0, running = 0, projects = {} }
+  local f = io.open(STATUS, "r")
   if f then
-    local ok, list = pcall(decode, f:read("*a"))
+    local ok, d = pcall(decode, f:read("*a"))
     f:close()
-    if ok and type(list) == "table" then
-      for _, task in ipairs(list) do
-        if task.status == "running" then
-          local hold = task.hold
-          if type(hold) == "table" and hold.kind == "waiting-user" then n.waiting = n.waiting + 1
-          elseif type(hold) == "table" then n.blocked = n.blocked + 1
-          else n.running = n.running + 1 end
-        end
-      end
+    if ok and type(d) == "table" then
+      for _, k in ipairs({ "waiting", "blocked", "running" }) do v[k] = tonumber(d[k]) or 0 end
+      if type(d.projects) == "table" then v.projects = d.projects end
     end
   end
-  cache = { at = now, n = n }
-  return n
+  cache = { at = now, v = v }
+  return v
+end
+
+local function width(s)
+  if wezterm.column_width then return wezterm.column_width(s) end
+  return utf8.len(s) or #s
+end
+-- A long name keeps its start and its end: "northwind-…-checkout".
+local function middle(s, n)
+  if width(s) <= n then return s end
+  if n <= 1 then return "…" end
+  local chars = {}
+  for _, cp in utf8.codes(s) do table.insert(chars, utf8.char(cp)) end
+  local head, tail = math.ceil((n - 1) / 2), math.floor((n - 1) / 2)
+  return table.concat(chars, "", 1, head) .. "…" .. (tail > 0 and table.concat(chars, "", #chars - tail + 1, #chars) or "")
+end
+
+-- A pane's folder: a Url object (newer WezTerm) or a file:// string (older).
+local function folder(cwd)
+  if not cwd then return nil end
+  if type(cwd) ~= "string" then
+    local ok, p = pcall(function() return cwd.file_path end)
+    if ok and p then return p end
+    cwd = tostring(cwd)
+  end
+  local p = cwd:gsub("^file://[^/]*", "")
+  return (p:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
+end
+
+-- The tab's name: the registered ekip project the folder is in, else the folder's last name; "~" at home.
+local function project(dir, title)
+  if dir and dir ~= "" then
+    dir = dir:gsub("/+$", "")
+    local best
+    for _, p in ipairs(status().projects) do
+      if type(p) == "table" and type(p.path) == "string" and type(p.name) == "string"
+        and (dir == p.path or dir:sub(1, #p.path + 1) == p.path .. "/") and (not best or #p.path > #best.path) then best = p end
+    end
+    if best then return best.name end
+    if dir == "" or dir == wezterm.home_dir then return "~" end
+    return dir:match("([^/]+)$") or dir
+  end
+  title = (title or ""):gsub("^ekip · ", "")
+  return title ~= "" and title or "ekip"
+end
+
+local MAX_TAB = 28
+local function tab_name(tab)
+  local pane = tab.active_pane
+  local dir = folder(pane.current_working_dir)
+  -- a title set by hand wins; "ekip · " from older ekip versions is dropped
+  local title = (tab.tab_title or ""):gsub("^ekip · ", "")
+  if #title > 0 then return middle(title, MAX_TAB) end
+  return middle(project(dir, pane.title), MAX_TAB)
 end
 
 local function push(items, color, text)
@@ -93,6 +150,7 @@ function M.apply(config)
     foreground = C.text, background = C.bg,
     cursor_bg = C.lead, cursor_fg = C.bg, cursor_border = C.lead,
     selection_bg = C.border, selection_fg = C.text, split = C.border,
+    scrollbar_thumb = C.border,
     ansi = { C.card, C.failed, C.done, C.blocked, C.queued, "#C084FC", C.team, C.text },
     brights = { C.muted, "#FF7A7F", "#6EE7A0", C.waiting, "#93C5FD", "#D8B4FE", "#5EEAD4", "#FFFFFF" },
     tab_bar = {
@@ -104,16 +162,19 @@ function M.apply(config)
       new_tab_hover = { bg_color = C.card, fg_color = C.text },
     },
   }
-  config.font = wezterm.font_with_fallback({ "JetBrains Mono", "Menlo" })
+  -- JetBrains Mono ships with WezTerm; a newer copy from Homebrew (font-jetbrains-mono) wins when installed
+  config.font = wezterm.font_with_fallback({ "JetBrains Mono", "Menlo", "Apple Color Emoji" })
   config.font_size = 14
-  config.line_height = 1.1
+  config.line_height = 1.12
   config.scrollback_lines = 20000
   config.use_fancy_tab_bar = false
-  config.tab_max_width = 48
-  config.window_padding = { left = 8, right = 8, top = 6, bottom = 4 }
+  config.tab_max_width = MAX_TAB + 6
+  config.show_new_tab_button_in_tab_bar = false
+  config.hide_tab_bar_if_only_one_tab = false
+  config.window_padding = { left = "10pt", right = "10pt", top = "6pt", bottom = "5pt" }
   -- the pane you type in stands out; the others dim a little
-  config.inactive_pane_hsb = { saturation = 0.85, brightness = 0.7 }
-  config.status_update_interval = 2000
+  config.inactive_pane_hsb = { saturation = 0.85, brightness = 0.72 }
+  config.status_update_interval = 1000
   local envs = config.set_environment_variables or {}
   envs.COLORTERM = "truecolor"
   config.set_environment_variables = envs
@@ -138,31 +199,75 @@ function M.apply(config)
   return config
 end
 
--- Tab titles: the pane's title; an ekip tab also shows its open tasks (? waiting, ■ blocked, ● running).
+-- Tabs: the project's name with room around it; the active tab sits on the card colour.
 wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
-  local title = tab.tab_title
-  if not title or #title == 0 then title = tab.active_pane.title end
-  local items = { { Background = { Color = tab.is_active and C.card or C.bg } } }
-  if title:find("^ekip") then
-    local n = counts()
-    if n.waiting > 0 then push(items, C.waiting, " ?" .. n.waiting) end
-    if n.blocked > 0 then push(items, C.blocked, " ■" .. n.blocked) end
-    if n.running > 0 then push(items, C.team, " ●" .. n.running) end
-  end
-  push(items, tab.is_active and C.text or C.muted, " " .. wezterm.truncate_right(title, math.max(8, max_width - 10)) .. " ")
-  return items
+  local name = middle(tab_name(tab), math.max(4, max_width - 4))
+  local active = tab.is_active
+  return {
+    { Background = { Color = active and C.card or C.bg } },
+    { Foreground = { Color = active and C.lead or C.bg } }, { Text = active and "▎" or " " },
+    { Foreground = { Color = (active or hover) and C.text or C.muted } },
+    { Attribute = { Intensity = active and "Bold" or "Normal" } },
+    { Text = " " .. name .. "  " },
+  }
 end)
 
--- Right of the tab bar: the ekip mark and what needs you.
+-- The window title: ekip and the project.
+wezterm.on("format-window-title", function(tab)
+  return "ekip · " .. tab_name(tab)
+end)
+
+-- The counts on the right, longest form that fits: every label, labels on the non-zero ones, the
+-- bare counts, the non-zero counts. Labels drop first; a word is never cut.
+local function counts_variants(n)
+  local defs = { { "waiting", "?", C.waiting }, { "blocked", "■", C.blocked }, { "running", "●", C.team } }
+  local function build(labels, skip_zero)
+    local items, w = {}, 0
+    for _, d in ipairs(defs) do
+      local k, sym, color = d[1], d[2], d[3]
+      local v = n[k] or 0
+      if not (skip_zero and v == 0) then
+        local text = sym .. " " .. v .. ((labels == "all" or (labels == "some" and v > 0)) and (" " .. L[k]) or "")
+        if #items > 0 then push(items, C.muted, "   "); w = w + 3 end
+        push(items, v > 0 and color or C.faint, text)
+        w = w + width(text)
+      end
+    end
+    return items, w
+  end
+  return { { build("all") }, { build("some") }, { build("none") }, { build("none", true) } }
+end
+
 wezterm.on("update-status", function(window, pane)
-  local n = counts()
-  local items = {}
-  push(items, C.lead, "❯ ")
-  push(items, C.team, "ekip  ")
-  if n.waiting > 0 then push(items, C.waiting, "? " .. n.waiting .. " " .. L.waiting .. "  ") end
-  if n.blocked > 0 then push(items, C.blocked, "■ " .. n.blocked .. " " .. L.blocked .. "  ") end
-  push(items, n.running > 0 and C.team or C.muted, "● " .. n.running .. " " .. L.running .. " ")
-  window:set_right_status(wezterm.format(items))
+  local n = status()
+  window:set_left_status(wezterm.format({
+    { Background = { Color = C.bg } }, { Text = "  " },
+    { Foreground = { Color = C.lead } }, { Text = "❯ " },
+    { Foreground = { Color = C.team } }, { Attribute = { Intensity = "Bold" } }, { Text = "ekip" },
+    { Attribute = { Intensity = "Normal" } }, { Text = "   " },
+  }))
+  -- room left of the tabs: the window's columns minus the mark and every tab
+  local cols = 0
+  local ok, size = pcall(function() return window:active_tab():get_size() end)
+  if ok and size then cols = size.cols end
+  local used = 9
+  local mw = window:mux_window()
+  for _, t in ipairs(mw and mw:tabs() or {}) do
+    local p = t:active_pane()
+    local name = (t:get_title() or ""):gsub("^ekip · ", "")
+    if name == "" then name = project(folder(p:get_current_working_dir()), p:get_title()) end
+    used = used + width(middle(name, MAX_TAB)) + 4
+  end
+  local room = cols - used - 2
+  for _, v in ipairs(counts_variants(n)) do
+    local items, w = v[1], v[2]
+    if w > 0 and w + 2 <= room then
+      table.insert(items, { Text = "  " })
+      window:set_right_status(wezterm.format(items))
+      return
+    end
+  end
+  window:set_right_status("")
 end)
 
 return M
@@ -190,6 +295,16 @@ export function install(args, env = process.env, { run = spawnSync, brew = has("
     step("brew install --cask wezterm");
     if (run("brew", ["install", "--cask", "wezterm"], { stdio: "inherit" }).status !== 0) { console.log(`  ${c.red("✗")} brew install --cask wezterm failed`); return 1; }
   }
+  // JetBrains Mono: WezTerm carries a copy; the Homebrew font is newer and used by other apps too
+  if (platform === "darwin" && !jetbrainsInstalled()) {
+    const cmd = "brew install --cask font-jetbrains-mono";
+    if (!brew) step(t("JetBrains Mono yazı tipi kurulu değil; WezTerm kendi kopyasını kullanır (yoksa Menlo). Kurmak için: {cmd}", { cmd }));
+    else if (dry) step(t("önerilir: {cmd}", { cmd }));
+    else if (args.includes("--yes") || args.includes("-y") || args.includes("--font")) {
+      step(cmd);
+      if (run("brew", ["install", "--cask", "font-jetbrains-mono"], { stdio: "inherit" }).status !== 0) step(c.yellow(t("yazı tipi kurulamadı; WezTerm kendi kopyasını kullanır")));
+    } else step(t("JetBrains Mono yazı tipi kurulu değil; WezTerm kendi kopyasını kullanır (yoksa Menlo). Kurmak için: {cmd}", { cmd: "ekip terminal install --font" }));
+  }
   const dir = configDir(env);
   const mine = path.join(dir, "ekip.lua"), start = path.join(dir, "ekip-start.lua");
   const write = (file, text) => { if (!dry) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); } };
@@ -203,7 +318,11 @@ export function install(args, env = process.env, { run = spawnSync, brew = has("
     step(t("{file} sizin; ekip ona dokunmaz. ekip'in ayarlarını istiyorsanız 'return config' satırından önce ekleyin:", { file: user.file }));
     console.log(c.gray(`      package.path = ${lua(dir)} .. "/?.lua;" .. package.path\n      require("ekip").apply(config)`));
   }
-  if (!dry) saveSettings({ terminal: "wezterm" });
+  if (!dry) {
+    saveSettings({ terminal: "wezterm" });
+    // the tab bar reads its counts and project names from this file: write it once now
+    writeTerminalStatus();
+  }
   console.log(`\n  ${t("Başlatmak için: {cmd}  (lead solda, işçi bölmeleri sağda, görev bölmesi altta; Cmd+Alt+T görev bölmesi)", { cmd: c.cyan("ekip terminal open") })}`);
   return 0;
 }
