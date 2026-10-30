@@ -657,6 +657,14 @@ const en: Record<string, string> = Object.fromEntries([
   ["Yenile", "Refresh"],
   ["Aynı sunucudaki diğer yönetim panelleri. Yeni sekmede açılır.", "Other admin panels on this server. Opens in a new tab."],
   ["harici panel", "External panel"],
+  ["Kullanıcı bekleniyor", "Waiting for you"],
+  ["Engellendi", "Blocked"],
+  ["Duraklamış: çalışan ajan yok", "Paused: no live worker"],
+  ["engellendi", "blocked"],
+  ["kullanıcı bekleniyor", "waiting for you"],
+  ["koşul bekleniyor", "waiting for a condition"],
+  ["öldü", "died"],
+  ["kuyrukta (sıra {n})", "queued (place {n})"],
 ])
 
 const tr = Object.fromEntries(Object.keys(en).map((key) => [key, key])) as Record<

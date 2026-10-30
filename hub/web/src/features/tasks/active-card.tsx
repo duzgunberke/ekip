@@ -6,7 +6,7 @@ import { RunLogButton } from '@/components/run-log-button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { StatusDot } from '@/components/ekip/status-badge'
 import { TimeAgo } from '@/components/ekip/time-ago'
-import { ProgressBar, StepList, currentStep, elapsed, etaText } from './parts'
+import { ProgressBar, StepList, currentStep, elapsed, etaText, taskState } from './parts'
 import { formatNumber, formatPercent, useT } from '@/lib/i18n'
 
 const WORKER_STATUS: Record<string, string> = {
@@ -15,6 +15,8 @@ const WORKER_STATUS: Record<string, string> = {
   failed: 'başarısız',
   cancelled: 'iptal',
   queued: 'sırada',
+  waiting: 'koşul bekleniyor',
+  killed: 'öldü',
 }
 
 export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
@@ -23,19 +25,21 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
   const eta = etaText(t, now)
   // every worker the task has had: running ones first, then finished ones with their end state, so
   // a worker that just finished does not vanish and make it look as if there never was one
-  const isRunning = (w: Task['workers'][number]) => w.status === 'running' || (!w.endedAt && w.status !== 'done' && w.status !== 'failed')
+  const isRunning = (w: Task['workers'][number]) => w.status === 'running' || (!w.endedAt && !['done', 'failed', 'killed', 'cancelled', 'queued', 'waiting'].includes(w.status ?? ''))
   const workers = [...t.workers.filter(isRunning), ...t.workers.filter((w) => !isRunning(w)).reverse()].slice(0, 6)
   const runningCount = t.workers.filter(isRunning).length
   const lastEnded = t.workers.filter((w) => !isRunning(w)).sort((a, b) => String(b.endedAt).localeCompare(String(a.endedAt)))[0]
   const note = t.notes[t.notes.length - 1]
+  const state = taskState(t)
   return (
     <Card className='min-w-0 gap-5 border-status-running/30'>
       <CardHeader className='grid-cols-[minmax(0,1fr)] gap-3'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div className='min-w-0 flex-[1_1_16rem]'>
             <div className='mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
-              <span className='flex items-center gap-1.5 font-medium text-status-running'>
-                <StatusDot status='running' /> {translate('Çalışıyor')}
+              <span className={`flex items-center gap-1.5 font-medium ${state.cls}`}>
+                <StatusDot status={t.hold ? 'queued' : t.paused ? 'failed' : 'running'} /> {translate(state.label)}
+                {state.reason && <span className='font-normal'>· {state.reason}</span>}
               </span>
               {t.project && <Badge variant='secondary'>{t.project}</Badge>}
               {t.host && (
@@ -112,7 +116,12 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
                             <span className='truncate'>{w.model.split('/').pop()}</span>
                           </>
                         )}
-                        {w.status && <span className='shrink-0'>· {translate(WORKER_STATUS[w.status] ?? w.status)}</span>}
+                        {w.status && (
+                          <span className='shrink-0'>
+                            · {w.status === 'queued' && w.queue ? translate('kuyrukta (sıra {n})', { n: w.queue }) : translate(WORKER_STATUS[w.status] ?? w.status)}
+                            {w.why ? ` · ${w.why}` : ''}
+                          </span>
+                        )}
                       </p>
                     </div>
                     {w.runId && <RunLogButton id={w.runId} failed={w.status === 'failed'} />}

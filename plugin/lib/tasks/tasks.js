@@ -15,6 +15,12 @@ const write = (all) => { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSy
 const now = () => new Date().toISOString();
 const cap = (x) => x.charAt(0).toLocaleUpperCase(lang === "en" ? "en" : "tr") + x.slice(1);
 const newId = () => `g${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 4)}`;
+// A process we cannot signal (another user's) still exists; only ESRCH means gone.
+export const pidAlive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+// Step states that wait on something outside the task (a condition, the user): no stall warning,
+// no estimate, and the task stays open.
+const HELD = ["blocked", "waiting-user"];
+const OPEN_WORKER = ["running", "queued", "waiting"];
 
 function update(id, fn) {
   const all = read();
@@ -34,7 +40,7 @@ export function percent(t) {
   if (t.status === "done") return 100;
   const steps = t.steps ?? [];
   if (!steps.length) return t.pct ?? 0;
-  const part = steps.reduce((sum, s) => sum + (s.status === "done" || s.status === "skipped" ? 1 : s.status === "running" ? (s.pct ?? 50) / 100 : 0), 0);
+  const part = steps.reduce((sum, s) => sum + (s.status === "done" || s.status === "skipped" ? 1 : s.status === "running" ? (s.pct ?? 50) / 100 : HELD.includes(s.status) ? (s.pct ?? 0) / 100 : 0), 0);
   return Math.min(99, Math.round((part / steps.length) * 100));
 }
 
@@ -42,7 +48,7 @@ export function percent(t) {
 export function eta(t) {
   const p = percent(t);
   // no guess until there is a real basis: a stalled step or early progress gives absurd numbers
-  if (t.status !== "running" || p < 15 || t.steps.some((s) => s.status === "running" && stalledFor(s, t))) return null;
+  if (t.status !== "running" || p < 15 || t.hold || paused(t) || t.steps.some((s) => HELD.includes(s.status) || (s.status === "running" && stalledFor(s, t)))) return null;
   const p0 = t.p0 ?? 0, since = Date.now() - Date.parse(t.p0At ?? t.createdAt);
   if (p <= p0 || since < 5 * 60_000) return null;
   return new Date(Date.now() + since * (100 - p) / (p - p0)).toISOString();
@@ -68,13 +74,14 @@ function push(t) {
   const pr = fetch(`${SETTINGS.hubUrl}/api/tasks`, {
     method: "PUT", signal: AbortSignal.timeout(8000),
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
-    body: JSON.stringify({ ...t, pct: percent(t), eta: eta(t), host: os.hostname() }),
+    body: JSON.stringify({ ...t, pct: percent(t), eta: eta(t), paused: paused(t), host: os.hostname() }),
   }).then((r) => markSynced(t.id, r.ok), () => markSynced(t.id, false)).finally(() => pending.delete(pr));
   pending.add(pr);
 }
 
 /** Sends the tasks the hub may have missed, plus everything touched in the last two days. */
 export async function syncHub() {
+  try { reapDead(); } catch { /* never block a sync */ }
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return 0;
   const missed = readUnsynced();
   const list = read().filter((t) => missed.has(t.id) || t.status === "running" || Date.now() - Date.parse(t.updatedAt ?? t.createdAt) < 48 * 3600_000);
@@ -107,6 +114,7 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     // percent did not change yet, as with one very long item; that is progress, not a stall.
     if ((pct != null && pct !== s.pct) || alive || (status === "running" && s.status !== "running")) s.progressAt = now();
     if (detail != null) s.detail = detail;
+    if (HELD.includes(s.status) && !HELD.includes(status)) { delete s.reason; if (t.hold?.step === n) delete t.hold; }
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
     if (status === "failed") notify(t.title, s.title, { subtitle: `⚠ ${lang === "en" ? "Step stalled" : "Adım takıldı"}${t.project ? ` · ${t.project}` : ""}`, group: t.id, open: SETTINGS.hubUrl ? `${SETTINGS.hubUrl}/tasks` : "" });
@@ -119,8 +127,8 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
 function autoClose(t) {
   if (t.status !== "running") return;
   const terminal = t.steps.length && t.steps.every((x) => ["done", "skipped", "failed"].includes(x.status));
-  const workersDone = t.workers.length && t.workers.every((w) => w.status !== "running");
-  const open = t.steps.some((x) => ["running", "pending"].includes(x.status));
+  const workersDone = t.workers.length && t.workers.every((w) => !OPEN_WORKER.includes(w.status));
+  const open = t.hold || t.steps.some((x) => ["running", "pending", ...HELD].includes(x.status));
   if (terminal || (workersDone && !open)) {
     const failed = t.steps.some((x) => x.status === "failed");
     Object.assign(t, { status: failed ? "failed" : "done", endedAt: now() });
@@ -131,9 +139,11 @@ export function addSteps(id, titles) { return update(id, (t) => t.steps.push(...
 
 export function finish(id, status = "done", note) {
   const t = update(id, (x) => {
+    stopWorkers(x, status === "done" ? (lang === "en" ? "task closed" : "görev kapatıldı") : (lang === "en" ? "task cancelled" : "görev iptal edildi"));
+    delete x.hold;
     x.status = status;
     x.endedAt = now();
-    for (const s of x.steps) if (s.status === "running" || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "running" ? "failed" : s.status, endedAt: now() });
+    for (const s of x.steps) if (s.status === "running" || HELD.includes(s.status) || (status === "done" && s.status === "pending")) Object.assign(s, { status: status === "done" ? "done" : s.status === "pending" ? s.status : "failed", endedAt: now() });
     if (note) x.notes.push({ at: now(), text: note });
   });
   // no note: say what happened in numbers rather than repeating the state
@@ -144,16 +154,115 @@ export function finish(id, status = "done", note) {
 }
 
 /** Called by `ekip run --task ID`: the worker shows under the task while it runs. */
-export function linkWorker(id, w) { try { update(id, (t) => { t.workers.push({ ...w, startedAt: now(), status: "running" }); }); } catch { /* unknown task: ignore */ } }
-export function endWorker(id, runId, status, why, model = null, via = null) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w) Object.assign(w, { status, endedAt: now(), model, ...(via ? { via } : {}) }); t.notes.push({ at: now(), text: `${w?.label ?? runId} (${via ?? w?.via ?? "?"}): ${why ?? (status === "done" ? (lang === "en" ? "finished, the lead is reviewing" : "bitti, lead sonucu inceliyor") : status)}` }); autoClose(t); }); } catch { /* ignore */ } }
+export function linkWorker(id, w) { try { update(id, (t) => { upsertWorker(t, { ...w, startedAt: now(), status: "running", queue: undefined, why: undefined }); }); } catch { /* unknown task: ignore */ } }
+// One entry per run: a worker that waited in the queue (or on a condition) becomes the running one.
+function upsertWorker(t, w) {
+  const old = t.workers.find((x) => x.runId === w.runId);
+  if (old) Object.assign(old, w); else t.workers.push(w);
+}
+/** A worker that has not started yet: "queued" for a machine slot (n = its place), "waiting" on a condition. */
+export function holdWorker(id, w, { status = "queued", queue = null, why = null } = {}) {
+  try {
+    update(id, (t) => {
+      const old = t.workers.find((x) => x.runId === w.runId);
+      if (old && old.status === status && old.queue === queue && old.why === why) return;
+      upsertWorker(t, { ...w, startedAt: old?.startedAt ?? now(), status, queue, why });
+    });
+  } catch { /* unknown task: ignore */ }
+}
+export function dropWorker(id, runId) { try { update(id, (t) => { t.workers = t.workers.filter((w) => w.runId !== runId); }); } catch { /* unknown task: ignore */ } }
+export function note(id, text) { try { update(id, (t) => t.notes.push({ at: now(), text })); } catch { /* unknown task: ignore */ } }
+export function endWorker(id, runId, status, why, model = null, via = null) { try { update(id, (t) => { const w = t.workers.find((x) => x.runId === runId); if (w?.status === "cancelled" && w.endedAt) return; /* stopped by ekip task cancel: already noted */ if (w) Object.assign(w, { status, endedAt: now(), model, ...(via ? { via } : {}) }); t.notes.push({ at: now(), text: `${w?.label ?? runId} (${via ?? w?.via ?? "?"}): ${why ?? (status === "done" ? (lang === "en" ? "finished, the lead is reviewing" : "bitti, lead sonucu inceliyor") : status)}` }); autoClose(t); }); } catch { /* ignore */ } }
+
+// Stops the live workers of a task that is being closed by hand (ekip task cancel/done): their
+// `ekip run` process gets SIGTERM, which ends its worker CLI and reports the run as cancelled.
+function stopWorkers(t, why) {
+  for (const w of t.workers.filter((x) => OPEN_WORKER.includes(x.status))) {
+    if (w.pid && w.pid !== process.pid && pidAlive(w.pid)) { try { process.kill(w.pid, "SIGTERM"); } catch { /* gone meanwhile */ } }
+    Object.assign(w, { status: "cancelled", endedAt: now() });
+    t.notes.push({ at: now(), text: `${w.label ?? w.runId} (${w.via ?? "?"}): ${lang === "en" ? "stopped" : "durduruldu"} (${why})` });
+  }
+}
+
+// Why a worker process is gone, from the end of its log: the [exit] line and ekip's own notes.
+function deathReason(w) {
+  let tail = "";
+  try { const st = fs.statSync(w.log), len = Math.min(st.size, 4096), fd = fs.openSync(w.log, "r"), b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, st.size - len); fs.closeSync(fd); tail = b.toString("utf8"); } catch { /* no log */ }
+  const exit = tail.match(/\[exit (-?\d+)\]([^\n]*)\s*$/);
+  const ekip = [...tail.matchAll(/^\[ekip\] ([^\n]+)$/gm)].at(-1)?.[1];
+  if (exit) return `${lang === "en" ? "exit" : "çıkış"} ${exit[1]}${exit[2].trim() ? ` ${exit[2].trim()}` : ""}${ekip ? ` · ${ekip}` : ""}`;
+  return lang === "en" ? "process gone without an exit record (killed by a signal, or the machine slept)" : "süreç çıkış kaydı olmadan kayboldu (sinyalle öldürüldü ya da makine uyudu)";
+}
+
+/**
+ * The reaper: a worker whose `ekip run` process is gone is closed as dead with the reason its log
+ * gives, so neither the pane nor the panel keeps a ghost "running" for hours. Runs with every task
+ * command, the pane's repaint and the hub sync.
+ */
+export function reapDead() {
+  const all = read();
+  const dead = all.filter((t) => t.status === "running" && t.workers.some((w) => OPEN_WORKER.includes(w.status) && w.pid && !pidAlive(w.pid)));
+  for (const t of dead) update(t.id, (x) => {
+    for (const w of x.workers.filter((y) => OPEN_WORKER.includes(y.status) && y.pid && !pidAlive(y.pid))) {
+      // it ended when its log last moved, not when the reaper noticed
+      let ended = now();
+      try { ended = new Date(Math.min(Date.now(), fs.statSync(w.log).mtimeMs)).toISOString(); } catch { /* no log */ }
+      Object.assign(w, { status: "killed", endedAt: ended });
+      x.notes.push({ at: now(), text: `${w.label ?? w.runId} (${w.via ?? "?"}): ${lang === "en" ? "died" : "öldü"} (${deathReason(w)})` });
+    }
+    autoClose(x);
+  });
+  // the hub cannot see pids: a task that just became paused (or stopped being) is pushed once
+  for (const t of read().filter((x) => x.status === "running" && !!x.pausedAt !== paused(x))) update(t.id, (x) => { if (paused(x)) x.pausedAt = now(); else delete x.pausedAt; });
+  return dead.length;
+}
+
+/**
+ * Paused: a step is marked running, the task had workers, none is alive, and the step has not
+ * moved for 5 minutes since the last one ended. The pane and panel say "paused: no live worker"
+ * instead of "running", so a dropped hand-off is visible.
+ */
+export function paused(t) {
+  if (t.status !== "running" || t.hold || !t.workers?.length || !t.steps.some((s) => s.status === "running")) return false;
+  if (t.workers.some((w) => OPEN_WORKER.includes(w.status) && (!w.pid || pidAlive(w.pid)))) return false;
+  const lastEnd = Math.max(...t.workers.map((w) => Date.parse(w.endedAt ?? w.startedAt ?? 0) || 0));
+  const moved = Math.max(...t.steps.filter((s) => s.status === "running").map((s) => Date.parse(s.progressAt ?? s.startedAt ?? 0) || 0));
+  return Date.now() - Math.max(lastEnd, moved) > 5 * 60_000;
+}
+
+/**
+ * ekip task block|wait ID "reason" [--step N]: the task waits on a condition (blocked) or on the
+ * user (waiting-user). The step (the running one, else the next pending, else --step) shows the
+ * reason; no stall warning and no estimate while it holds. `ekip task unblock ID` or marking the
+ * step running again ends it.
+ */
+export function hold(id, kind, reason, n = null, { alert } = {}) {
+  return update(id, (t) => {
+    if (t.status !== "running") return;
+    const i = n ? n - 1 : t.steps.findIndex((s) => s.status === "running" || HELD.includes(s.status));
+    const j = i >= 0 ? i : t.steps.findIndex((s) => s.status === "pending");
+    const s = t.steps[j];
+    if (s) Object.assign(s, { status: kind, reason, progressAt: now(), ...(!s.startedAt ? { startedAt: now() } : {}) });
+    t.hold = { kind, reason, at: now(), step: s ? j + 1 : null };
+    t.notes.push({ at: now(), text: `${kind === "waiting-user" ? (lang === "en" ? "waiting for the user" : "kullanıcı bekleniyor") : (lang === "en" ? "blocked" : "engellendi")}: ${reason}` });
+    if (alert ?? kind === "waiting-user") notify(t.title, reason, { subtitle: `⏸ ${kind === "waiting-user" ? (lang === "en" ? "Your decision is needed" : "Kararın bekleniyor") : (lang === "en" ? "Blocked" : "Engellendi")}${t.project ? ` · ${t.project}` : ""}`, group: t.id, open: SETTINGS.hubUrl ? `${SETTINGS.hubUrl}/tasks` : "" });
+  });
+}
+export function unhold(id, note) {
+  return update(id, (t) => {
+    for (const s of t.steps.filter((x) => HELD.includes(x.status))) { s.status = "running"; s.progressAt = now(); delete s.reason; }
+    delete t.hold;
+    if (note) t.notes.push({ at: now(), text: note });
+  });
+}
 
 // Tasks nobody moved for hours (no live worker, no step update) are orphans: flagged after 2 h,
 // closed as failed after 6 h, so the pane and panel never show yesterday's work as running.
 export function reapStale() {
-  const alive = (w) => { if (!w.pid) return false; try { process.kill(w.pid, 0); return true; } catch { return false; } };
   for (const t of read().filter((x) => x.status === "running")) {
     const idle = Date.now() - Date.parse(t.updatedAt ?? t.createdAt);
-    if (idle > 6 * 3600_000 && !t.workers.some((w) => w.status === "running" && alive(w)))
+    // a task held on the user or a condition waits up to three days, not six hours
+    if (idle > (t.hold ? 72 : 6) * 3600_000 && !t.workers.some((w) => OPEN_WORKER.includes(w.status) && pidAlive(w.pid)))
       update(t.id, (x) => { x.notes.push({ at: now(), text: lang === "en" ? "closed: no activity for 6 hours" : "kapatıldı: 6 saattir hareket yok" }); Object.assign(x, { status: "failed", endedAt: now() }); });
   }
 }
@@ -174,30 +283,42 @@ const workerActive = (t) => (t?.workers ?? []).some((w) => {
 });
 const stalledFor = (s, t) => (s.status === "running" && s.progressAt && Date.now() - Date.parse(s.progressAt) > STALL_MS && !workerActive(t) ? Date.now() - Date.parse(s.progressAt) : 0);
 
+// "sürüyor", or what really holds it: blocked / waiting for the user / paused with no live worker.
+function runningState(t) {
+  if (t.hold?.kind === "waiting-user") return c.blue(tr("kullanıcı bekleniyor"));
+  if (t.hold) return c.magenta(tr("engellendi"));
+  if (paused(t)) return c.red(tr("duraklamış: çalışan ajan yok"));
+  return c.yellow(tr("sürüyor"));
+}
+const heldLabel = (s) => (s.status === "blocked" ? c.magenta : c.blue)(`${s.status === "blocked" ? tr("engellendi") : tr("kullanıcı bekleniyor")}${s.reason ? `: ${s.reason}` : ""}`);
+
 function render(t) {
   const p = percent(t);
   const e = eta(t);
   const elapsed = Date.now() - Date.parse(t.createdAt);
-  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : c.yellow(tr("sürüyor"));
-  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
+  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : runningState(t);
+  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? (paused(t) ? "bad" : "warn") : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${c.gray(t.id)}`);
   const line = fit(`  ${bar(p)} ${c.bold(`${p}%`)}  ${state}  ${c.gray(tr("geçen {duration}", { duration: fmtDur(elapsed) }))}${e ? c.gray(` · ${tr("tahmini bitiş {time} ({duration} kaldı)", { time: new Date(e).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), duration: fmtDur(Date.parse(e) - Date.now()) })}`) : ""}`);
   const steps = t.steps.map((s, i) => {
-    const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : c.gray("○");
-    const label = s.status === "running" ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
+    const icon = s.status === "done" ? c.green("✓") : s.status === "running" ? c.yellow("▶") : s.status === "failed" ? c.red("✗") : s.status === "skipped" ? c.gray("–") : s.status === "blocked" ? c.magenta("⏸") : s.status === "waiting-user" ? c.blue("?") : c.gray("○");
+    const label = s.status === "running" || HELD.includes(s.status) ? c.bold(s.title) : s.status === "pending" ? c.gray(s.title) : s.title;
+    const held = HELD.includes(s.status) ? `  ${heldLabel(s)}` : "";
     const extra = s.status === "running" && s.startedAt ? c.gray(` (${fmtDur(Date.now() - Date.parse(s.startedAt))}${s.pct != null ? (lang === "en" ? ` · ${s.pct}%` : ` · %${s.pct}`) : ""})`) : "";
     const stall = stalledFor(s, t);
     const warn = stall ? `  ${c.red(`⚠ ${fmtDur(stall)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`)}` : "";
     const det = s.status === "running" && s.detail ? `\n${fit(`       ${c.gray(s.detail)}`)}` : "";
-    return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${det}`);
+    return fit(`    ${stall ? c.red("▶") : icon} ${i + 1}. ${label}${extra}${warn}${held}${det}`);
   });
   // A worker killed from outside never reports its end; its pid tells.
-  const alive = (w) => { if (!w.pid) return true; try { process.kill(w.pid, 0); return true; } catch { return false; } };
+  const alive = (w) => !w.pid || pidAlive(w.pid);
+  const waiting = t.workers.filter((w) => (w.status === "queued" || w.status === "waiting") && alive(w)).map((w) =>
+    fit(`    ${c.magenta("⏳")} ${w.via ?? "auto"}${w.label ? ` · ${w.label}` : ""} ${c.gray(w.status === "queued" ? tr("kuyrukta (sıra {n})", { n: w.queue ?? "?" }) : tr("koşul bekleniyor"))}${w.why ? c.gray(` · ${w.why}`) : ""}`));
   const workers = t.workers.filter((w) => w.status === "running" && alive(w)).map((w) => {
     const stale = w.log && fs.existsSync(w.log) && Date.now() - fs.statSync(w.log).mtimeMs > 10 * 60 * 1000;
     return fit(`    ${stale ? c.yellow("⚠") : c.cyan("⚙")} ${w.via}${w.label ? ` · ${w.label}` : ""} ${c.gray(`${fmtDur(Date.now() - Date.parse(w.startedAt))}${stale ? ` · ${lang === "en" ? "no output for 10 min" : "10 dk'dır çıktı yok"}` : ""}`)}`);
   });
   const last = t.notes.at(-1);
-  return [head, line, ...steps, ...workers, ...(last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [])].join("\n");
+  return [head, line, ...steps, ...workers, ...waiting, ...(last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [])].join("\n");
 }
 
 // Two lines per task for a short pane: title + bar, then "n/m bitti" and what runs now. Finished
@@ -208,10 +329,11 @@ function renderCompact(t) {
   const done = t.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
   const running = t.steps.filter((s) => s.status === "running").map((s) => { const st = stalledFor(s, t); return `${st ? c.red("⚠") : c.yellow("▶")} ${s.title}${s.pct != null ? c.gray(lang === "en" ? ` ${s.pct}%` : ` %${s.pct}`) : ""}${st ? c.red(` ${fmtDur(st)} ${lang === "en" ? "without progress" : "boyunca ilerleme yok"}`) : s.detail ? c.gray(` · ${s.detail}`) : ""}`; });
   const failed = t.steps.filter((s) => s.status === "failed").map((s) => `${c.red("✗")} ${s.title}`);
-  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : "";
+  const held = t.steps.filter((s) => HELD.includes(s.status)).map((s) => `${s.status === "blocked" ? c.magenta("⏸") : c.blue("?")} ${s.title} ${heldLabel(s)}`);
+  const state = t.status === "done" ? c.green(tr("bitti")) : t.status === "failed" ? c.red(tr("takıldı")) : t.status === "cancelled" ? c.gray(tr("iptal")) : t.hold || paused(t) ? runningState(t) : "";
   const when = e ? c.gray(` · ${fmtDur(Date.parse(e) - Date.now())} ${lang === "en" ? "left" : "kaldı"}`) : "";
-  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? "warn" : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
-  const now = fit([...failed, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
+  const head = fit(`${dot(t.status === "done" ? "ok" : t.status === "running" ? (paused(t) ? "bad" : "warn") : "bad")} ${c.bold(t.title)}${t.project ? c.gray(` · ${t.project}`) : ""}  ${bar(p, 10)} ${c.bold(`${p}%`)}${state ? ` ${state}` : ""}${when}`);
+  const now = fit([...failed, ...held, ...running].join(c.gray("  ·  ")) || c.gray(t.steps.find((s) => s.status === "pending")?.title ? tr("sırada: {step}", { step: t.steps.find((s) => s.status === "pending").title }) : ""));
   return `${head}\n${fit(`    ${c.gray(tr("{done}/{total} bitti", { done, total: t.steps.length }))}${now ? `  ${now}` : ""}`)}`;
 }
 
@@ -288,6 +410,13 @@ export async function main([sub = "ls", ...args]) {
   } else if (sub === "note") {
     const [id, ...text] = rest();
     update(id, (t) => t.notes.push({ at: now(), text: text.join(" ") }));
+  } else if (sub === "block" || sub === "wait") {
+    const [id, ...text] = rest();
+    if (!id || !text.length) die(`usage: ekip task ${sub} ID "${sub === "wait" ? "what the user has to decide" : "reason"}" [--step N]`);
+    hold(id, sub === "wait" ? "waiting-user" : "blocked", text.join(" "), opt("--step") ? Number(opt("--step")) : null);
+  } else if (sub === "unblock" || sub === "resume") {
+    const [id, ...text] = rest();
+    unhold(id, text.join(" ") || undefined);
   } else if (sub === "done" || sub === "fail" || sub === "cancel") {
     const [id, ...text] = rest();
     finish(id, sub === "done" ? "done" : sub === "fail" ? "failed" : "cancelled", text.join(" ") || undefined);
@@ -301,7 +430,11 @@ export async function main([sub = "ls", ...args]) {
       const restore = () => { process.stdout.write("\x1b[?25h\x1b[?1049l"); process.exit(0); };
       process.on("SIGINT", restore); process.on("SIGTERM", restore);
     }
+    let reconciled = 0;
     do {
+      try { reapDead(); } catch { /* the pane never stops for this */ }
+      // ghost runs on the hub (a worker killed with no word) are closed from here too, once a minute
+      if (watching && Date.now() - reconciled > 60_000) { reconciled = Date.now(); try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "reconcile"], { stdio: "ignore", detached: true }).unref(); } catch { /* best effort */ } }
       const list = read().filter((t) => all || t.status === "running" || Date.now() - Date.parse(t.endedAt ?? t.updatedAt) < 60 * 1000)
         .sort((a, b) => (a.status === "running") - (b.status === "running") || String(a.updatedAt).localeCompare(String(b.updatedAt))).slice(-8).reverse();
       const runs = watching ? recentRuns() : [];
@@ -319,5 +452,5 @@ export async function main([sub = "ls", ...args]) {
       if (watching) await sleep(2000);
       if (watching && codeChanged()) await restartWatch();
     } while (watching);
-  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | done|fail|cancel ID [note]');
+  } else die('usage: ekip tasks [--watch|--all] | ekip task new "title" [--project P] [--steps "a; b"] | step ID N [running|done|failed|skipped] [--pct N] [--note T] [--detail T] [--parallel] [--alive] | add ID "a; b" | note ID text | block ID "reason" [--step N] | wait ID "what the user decides" [--step N] | unblock ID | done|fail|cancel ID [note]');
 }
