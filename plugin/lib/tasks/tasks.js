@@ -490,7 +490,7 @@ async function poolLine() {
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks/tasks.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
+const CODE = ["tasks/tasks.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/status-style.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
