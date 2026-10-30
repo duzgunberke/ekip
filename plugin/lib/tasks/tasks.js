@@ -221,23 +221,36 @@ export function reapDead() {
     }
     autoClose(x);
   });
-  // the hub cannot see pids: a task that just became paused (or stopped being) is pushed once
-  for (const t of read().filter((x) => x.status === "running" && !!x.pausedAt !== paused(x))) update(t.id, (x) => { if (paused(x)) x.pausedAt = now(); else delete x.pausedAt; });
+  // the hub cannot see pids: a task that just became paused (or stopped being) is pushed once, with
+  // a note the first time, so the task's history says when its work was left without a process
+  for (const t of read().filter((x) => x.status === "running" && !!x.pausedAt !== paused(x))) update(t.id, (x) => {
+    if (!paused(x)) { delete x.pausedAt; return; }
+    x.pausedAt = now();
+    const s = x.steps.filter((y) => y.status === "running").map((y) => y.title).join(", ");
+    x.notes.push({ at: now(), text: tr("sahipsiz: \"{steps}\" sürüyor görünüyor ama çalışan süreç yok; kapatın ya da yeniden başlatın", { steps: s }) });
+  });
   return dead.length;
 }
 
 /**
- * Paused: a step is marked running, the task had workers, none is alive, and the step has not
- * moved for 5 minutes since the last one ended. The pane and panel say "paused: no live worker"
- * instead of "running", so a dropped hand-off is visible.
+ * Orphaned: a step is marked running, but no live process works for it (no worker, no tracked
+ * job) and the step has not moved for `ms` since it or the last worker did. A long command the lead
+ * started in a bare background shell and then forgot looks exactly like this.
  */
-export function paused(t) {
-  if (t.status !== "running" || t.hold || !t.workers?.length || !t.steps.some((s) => s.status === "running")) return false;
-  if (t.workers.some((w) => OPEN_WORKER.includes(w.status) && (!w.pid || pidAlive(w.pid)))) return false;
-  const lastEnd = Math.max(...t.workers.map((w) => Date.parse(w.endedAt ?? w.startedAt ?? 0) || 0));
+export function orphaned(t, ms = 10 * 60_000) {
+  if (t.status !== "running" || t.hold || !t.steps?.some((s) => s.status === "running")) return false;
+  if ((t.workers ?? []).some((w) => OPEN_WORKER.includes(w.status) && (!w.pid || pidAlive(w.pid)))) return false;
+  const lastEnd = Math.max(0, ...(t.workers ?? []).map((w) => Date.parse(w.endedAt ?? w.startedAt ?? 0) || 0));
   const moved = Math.max(...t.steps.filter((s) => s.status === "running").map((s) => Date.parse(s.progressAt ?? s.startedAt ?? 0) || 0));
-  return Date.now() - Math.max(lastEnd, moved) > 5 * 60_000;
+  return Date.now() - Math.max(lastEnd, moved) > ms;
 }
+
+/**
+ * Paused: orphaned for 5 minutes after the task's last worker ended, or for 10 minutes when it never
+ * had one. The pane and panel say "paused: no live worker" instead of "running", so a dropped
+ * hand-off is visible, and the lead's next prompt lists it as orphaned (prompt-context.js).
+ */
+export function paused(t) { return orphaned(t, t.workers?.length ? 5 * 60_000 : 10 * 60_000); }
 
 /**
  * ekip task block|wait ID "reason" [--step N]: the task waits on a condition (blocked) or on the
