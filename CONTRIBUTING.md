@@ -21,7 +21,7 @@ Never commit personal data: project names, hosts, tokens, UUIDs, logs, or files 
 
 ## Pull requests
 
-Keep one topic per pull request and use imperative commit messages. For vulnerability reports, use GitHub Security Advisories privately; do not open a public issue.
+Keep one topic per pull request and write commit messages, branch names and merge subjects in English, in the imperative (the repository is public; Turkish belongs only in the `t()` source strings). For vulnerability reports, use GitHub Security Advisories privately; do not open a public issue.
 
 ## Branches and releases
 
