@@ -1155,13 +1155,28 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   if the plan grows; \`ekip task note $id "<one line>"\` for anything the user should know.
 - Pass \`--task $id --label "<what this worker does>"\` to every \`ekip run\` that belongs to it.
 - \`ekip task done $id "<one-line result>"\` at the end (\`ekip task fail $id "<why>"\` if you must stop).
+  \`ekip task cancel\` / \`done\` also stop that task's live workers.
+- Waiting is a state, not a stall: \`ekip task wait $id "<what the user must decide>"\` when you need the
+  user's answer (they get a notification), \`ekip task block $id "<what it waits for>"\` for a file,
+  another task or a quota; \`ekip task unblock $id\` when it moves again.
 - Close what you open, the moment it is true: mark each step done when it is done, and the task done
   as soon as its result is reviewed. A task closes by itself when every step is done or its last worker
   ends with nothing pending, and is closed as failed after 6 hours without activity, but never leave
   that to the safety net. The user must never have to tell you "this is still open".
-- Every worker has a watchdog: 15 min without output or 90 min in total stops it (EKIP_IDLE_MIN,
-  EKIP_TIMEOUT_MIN) and notes why on the task. When that happens, re-dispatch at once with a sharper
-  brief or another pool; for a long render, raise the limit on that run instead of waiting.
+- Every worker has a watchdog: 15 min without output (CPU use of its child processes counts as
+  activity) or 90 min in total stops it (EKIP_IDLE_MIN, EKIP_TIMEOUT_MIN) and notes why on the task.
+  Two silent pools in a row stop the fallback chain and block the task. When that happens,
+  re-dispatch at once with a sharper brief or a strong pool; for a long render, raise the limit on
+  that run instead of waiting. A worker that was cut off: \`ekip run --resume <run id>\`.
+- The same failure twice = stop: find the root cause before another attempt; no blind retries.
+- Never let a model wait on something long (a render queue, other workers, a file to appear): chain
+  it with \`ekip run --after <task|run id>\` or \`--when "<shell test>"\`, which waits in the background
+  and starts the run when the condition holds; or write a small script.
+- Renders, encodes and other heavy local work: \`ekip run --heavy\` takes a machine slot (queued when the
+  Mac is full); browser/DOM debugging and other hard work: \`--min-tier strong\` so it never falls to
+  a weak free pool. Every pool switch is noted on the task.
+- When the user corrects a mistake, in the same turn add one line to the project's lessons file:
+  \`ekip project lesson NAME "<what to do instead>"\` (every later worker brief gets it).
 - Be proactive: when a job is slow or stuck, look at why (logs, CPU, rate limits, a duplicate copy)
   and fix it or move it to a faster pool, then tell the user what you did. Don't wait to be asked.
 - Check your own output before reporting it: look at every screenshot, video frame and page you made
@@ -1770,6 +1785,7 @@ ${c.bold("Everyday")}
 
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
+  ${c.cyan("ekip run")} ${c.gray('[--after ID | --when "CMD"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]')}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} review changes
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
@@ -1779,12 +1795,14 @@ ${c.bold("Workers")}
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           live task tracker; task step supports --alive
+  ${c.cyan("ekip task")} ${c.gray('block|wait ID "why" | unblock ID')} blocked / waiting for you, without a stall warning
 
 ${c.bold("Development environment")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} dev DB/Redis on Coolify
 
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project lesson")} ${c.gray('NAME "lesson"')}    a corrected mistake, added to every worker brief
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
@@ -1811,6 +1829,7 @@ ${c.bold("Günlük")}
 
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
+  ${c.cyan("ekip run")} ${c.gray('[--after ID | --when "KOMUT"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]')}
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} ${t("değişiklikleri denetle")}
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
@@ -1819,12 +1838,14 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           canlı görev takibi; task step --alive
+  ${c.cyan("ekip task")} ${c.gray('block|wait ID "neden" | unblock ID')} engellendi / kullanıcı bekleniyor, takıldı uyarısı yok
 
 ${c.bold("Geliştirme ortamı")}
   ${c.cyan("ekip dev")} ${c.gray("init|ls|add|up|env|down|reset|sql|psql")} Coolify üzerinde dev DB/Redis
 
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
+  ${c.cyan("ekip project lesson")} ${c.gray('NAME "ders"')}      düzeltilen bir hata, her işçi brief'ine eklenir
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
