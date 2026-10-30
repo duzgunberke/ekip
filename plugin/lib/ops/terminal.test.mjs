@@ -1,0 +1,162 @@
+// WezTerm as the default terminal, with a fake `wezterm cli`, osascript and brew: no terminal is
+// opened or closed, nothing is installed.
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ekip-wezdefault-"));
+process.env.EKIP_HOME = path.join(tmp, "home");
+fs.mkdirSync(process.env.EKIP_HOME, { recursive: true });
+const term = await import("./terminal.js");
+const core = await import("../core/core.js");
+const quiet = (fn) => async (...a) => { const log = console.log; console.log = () => {}; try { return await fn(...a); } finally { console.log = log; } };
+
+// ---- when a lead start moves to WezTerm --------------------------------------------------------
+const iterm = { TERM_PROGRAM: "iTerm.app", ITERM_SESSION_ID: "w0t1p0:6B0C2D1E-1111-2222-3333-444455556666" };
+const yes = () => true;
+const plan = (args, env, settings = { terminal: "wezterm" }, extra = {}) => term.handoffPlan(args, { env, settings, tty: true, installed: yes, ...extra });
+assert.deepEqual(plan([], iterm), { move: true });
+assert.equal(plan(["--here"], iterm).move, false, "--here stays");
+assert.equal(plan([], { ...iterm, EKIP_TERMINAL: "current" }).move, false, "EKIP_TERMINAL=current stays");
+assert.equal(plan([], iterm, { terminal: "current" }).move, false);
+assert.equal(plan([], iterm, {}).move, false, "no setting: stays");
+assert.equal(plan([], iterm, {}, {}).move, false);
+assert.equal(plan([], { ...iterm, EKIP_TERMINAL: "wezterm" }, {}).move, true, "EKIP_TERMINAL=wezterm moves");
+assert.equal(plan([], { WEZTERM_PANE: "3" }).move, false, "already in WezTerm");
+assert.equal(plan(["-p", "hi"], iterm).move, false);
+assert.equal(plan(["--member"], iterm).move, false);
+assert.equal(plan([], { ...iterm, SSH_CONNECTION: "1 2 3 4" }).move, false);
+assert.equal(plan([], iterm, undefined, { tty: false }).move, false);
+assert.deepEqual(plan([], iterm, undefined, { installed: () => false }), { move: false, why: "WezTerm bulunamadı" });
+
+assert.equal(term.hostTerminal(iterm), "iterm");
+assert.equal(term.hostTerminal({ TERM_PROGRAM: "Apple_Terminal" }), "apple");
+assert.equal(term.hostTerminal({ TERM_PROGRAM: "vscode" }), "other");
+assert.equal(term.hostTerminal({ ...iterm, TMUX: "/tmp/tmux" }), "other");
+
+// ---- the close scripts name only the given session / tty ---------------------------------------
+const s = term.itermCloseScript(iterm.ITERM_SESSION_ID);
+assert.match(s, /^delay 1/);
+assert.equal(s.match(/unique id of s is "([^"]*)"/g).length, 1);
+assert.ok(s.includes('unique id of s is "6B0C2D1E-1111-2222-3333-444455556666"'));
+assert.ok(/\bclose s\b/.test(s) && !/close (w|tb|every|window)/.test(s), "closes only the matching session");
+assert.equal(term.itermCloseScript(""), null);
+assert.equal(term.itermCloseScript('w0t0p0:x" then close every window'), null, "no injection");
+const a = term.terminalAppCloseScript("/dev/ttys004");
+assert.equal(a.match(/tty of tb is "([^"]*)"/g).length, 1);
+assert.ok(a.includes('tty of tb is "/dev/ttys004"'));
+assert.equal(term.terminalAppCloseScript("not a tty"), null);
+
+// ---- the new window keeps the folder and ekip's variables --------------------------------------
+const argv = term.startArgv(["--free"], { env: { EKIP_HOME: "/x/home", EKIP_TERMINAL: "wezterm", XDG_CONFIG_HOME: path.join(tmp, "xdg") }, cwd: "/some/project" });
+assert.deepEqual(argv.slice(0, 3), ["start", "--cwd", "/some/project"]);
+assert.ok(argv.at(-1).startsWith('EKIP_HOME="/x/home" ') && argv.at(-1).includes('"--free"') && !argv.at(-1).includes("EKIP_TERMINAL"));
+
+// ---- handoff: verifies the window before closing anything --------------------------------------
+const pane = (id) => ({ window_id: 0, tab_id: 0, pane_id: id, title: "zsh", cwd: "", top_row: 0, left_col: 0, is_active: true });
+function fake({ appearAfter = 0, panes = [pane(1)], tty = "/dev/ttys004" } = {}) {
+  const launched = [];
+  let lists = 0;
+  const run = (bin, args) => {
+    if (bin === "tty") return { status: 0, stdout: `${tty}\n` };
+    assert.deepEqual(args.slice(0, 3), ["cli", "--no-auto-start", "list"], "only --no-auto-start list is asked");
+    lists++;
+    const open = launched.some(([b]) => b !== "osascript") && appearAfter >= 0 && lists > appearAfter + 1;
+    return { status: 0, stdout: JSON.stringify(open ? [...panes, pane(99)] : panes) };
+  };
+  const launch = (bin, args) => launched.push([bin, args]);
+  return { run, launch, launched };
+}
+const sleep = async () => {};
+const ho = quiet(term.handoff);
+const wezEnv = { ...iterm, EKIP_WEZTERM: path.join(tmp, "wezterm"), XDG_CONFIG_HOME: path.join(tmp, "xdg") };
+
+{ // iTerm2: WezTerm opens, then only this session is closed
+  const f = fake({ appearAfter: 2 });
+  assert.equal(await ho([], { env: wezEnv, cwd: "/p", run: f.run, launch: f.launch, sleep, platform: "darwin" }), true);
+  assert.equal(f.launched.length, 2);
+  assert.equal(f.launched[0][0], wezEnv.EKIP_WEZTERM);
+  assert.deepEqual(f.launched[1][0], "osascript");
+  assert.equal(f.launched[1][1].at(-1), term.itermCloseScript(iterm.ITERM_SESSION_ID));
+}
+{ // WezTerm never shows a new pane: nothing is closed, the lead stays
+  const f = fake({ appearAfter: -1 });
+  assert.equal(await ho([], { env: wezEnv, run: f.run, launch: f.launch, sleep, wait: 1000, step: 250, platform: "darwin" }), false);
+  assert.ok(f.launched.every(([b]) => b !== "osascript"), "no osascript when WezTerm did not open");
+}
+{ // `wezterm start` throws: nothing is closed
+  const f = fake();
+  assert.equal(await ho([], { env: wezEnv, run: f.run, launch: () => { throw new Error("ENOENT"); }, sleep, platform: "darwin" }), false);
+}
+{ // a WezTerm that was not running (list fails before) still counts once its pane shows up
+  const f = fake({ appearAfter: 0 });
+  const run = (bin, args) => (f.launched.length ? f.run(bin, args) : { status: 1, stdout: "" });
+  assert.equal(await ho([], { env: wezEnv, run, launch: f.launch, sleep, platform: "darwin" }), true);
+}
+{ // Terminal.app: the tab with this tty
+  const f = fake({ tty: "/dev/ttys007" });
+  assert.equal(await ho([], { env: { TERM_PROGRAM: "Apple_Terminal", EKIP_WEZTERM: wezEnv.EKIP_WEZTERM }, run: f.run, launch: f.launch, sleep, platform: "darwin" }), true);
+  assert.equal(f.launched[1][1].at(-1), term.terminalAppCloseScript("/dev/ttys007"));
+}
+{ // another terminal (and anything off macOS): WezTerm opens, nothing is closed
+  for (const [env, platform] of [[{ TERM_PROGRAM: "vscode" }, "darwin"], [iterm, "linux"]]) {
+    const f = fake();
+    assert.equal(await ho([], { env: { ...env, EKIP_WEZTERM: wezEnv.EKIP_WEZTERM }, run: f.run, launch: f.launch, sleep, platform }), true);
+    assert.equal(f.launched.length, 1);
+  }
+}
+
+// ---- ekip init: the WezTerm step -----------------------------------------------------------------
+const init = quiet(term.initTerminal);
+const xdg = path.join(tmp, "xdg-init");
+const initEnv = { EKIP_WEZTERM: path.join(tmp, "bin", "wezterm"), XDG_CONFIG_HOME: xdg };
+const brewRun = (calls) => (bin, args) => { calls.push([bin, ...args]); fs.mkdirSync(path.dirname(initEnv.EKIP_WEZTERM), { recursive: true }); fs.writeFileSync(initEnv.EKIP_WEZTERM, ""); return { status: 0 }; };
+const noAsk = () => { throw new Error("must not ask"); };
+assert.equal(await init([], { env: initEnv, platform: "linux", ask: noAsk }), "skipped");
+assert.equal(await init(["--no-terminal"], { env: initEnv, platform: "darwin", ask: noAsk }), "skipped");
+{ const calls = []; assert.equal(await init([], { env: initEnv, platform: "darwin", interactive: false, ask: noAsk, run: brewRun(calls), brew: true }), "skipped"); assert.equal(calls.length, 0, "CI: no question, no install"); }
+{ const calls = []; assert.equal(await init([], { env: initEnv, platform: "darwin", interactive: true, ask: async () => "h", run: brewRun(calls), brew: true }), "skipped"); assert.equal(calls.length, 0); }
+assert.equal(await init(["--yes"], { env: initEnv, platform: "darwin", run: () => assert.fail("no brew"), brew: false }), "no-brew");
+assert.equal(core.SETTINGS.terminal, undefined);
+{
+  let asked = 0;
+  const calls = [];
+  assert.equal(await init([], { env: initEnv, platform: "darwin", interactive: true, ask: async () => { asked++; return ""; }, run: brewRun(calls), brew: true }), "installed");
+  assert.equal(asked, 1);
+  assert.deepEqual(calls, [["brew", "install", "--cask", "wezterm"]]);
+  assert.ok(fs.existsSync(path.join(xdg, "wezterm", "ekip.lua")));
+  assert.equal(JSON.parse(fs.readFileSync(core.SETTINGS_FILE, "utf8")).terminal, "wezterm");
+}
+{ // already installed: no question, no brew, only config + setting
+  const calls = [];
+  assert.equal(await init([], { env: initEnv, platform: "darwin", interactive: true, ask: noAsk, run: brewRun(calls), brew: true }), "installed");
+  assert.equal(calls.length, 0);
+}
+
+// ---- subcommands never change the terminal ------------------------------------------------------
+{
+  const home = path.join(tmp, "cli-home");
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ terminal: "wezterm" }));
+  const marker = path.join(tmp, "wezterm-called");
+  const fakeBin = path.join(tmp, "fake-wezterm");
+  fs.writeFileSync(fakeBin, `#!/bin/sh\necho "$@" >> ${JSON.stringify(marker)}\nexit 1\n`, { mode: 0o755 });
+  const ekip = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../bin/ekip.js");
+  const env = { ...process.env, ...iterm, EKIP_HOME: home, EKIP_WEZTERM: fakeBin, EKIP_TERMINAL: "wezterm", WEZTERM_PANE: "" };
+  for (const args of [["tasks"], ["help"], ["terminal", "status"], ["status", "--offline"]]) {
+    const r = spawnSync(process.execPath, [ekip, ...args], { env, encoding: "utf8", timeout: 20_000 });
+    assert.ok(!/Cannot find module|SyntaxError/.test(r.stderr), r.stderr);
+  }
+  assert.ok(!fs.existsSync(marker), "a subcommand called wezterm");
+  // `ekip terminal default` and status show the setting
+  const r = spawnSync(process.execPath, [ekip, "terminal", "default", "current"], { env, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(home, "config.json"), "utf8")).terminal, "current");
+  assert.notEqual(spawnSync(process.execPath, [ekip, "terminal", "default", "kitty"], { env, encoding: "utf8" }).status, 0);
+}
+
+fs.rmSync(tmp, { recursive: true, force: true });
+console.log("ok: WezTerm default terminal (plan, close scripts, handoff, init, subcommands)");
