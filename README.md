@@ -122,6 +122,15 @@ night. ekip handles that itself, so you never have to chase it.
   `--retry-on-kill` restarts a worker killed by load once the load drops.
 - **Pool switches are visible.** Every fallback is noted on the task ("codex out of quota, resets
   …, moved to copilot"); `--min-tier strong` never falls to a weak pool.
+- **Long commands are watched, not forgotten.** An upload, an encode or a queue script runs through
+  `ekip track --task ID --label "..." -- <command>` instead of a bare background shell. It reads
+  progress from the output (`12%`, `3/12`, `256 MiB/1.5 GiB`) or from `--measure "<cmd>"` against
+  `--total`, keeps the step's percent, speed and finish time true, blocks the step when nothing moves
+  for `--stall` minutes, warns at once when the first two minutes' speed would miss `--eta-max`, and
+  closes the step done or failed (with the last lines and the signal cause) when the command ends.
+- **Orphans come first.** A step marked running with no live worker or tracked job for 10 minutes
+  shows as paused, and the lead's next message starts with it as an action it must take: close it or
+  restart it under a live process.
 - **Tasks close themselves** when their steps are done or their last worker ends, and a task nobody
   touched for 6 hours is closed as stalled. The pane and the panel never show yesterday's work as live.
 - **Estimates are measured, not guessed.** The finish time comes from the real rate of progress; with
@@ -157,6 +166,9 @@ review to everything.
 - **Lessons stay.** When a worker fails and a later attempt works, the lead saves what made the
   difference into the project's memory. When you correct a mistake, the lead adds it to the project's
   lessons file (`ekip project lesson NAME "..."`), and every later worker brief gets the whole list.
+  The lead itself gets the newest ones of the project (and its own, `ekip project lesson genel`)
+  with every message, and answers a mistake with its root cause and the mechanism that now prevents
+  it, not with an apology.
 - **Repeated work becomes a skill.** When the same kind of task comes up again and again, ekip drafts
   a proper `SKILL.md` for that project from the real runs; you accept it with one command and every
   agent can use it from then on.

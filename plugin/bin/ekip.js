@@ -236,7 +236,7 @@ const WORKER_BRIEF = [
   "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
   // a worker stopped its own render with pkill -f and killed the renders of two other workers
   "Other workers run on this machine at the same time: stop only processes you started yourself, by their PID (kill <pid>). Never use pkill, killall or kill by name or pattern.",
-  "A long job you start and must leave running after you finish (a render, a queue) is started in the background with its output in a log, then registered with `ekip show --pid <PID> <log>`; it survives when you stop. Never sit polling a long job yourself for many minutes.",
+  "A long job you start and must leave running after you finish (a render, an upload, a queue) is started with `ekip track --label \"<what>\" -- <command>`: it runs detached with its log, progress and stall checks, survives when you stop, and `ekip track ls` shows it. Never sit polling a long job yourself for many minutes.",
   "",
   "TASK:",
 ].join("\n");
@@ -1169,6 +1169,18 @@ Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Rend
   re-dispatch at once with a sharper brief or a strong pool; for a long render, raise the limit on
   that run instead of waiting. A worker that was cut off: \`ekip run --resume <run id>\`.
 - The same failure twice = stop: find the root cause before another attempt; no blind retries.
+- Every shell command that may take more than a minute (an upload, an encode, a sync, a queue
+  script) runs through \`ekip track --task $id --step N --label "<what>" -- <command>\`, never as a bare
+  long job in a Bash background shell: track measures progress, speed and finish, blocks the step
+  when nothing moves (\`--stall MIN\`, default 10) and closes it done or failed when the command
+  ends. Give it \`--total\` (bytes or count) and, when the output has no percent, \`--measure "<cmd
+  printing work done>"\`. \`--wait\` in a Bash background call wakes you when it ends.
+- Before a big transfer or render, time a small sample first (one file, a few seconds of video),
+  work out the full duration, and pass \`--eta-max <minutes>\`; track warns at once when the real speed
+  would miss it. Never tell the user something "is uploading" without having looked at its progress.
+- Never answer a mistake with "my fault" and move on. Say its root cause and what now prevents it
+  permanently in ekip or the project, and put that in place in the same turn (\`ekip project lesson\`,
+  \`--min-tier\`, \`ekip track\`, a project rule, a check).
 - Never let a model wait on something long (a render queue, other workers, a file to appear): chain
   it with \`ekip run --after <task|run id>\` or \`--when "<shell test>"\`, which waits in the background
   and starts the run when the condition holds; or write a small script.
@@ -1213,8 +1225,8 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
-- A long job you start yourself outside \`ekip run\` (an import, a render, a loop) is opened with
-  \`ekip show <log...>\` right away, so the user sees it in a pane like any worker.
+- A long job you start yourself outside \`ekip run\` (an import, a render, a loop) runs through
+  \`ekip track\` (above); \`ekip show <log...>\` only opens a pane on a log that already exists.
 - A worker that edits code that is running right now (ekip itself, a live dev server) gets
   \`--worktree\`; merge its branch after review.
 - Tasks never look frozen or skipped: mark every step you start, let long reporters pass \`--alive\`
@@ -1791,6 +1803,7 @@ ${c.bold("Workers")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
   ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "task"')} work shift: keep every ready pool busy
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        open a live pane on any log
+  ${c.cyan("ekip track")} ${c.gray('--task ID --label "what" [--total N|--measure "cmd"] [--stall MIN] [--eta-max MIN] -- CMD')} a long shell command as a watched job | ls | stop ID
   ${c.cyan("ekip show")} ${c.gray("<log...>")}           open a live pane on any log
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
@@ -1835,6 +1848,7 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
   ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "iş"')} mesai modu: tüm hazır havuzlar aynı anda çalışsın
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        logları canlı izleyen panel aç
+  ${c.cyan("ekip track")} ${c.gray('--task ID --label "ne" [--total N|--measure "komut"] [--stall DK] [--eta-max DK] -- KOMUT')} uzun kabuk komutu izlenen iş olarak | ls | stop ID
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           canlı görev takibi; task step --alive
@@ -1923,6 +1937,8 @@ switch (cmd) {
     openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`, { title: `ekip · ${rest.find((x) => x.startsWith("--title="))?.slice(8) ?? path.basename(files[0])}` });
     break;
   }
+  // ekip track [...] -- CMD: a long shell command as a watched job tied to a task step (workers/track.js)
+  case "track": code = (await (await import("../lib/workers/track.js")).main(rest)) ?? 0; break;
   case "skill": case "skills": {
     const [sub = "ls", proj, ...q] = rest;
     const gen = await import("../lib/projects/skillgen.js");

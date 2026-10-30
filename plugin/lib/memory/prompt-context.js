@@ -80,34 +80,82 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // user watches them on the panel and should never have to say "this is still open"; the reminder
 // comes with every message until each one is updated or closed.
 const lastMove = (t) => Math.max(...[t.updatedAt, t.p0At, t.progressAt, ...(t.steps ?? []).map((x) => x.at ?? x.updatedAt)].map((x) => Date.parse(x ?? "") || 0));
+const mine = (t) => { const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null; return !t.lead || t.lead === lead; };
 function staleTasks(home) {
   try {
-    const lead = process.env.ITERM_SESSION_ID?.split(":")[1] ?? process.env.TERM_SESSION_ID ?? null;
     const file = path.join(home, "tasks.json");
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    return JSON.parse(fs.readFileSync(file, "utf8")).filter((t) => t.status === "running" && (!t.lead || t.lead === lead)
+    return JSON.parse(fs.readFileSync(file, "utf8")).filter((t) => t.status === "running" && mine(t)
       && Date.now() - lastMove(t) > 20 * 60_000
       && !(t.workers ?? []).some((w) => w.status === "running" && w.pid && alive(w.pid)));
   } catch { return []; }
 }
 
+// Orphaned tasks: a step says "running" but no worker and no tracked job (ekip track) is alive for
+// it, and it has not moved for 10 minutes: a long command started in a bare background shell and
+// forgotten, or a worker that died. The panel shows them as running, so they come first, as an
+// action the lead has to take, not a reminder it may skip.
+async function orphanNote() {
+  try {
+    const tasks = await import("../tasks/tasks.js");
+    const list = tasks.active().filter((t) => mine(t) && tasks.orphaned(t));
+    if (!list.length) return { ids: new Set(), text: "" };
+    const ago = (t) => Math.round((Date.now() - Math.max(...t.steps.filter((s) => s.status === "running").map((s) => Date.parse(s.progressAt ?? s.startedAt ?? "") || 0), ...(t.workers ?? []).map((w) => Date.parse(w.endedAt ?? "") || 0))) / 60000);
+    const line = (t) => {
+      const steps = t.steps.map((s, i) => (s.status === "running" ? `step ${i + 1} "${s.title}"` : null)).filter(Boolean).join(", ");
+      const w = (t.workers ?? []).at(-1);
+      return `- ${t.id} "${t.title}": ${steps} marked running, nothing moved for ${ago(t)} min${w ? `; last worker ${w.label ?? w.runId} (${w.via ?? "?"}) ${w.status}` : "; no worker or tracked job was ever linked"}`;
+    };
+    return {
+      ids: new Set(list.map((t) => t.id)),
+      text: `## SAHİPSİZ: çalışan süreç yok, ya kapat ya yeniden başlat (mandatory, before anything else)\nThese tasks show as running on the user's panel, but no worker or tracked job is alive for them:\n${list.map(line).join("\n")}\nFor each one, in this turn: check whether the work really finished (its log, output files, remote state). Finished: \`ekip task step <id> N done\` and \`ekip task done <id> "<result>"\`. Not finished: restart it under a live process (\`ekip run --task <id>\`, or \`ekip track --task <id> --step N -- <command>\` for a shell command) or \`ekip task fail <id> "<why>"\`. Tell the user which one you did; do not leave any of them as it is.`,
+    };
+  } catch { return { ids: new Set(), text: "" }; }
+}
+
+// The lessons of the project this message is about, and the lead's own ones (genel), on every
+// message whatever it is about: the mistakes the user already had to correct once. Newest ten of
+// the project, then the newest general ones, 1,500 characters at most.
+async function lessonsNote(projects) {
+  try {
+    const { lessons } = await import("../projects/project-config.js");
+    const out = [];
+    let room = 1500;
+    for (const p of [...projects.filter((x) => x && x.name !== "genel"), { name: "genel" }]) {
+      if (room < 120 || out.some((x) => x.name === p.name)) continue;
+      const items = lessons(p, room).split("\n").filter(Boolean).slice(p.name === "genel" ? -5 : -10);
+      if (!items.length) continue;
+      out.push({ name: p.name, items });
+      room -= items.join("\n").length + p.name.length + 8;
+    }
+    if (!out.length) return "";
+    return `## Lessons (mistakes the user already corrected; apply them whatever this message is about)\n${out.map((x) => `${x.name}:\n${x.items.join("\n")}`).join("\n")}`;
+  } catch { return ""; }
+}
+
 export async function main() {
   const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
   const prompt = String(input.prompt ?? "");
-  const stale = staleTasks((await import("../core/core.js")).HOME);
-  const emit = (text) => { if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text.slice(0, 6000) } })); };
-  const staleNote = stale.length
+  const orphans = await orphanNote();
+  const stale = staleTasks((await import("../core/core.js")).HOME).filter((t) => !orphans.ids.has(t.id));
+  const staleText = stale.length
     ? `## Open tasks that stopped moving (update or close them now, before anything else)\n${stale.map((t) => `- ${t.id} "${t.title}": ${t.steps.filter((x) => x.status !== "done" && x.status !== "skipped").map((x, i) => `${x.title} (${x.status})`).join(", ") || "all steps done"}; last update ${Math.round((Date.now() - lastMove(t)) / 60000)} min ago`).join("\n")}\nIf the work is done: mark the steps and \`ekip task done <id> "<result>"\`. If it goes on: mark the running step or add a note. If it failed: \`ekip task fail <id> "<why>"\`.`
     : "";
+  // orphaned tasks first: the context is cut at 6,000 characters and they must never be the part cut
+  let staleNote = [orphans.text, staleText].filter(Boolean).join("\n\n");
+  const emit = (text) => { if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text.slice(0, 6000) } })); };
   // system notifications (finished background tasks, agent results) arrive as prompts too: they are
   // not the user asking anything and only pulled in noise
   if (prompt.trim().length < 8 || prompt.startsWith("/") || /^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION)/.test(prompt)) return emit(staleNote);
   const { listProjects, findProject } = await import("../projects/projects.js");
   const projects = listProjects().filter((p) => p.tdai?.agentId);
   let hits = mentioned(prompt, projects).slice(0, 2);
+  const here = findProject(input.cwd || process.cwd());
   // the registered project of this folder, even before it has a memory agent: its rules and local
   // skills still apply (memory lookups for it then just come back empty)
-  if (!hits.length) { const here = findProject(input.cwd || process.cwd()); if (here) hits = [{ p: here, by: "folder" }]; }
+  if (!hits.length && here) hits = [{ p: here, by: "folder" }];
+  const lessonText = await lessonsNote(hits.length ? hits.map((h) => h.p) : [here]);
+  staleNote = [staleNote, lessonText].filter(Boolean).join("\n\n");
   const mem = await import("./memory.js");
   // Work outside any project (a one-off ask, a repo that is not registered) is remembered in the
   // general space; it is searched for every such message, so nothing done there is lost.

@@ -351,8 +351,9 @@ export async function main(argv) {
     console.log(`${r.dir}${r.made.length ? `\n  oluşturuldu: ${r.made.join(", ")}` : "\n  zaten vardı"}\n  .ekip/rules.md'yi doldurun ve klasörü projeyle birlikte commit edin.`);
   } else if (sub === "lesson" || sub === "lessons") {
     // ekip project lesson <name> "text": a mistake the user corrected, added to every later brief
-    const p = args[0] && !args[0].startsWith("-") ? getProject(args[0]) : null;
-    if (!p) die('kullanım: ekip project lesson <ad> "ders"  |  ekip project lessons <ad>');
+    // "genel": the lead's own lessons, outside any project (data/projects/genel.lessons.md)
+    const p = args[0] && !args[0].startsWith("-") ? getProject(args[0]) ?? (args[0] === "genel" ? { name: "genel" } : null) : null;
+    if (!p) die('kullanım: ekip project lesson <ad|genel> "ders"  |  ekip project lessons <ad|genel>');
     const cfg = await import("./project-config.js");
     if (sub === "lessons" || !args[1]) { console.log(cfg.lessons(p, 100_000) || `(${cfg.lessonsFile(p)})`); return; }
     console.log(cfg.addLesson(p, args.slice(1).join(" ")));

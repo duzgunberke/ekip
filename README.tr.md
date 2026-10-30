@@ -109,6 +109,15 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
   `--retry-on-kill` yük yüzünden öldürülen worker'ı yük düşünce bir kez yeniden başlatır.
 - **Havuz değişimi görünür.** Her geçiş göreve not düşer ("codex kotası bitti, yenilenme …, copilot'a
   geçildi"); `--min-tier strong` zayıf bir havuza hiç düşmez.
+- **Uzun komutlar izlenir, unutulmaz.** Bir yükleme, kodlama ya da kuyruk betiği çıplak bir arka plan
+  kabuğunda değil `ekip track --task ID --label "..." -- <komut>` ile çalışır. İlerlemeyi çıktıdan
+  (`%12`, `3/12`, `256 MiB/1.5 GiB`) ya da `--measure "<komut>"` ile `--total`'a göre okur; adımın
+  yüzdesini, hızını ve bitiş saatini güncel tutar, `--stall` dakika hiçbir şey ilerlemezse adımı
+  engeller, ilk iki dakikanın hızı `--eta-max`'ı kaçıracaksa hemen uyarır ve komut bitince adımı
+  bitti ya da başarısız (son satırlar ve sinyal nedeniyle) olarak kapatır.
+- **Sahipsiz işler en önde.** 10 dakikadır ne canlı worker'ı ne izlenen işi olan "sürüyor" adımı
+  duraklamış görünür; liderin bir sonraki mesajı onunla, yapması zorunlu bir eylem olarak başlar:
+  kapat ya da canlı bir süreçle yeniden başlat.
 - **Görevler kendiliğinden kapanır:** adımlar bitince ya da son worker bitince. 6 saat kimsenin
   dokunmadığı görev "takıldı" olarak kapanır. Panel ve terminal dünkü işi canlı göstermez.
 - **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
@@ -144,7 +153,9 @@ yerine bunları öğrenir.
   kontroller.
 - **Dersler kalır.** Bir worker başarısız olup sonraki deneme işe yarayınca lider, farkı yaratan şeyi
   projenin belleğine yazar. Bir hatayı düzelttiğinizde lider onu projenin dersler dosyasına ekler
-  (`ekip project lesson AD "..."`); sonraki her worker brief'i listenin tamamını alır.
+  (`ekip project lesson AD "..."`); sonraki her worker brief'i listenin tamamını alır. Liderin
+  kendisi de projenin (ve kendi, `ekip project lesson genel`) en yeni derslerini her mesajda alır;
+  bir hataya özürle değil, kök nedeniyle ve onu artık kalıcı olarak önleyen mekanizmayla cevap verir.
 - **Tekrarlanan iş beceriye dönüşür.** Aynı türden iş defalarca gelince ekip, gerçek çalıştırmalardan o
   projeye özel düzgün bir `SKILL.md` taslağı çıkarır; tek komutla kabul edersiniz ve o andan itibaren
   her agent kullanır.
