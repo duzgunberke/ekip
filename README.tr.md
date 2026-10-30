@@ -102,6 +102,12 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
 - **Beklemek takılmak değildir.** `ekip task block ID "neden"` ve `ekip task wait ID "neye karar
   vereceksiniz"` görevi engellendi ya da sizi bekliyor diye işaretler (bildirim gelir); ikisi de
   takıldı uyarısı ya da tahmin göstermez.
+- **Kararlar panelde kalır.** Lider sohbette size bir şey sorduğunda `ekip task ask ID "soru" --option A
+  --option B` de çalıştırır; soru ve seçenekler siz cevaplayana kadar panelin ve `ekip durum`'un en
+  üstünde durur.
+- **Biten her görev ne ürettiğini söyler.** `ekip task done ID "sonuç" --link <dosya ya da URL>` ya da,
+  kendiliğinden, worker raporunun ilk paragrafı ve içindeki yollar/URL'ler: bölmede, `ekip durum`'da
+  ve panelde tıklanabilir linklerle "Sonuç: …".
 - **İş sırasını bekler.** `ekip run --after ID` ya da `--when "KOMUT"` bir görev veya çalıştırma bitene ya
   da bir kabuk testi geçene kadar arka planda bekler. Ağır yerel iş (`--heavy` ya da render içeren bir
   brief) makinenin yuvalarından birini alır (çekirdek ve belleğe göre, `maxLocalWorkers`); Mac dolu ya
@@ -131,6 +137,11 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
   (kanıt değil, sinyal).
 - **Hiçbir şey gözden uzakta çalışmaz.** Worker'lar bir bölmede açılır; liderin kendi başlattığı
   uzun işler de (`ekip show <log>`).
+- **"Ne oluyor?" sorusunun cevabı tek ekranda.** `ekip durum` (`ekip status`) şu an neyin çalıştığını
+  (yüzde, hız, bitiş, son çıktı satırı), sizden ne beklendiğini, neyin takıldığını ve ekip'in ne
+  yaptığını, son 24 saatte biten işleri sonuç ve linkleriyle, ekip'in kendi yayın durumunu (sürüm,
+  main test ediliyor ya da geçti, hub güncel mi) gösterir. Görev bölmesi ve panelin görevler sayfası
+  aynı özeti en üstte gösterir; sorular kırmızı, takılan işler turuncu.
 - **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; yenilenme
   zamanı CLI'ın kendi mesajından okunur ve `ekip agents` ne zaman geri geleceğini gösterir.
 - **Worker'lar birbirinin işine karışmaz.** Her brief, yalnız kendi başlattıkları süreçleri PID ile

@@ -13,7 +13,7 @@ Everyday
   ekip
   ekip --free
   ekip --safe
-  ekip status
+  ekip status [--system|--json|--offline]   (ekip durum) what runs, waits for you, is stuck, finished; release
   ekip limits
   ekip doctor [--fix]
   ekip update                     bring in the newest release (shows what changed)
@@ -45,6 +45,8 @@ Projects and memory
   ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
   ekip tasks [--watch|--all]
   ekip task new|step|add|note|done|fail|cancel
+  ekip task done ID "result" [--link PATH|URL]...  |  task result ID "result" [--link L]...
+  ekip task ask ID "question" [--option A]... | answer ID "choice"
   ekip task block|wait ID "why" | unblock ID
   ekip tasks sync
 
@@ -85,6 +87,12 @@ Every pool takes a limited number of workers at once (`poolConcurrency` in `data
 ### Tasks and liveness
 
 `ekip tasks` lists live tasks; `--watch` follows updates and `--all` includes closed tasks. The lead creates and updates tasks with `ekip task new`, `step`, `add`, `note`, `done`, `fail`, and `cancel`. A step can be marked `running`, `done`, `failed`, or `skipped`; `--pct`, `--note`, `--detail`, `--parallel`, and `--alive` provide progress context. `--alive` refreshes liveness during a long step. `ekip tasks sync` resends task state to the hub if the panel is stale. `ekip reconcile` closes runs whose processes disappeared without reporting.
+
+`ekip task done ID "one-sentence result" --link out/final.mp4 --link https://…` closes the task with its result: the sentence and up to five links (paths and URLs found in the sentence are added) are kept as the task's `result` and shown as "Sonuç: …" in the pane, in `ekip status` and on the panel (URLs open, file paths are copied). When `ekip run --task ID` ends well, the first meaningful paragraph of the worker's report (at most 300 characters, headings, code and tables skipped) and up to three file paths or URLs from it become the task's result and a note, until the lead writes its own; `ekip task result ID "…" [--link …]` corrects it without closing the task. A result the lead wrote is never replaced by a worker report.
+
+`ekip task ask ID "Shall we render the character again?" --option "Yes" --option "No"` puts a decision on the task: the step waits for the user (`waiting-user`, with a notification) and the question with its options sits at the top of the panel ("Senden beklenenler") and of `ekip status` until `ekip task answer ID "Yes"`, which notes the decision and lets the step run again. The lead calls it whenever it asks the user something in chat, so a question asked once does not get lost in the conversation.
+
+`ekip status` (or `ekip durum`) is one screen in plain words with five parts: what runs now (each task's running step, percent, speed and estimated finish, its workers and tracked jobs with their last output line, plus workers and tracked jobs without a task), what waits for you (questions and options), what is stuck and why (blocked, paused with no live process, no progress for 15 minutes, or failed in the last 24 hours) with what ekip did about it (pool switches, restarts, stopped workers), what finished in the last 24 hours with its result and links, and ekip's release state: this install's version, main's last commit and whether the hub's CI is testing it (with how long), passed or failed it, and whether the hub runs that commit. The release part comes from the hub's `GET /api/release`; without a hub, main's head comes from `git ls-remote`. `--offline` skips the network and shows the last release state seen, `--json` prints it all, `--system` shows the older view of pools, memory, panel and recent runs. The task pane shows the counts (waiting for you, stuck, running, finished), the first question, the first stuck job and the release line on top.
 
 `ekip task block ID "reason"` marks the running (or next) step `blocked`, `ekip task wait ID "what the user decides"` marks it `waiting-user` and sends a notification; `--step N` picks the step. Neither shows a stall warning or an estimate, and a held task waits up to 72 hours instead of 6 before it is closed. `ekip task unblock ID` (or marking the step running) ends the hold. `ekip task cancel` and `done` also stop the task's live workers (SIGTERM to their `ekip run`). Every task command, the pane and the hub sync close workers whose process is gone, with the reason from their log; a task with a running step and no live worker for 5 minutes shows as "paused: no live worker" (10 minutes when the task never had a worker). Such an orphaned task is noted once on the task and comes first in the lead's next prompt as a mandatory action (close it or restart it under a live process).
 
