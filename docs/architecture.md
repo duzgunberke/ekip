@@ -71,6 +71,19 @@ flowchart LR
 | `ekip reconcile` | Closes runs whose processes disappeared without reporting. It also runs before a new worker run and as part of `doctor`. |
 | Web panel | Overview, projects and code maps, jobs, runs, worker pools, panels, and live tasks with step details and stall status; blocked, waiting-for-you and paused tasks have their own label and no estimate. Above the task list a digest card shows what waits for you (red, with the options), what is stuck (orange, with what ekip did), what runs, what finished in 24 hours with its result and links, and the release line. The interface supports English and Turkish; route paths remain English. |
 
+### Terminal back ends
+
+Panes go through `plugin/lib/core/terminal.js`, one small interface per terminal: `detect()` (from `WEZTERM_PANE`, `KITTY_WINDOW_ID`, `TERM_PROGRAM`/`ITERM_SESSION_ID`), `listPanes()`, `openPane(command, { below, title })`, `paneAlive(id)`, `focus(id)`, `setTitle(id, title)`. The old names in `core.js` forward to it.
+
+| Back end | How | Task pane stays single by |
+|---|---|---|
+| iTerm2 | AppleScript (`osascript`); worker panes in a column right of the lead, past five as tabs | a flag file with the session id, checked against the open sessions; an osascript timeout counts as "still open" |
+| WezTerm | `wezterm cli --no-auto-start` `list --format json`, `split-pane`, `spawn`, `set-tab-title`, `activate-pane` | its title (`ekip · görevler`, set by the pane's shell) and an `ekip_role` user variable in the lead's tab of the pane list; a failed list opens nothing |
+| kitty | `kitty @ ls`, `launch`, `focus-window`, `set-tab-title` (needs `allow_remote_control` and the splits layout) | its title in `kitty @ ls` |
+| other | a new Terminal.app window | no task pane |
+
+Each lead records its own id on its tasks (`terminal.js` `leadId()`: the iTerm2 session, `wezterm-<pane>`, `kitty-<window>`), so a lead sees only its own tasks. `ekip terminal install` writes WezTerm's `ekip.lua`, which reads `data/tasks.json` every two seconds for the tab bar and status line.
+
 Panel routes: `/tasks`, `/overview`, `/projects`, `/code-map`, `/jobs`, `/runs`, `/pools`, and `/panels`.
 
 ## Reliability and safety

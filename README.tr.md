@@ -202,6 +202,22 @@ depolarıyla çalışmasını istiyorsanız, onlara bozulması sorun olmayan bir
 
 Kısa görevler arka planda çalışır ve sonuçlarını bildirir. Uzun süre çalışan agent'lar kendi terminallerinde **ekip üyeleri** olarak açılıp [hoptell](https://github.com/EminUZUN/hoptell) üzerinden birbirlerine mesaj atabilir: biri diğerinden bir dosyayı incelemesini ister ya da sıradaki adımı devreder. `ekip team up --open` komutuyla başlatabilirsiniz.
 
+## Kendi terminali (isteğe bağlı)
+
+ekip iTerm2'de eskisi gibi çalışır. iTerm2'yi AppleScript ile yönetmek yavaş geliyorsa ya da düz
+terminalde durumları ayırt etmek yoruyorsa `ekip terminal install` ekip için **WezTerm** kurar,
+`ekip terminal open` lead'i onda başlatır: lead solda, işçi bölmeleri sağda bir sütunda, görev
+bölmesi altta; ekip'in koyu temasıyla ve açık görevler (sizi bekleyen, engellenen, çalışan) sekme
+çubuğunda. ekip onu `wezterm cli` ile yönetir; milisaniyede JSON bölme listesi döner, böylece yoğun
+bir makinede aynı görev bölmesi iki kez açılamaz. Kendi `wezterm.lua` dosyanıza dokunulmaz. WezTerm
+kitty'ye tercih edildi: MIT lisanslı, Homebrew cask ile kurulur, bölmeleri ek ayar olmadan komut
+satırından listeler ve böler, Lua ile ayarlanır; kitty de çalışır (`kitty @`, remote control açıkken)
+ama ikinci sırada.
+
+Her terminalde durumlar aynı görünür: çalışıyor camgöbeği ●, bitti yeşil ✓, hata kırmızı ✗,
+engellendi turuncu ■ ve nedeni, sizi bekliyor sarı ? en üstte, duraklamış gri ◌, kuyrukta mavi ⧗ ve
+sırası. 256 renk yoksa düz ASCII'ye düşer, `NO_COLOR`'a uyar.
+
 ## Hızlı başlangıç
 
 macOS, Node 22+, Docker ve [Claude Code](https://claude.com/claude-code) gerekir.

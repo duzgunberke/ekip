@@ -37,6 +37,21 @@ flowchart LR
 
 <img src="screenshots/terminal-banner.png" alt="The ekip terminal banner shown at startup" width="100%">
 
+## Optional: ekip's own terminal
+
+ekip works in iTerm2 (recommended so far) and opens panes there with AppleScript. For a faster,
+more colourful setup, let ekip install WezTerm and its config:
+
+```bash
+ekip terminal install --dry-run   # what it would do
+ekip terminal install             # brew install --cask wezterm, then ~/.config/wezterm/ekip.lua
+ekip terminal open                # start the lead in WezTerm
+```
+
+Your own `~/.wezterm.lua` or `~/.config/wezterm/wezterm.lua` is not changed; if you have one, add the
+two lines the command prints before `return config`. Without Homebrew the command prints the install
+steps instead. Nothing changes for iTerm2 users who skip this.
+
 ## Provider keys
 
 Use the interactive wizard to configure free-tier keys. Enter skips a provider; `q` stops the wizard. `--all` asks again for providers that already have keys, and `apply` restarts freellmapi with the current configuration.
