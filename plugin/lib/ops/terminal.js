@@ -6,8 +6,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, ROOT, die, has, saveSettings } from "../core/core.js";
-import { TASK_TITLE, detect, paneShell, weztermBin } from "../core/terminal.js";
+import { HOME, ROOT, SETTINGS, ask, die, has, saveSettings } from "../core/core.js";
+import { TASK_TITLE, detect, paneShell, parseWeztermList, weztermBin } from "../core/terminal.js";
 import { c } from "../core/ui.js";
 import { t } from "../core/i18n.js";
 
@@ -178,17 +178,17 @@ export function userConfigState(env = process.env) {
   return { state: /require\s*\(?\s*["']ekip["']/.test(text) ? "linked" : "own", file };
 }
 
-function install(args, env = process.env) {
+export function install(args, env = process.env, { run = spawnSync, brew = has("brew"), platform = process.platform } = {}) {
   const dry = args.includes("--dry-run");
   const step = (s) => console.log(`  ${dry ? c.gray(t("(deneme)")) : c.cyan("›")} ${s}`);
   console.log(`${c.bold(t("ekip terminali: WezTerm"))}${dry ? c.gray(` · ${t("deneme: hiçbir şey kurulmaz, dosya yazılmaz")}`) : ""}`);
   if (weztermInstalled(env)) step(t("WezTerm kurulu"));
-  else if (process.platform !== "darwin") step(t("WezTerm kurulu değil: https://wezterm.org/install/linux.html adresindeki paketi kurun"));
-  else if (!has("brew")) step(t("WezTerm kurulu değil ve Homebrew yok. Önce Homebrew'u kurun (https://brew.sh), sonra: {cmd}", { cmd: "brew install --cask wezterm" }));
+  else if (platform !== "darwin") step(t("WezTerm kurulu değil: https://wezterm.org/install/linux.html adresindeki paketi kurun"));
+  else if (!brew) step(t("WezTerm kurulu değil ve Homebrew yok. Önce Homebrew'u kurun (https://brew.sh), sonra: {cmd}", { cmd: "brew install --cask wezterm" }));
   else if (dry) step(t("kurulacak: {cmd}", { cmd: "brew install --cask wezterm" }));
   else {
     step("brew install --cask wezterm");
-    if (spawnSync("brew", ["install", "--cask", "wezterm"], { stdio: "inherit" }).status !== 0) die("brew install --cask wezterm failed");
+    if (run("brew", ["install", "--cask", "wezterm"], { stdio: "inherit" }).status !== 0) { console.log(`  ${c.red("✗")} brew install --cask wezterm failed`); return 1; }
   }
   const dir = configDir(env);
   const mine = path.join(dir, "ekip.lua"), start = path.join(dir, "ekip-start.lua");
@@ -208,22 +208,158 @@ function install(args, env = process.env) {
   return 0;
 }
 
-function open(args, env = process.env) {
-  const dry = args.includes("--dry-run");
-  if (!weztermInstalled(env)) die(t("WezTerm kurulu değil: ekip terminal install"));
+// `wezterm start` for a new window running `ekip <args>` in cwd. A running WezTerm opens the window
+// from its own process, so ekip's own variables (EKIP_HOME, …) go on the command line.
+export function startArgv(args, { env = process.env, cwd = process.cwd() } = {}) {
   const user = userConfigState(env);
   const start = path.join(configDir(env), "ekip-start.lua");
   // a user config without ekip.lua: this window still gets ekip's settings
   const cfg = user.state === "own" && fs.existsSync(start) ? ["--config-file", start] : [];
-  const rest = args.filter((a) => a !== "--dry-run");
-  const command = ekipCmd(rest);
-  const argv = [...cfg, "start", "--cwd", process.cwd(), "--", "/bin/zsh", "-lc", command];
+  const keep = Object.entries(env).filter(([k]) => (k.startsWith("EKIP_") && k !== "EKIP_TERMINAL") || k === "CLAUDE_CONFIG_DIR");
+  const prefix = keep.map(([k, v]) => `${k}=${JSON.stringify(v)} `).join("");
+  return [...cfg, "start", "--cwd", cwd, "--", "/bin/zsh", "-lc", `${prefix}${ekipCmd(args)}`];
+}
+const childEnvOf = (env) => {
+  const out = { ...env };
+  for (const k of ["ITERM_SESSION_ID", "TERM_SESSION_ID", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "WEZTERM_PANE", "KITTY_WINDOW_ID"]) delete out[k];
+  return out;
+};
+
+function open(args, env = process.env) {
+  const dry = args.includes("--dry-run");
+  if (!weztermInstalled(env)) die(t("WezTerm kurulu değil: ekip terminal install"));
+  const argv = startArgv(args.filter((a) => a !== "--dry-run"), { env });
   if (dry) { console.log(`${weztermBin(env)} ${argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`); return 0; }
-  const childEnv = { ...env };
-  for (const k of ["ITERM_SESSION_ID", "TERM_SESSION_ID", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "WEZTERM_PANE", "KITTY_WINDOW_ID"]) delete childEnv[k];
-  spawn(weztermBin(env), argv, { detached: true, stdio: "ignore", env: childEnv }).unref();
+  spawn(weztermBin(env), argv, { detached: true, stdio: "ignore", env: childEnvOf(env) }).unref();
   console.log(t("ekip WezTerm'de açılıyor"));
   return 0;
+}
+
+// ---- WezTerm as the default terminal (`ekip` in another terminal moves to WezTerm) --------------
+
+const preference = (env, settings) => env.EKIP_TERMINAL || settings.terminal || "current";
+
+/** Should a lead start move to WezTerm? { move: true } or { move: false, why } (why null: say nothing). */
+export function handoffPlan(args, { env = process.env, settings = SETTINGS, tty = !!(process.stdin.isTTY && process.stdout.isTTY), installed = () => weztermInstalled(env) } = {}) {
+  if (args.includes("--here")) return { move: false, why: null };
+  if (preference(env, settings) !== "wezterm") return { move: false, why: null };
+  if (detect(env) === "wezterm") return { move: false, why: null };
+  // a print run, a team member, a pipe or an SSH login stays where it is
+  if (!tty || args.some((a) => a === "-p" || a === "--print" || a === "--member")) return { move: false, why: null };
+  if (env.SSH_CONNECTION || env.SSH_TTY) return { move: false, why: null };
+  if (!installed()) return { move: false, why: t("WezTerm bulunamadı") };
+  return { move: true };
+}
+
+/** Which terminal ekip was started from, for closing it: "iterm", "apple" or "other". */
+export function hostTerminal(env = process.env) {
+  if (env.TMUX) return "other";
+  if (env.TERM_PROGRAM === "iTerm.app" && env.ITERM_SESSION_ID) return "iterm";
+  if (env.TERM_PROGRAM === "Apple_Terminal") return "apple";
+  return "other";
+}
+
+const asString = (s) => `"${String(s).replace(/[\\"]/g, "\\$&")}"`;
+// Waits a moment so ekip has exited (no "a process is running" prompt), then closes only this one
+// session / tab; a window with no other tab closes with it.
+export function itermCloseScript(sessionId) {
+  const id = String(sessionId ?? "").split(":").pop();
+  if (!/^[0-9A-Fa-f-]{8,}$/.test(id)) return null;
+  return `delay 1
+tell application "iTerm2"
+  repeat with w in windows
+    repeat with tb in tabs of w
+      repeat with s in sessions of tb
+        if unique id of s is ${asString(id)} then
+          close s
+          return
+        end if
+      end repeat
+    end repeat
+  end repeat
+end tell`;
+}
+
+export function terminalAppCloseScript(tty) {
+  if (!/^\/dev\/ttys?\d+$/.test(String(tty ?? ""))) return null;
+  return `delay 1
+tell application "Terminal"
+  repeat with w in windows
+    repeat with tb in tabs of w
+      if tty of tb is ${asString(tty)} then
+        if (count of tabs of w) is 1 then
+          close w saving no
+        else
+          try
+            close tb saving no
+          end try
+        end if
+        return
+      end if
+    end repeat
+  end repeat
+end tell`;
+}
+
+const ttyName = (run) => { const r = run("tty", [], { encoding: "utf8", stdio: ["inherit", "pipe", "ignore"] }); return r.status === 0 ? (r.stdout ?? "").trim() : ""; };
+const paneIds = (run, env) => {
+  const r = run(weztermBin(env), ["cli", "--no-auto-start", "list", "--format", "json"], { encoding: "utf8", timeout: 5000 });
+  if (r.status !== 0 || r.error) return null;
+  return parseWeztermList(r.stdout ?? "")?.map((p) => p.id) ?? null;
+};
+
+/**
+ * Starts the lead in a new WezTerm window and, once its pane shows up in `wezterm cli list`, closes
+ * the session ekip was started from. Returns true when the lead now runs in WezTerm (the caller
+ * exits); false when WezTerm did not open (nothing is closed, the lead starts here).
+ */
+export async function handoff(args, { env = process.env, cwd = process.cwd(), run = spawnSync, launch, wait = 10_000, step = 250, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), platform = process.platform } = {}) {
+  const before = new Set(paneIds(run, env) ?? []);
+  const argv = startArgv(args, { env, cwd });
+  try {
+    if (launch) launch(weztermBin(env), argv);
+    else spawn(weztermBin(env), argv, { detached: true, stdio: "ignore", env: childEnvOf(env) }).unref();
+  } catch (e) {
+    console.log(c.yellow(t("WezTerm açılamadı ({why}); lead bu terminalde açılıyor", { why: e.message })));
+    return false;
+  }
+  let opened = false;
+  for (let waited = 0; waited <= wait && !opened; waited += step) {
+    opened = (paneIds(run, env) ?? []).some((id) => !before.has(id));
+    if (!opened) await sleep(step);
+  }
+  if (!opened) {
+    console.log(c.yellow(t("WezTerm açılamadı ({why}); lead bu terminalde açılıyor", { why: t("{n} sn içinde yeni pencere görünmedi", { n: Math.round(wait / 1000) }) })));
+    return false;
+  }
+  const host = platform === "darwin" ? hostTerminal(env) : "other";
+  const script = host === "iterm" ? itermCloseScript(env.ITERM_SESSION_ID) : host === "apple" ? terminalAppCloseScript(ttyName(run)) : null;
+  if (script) {
+    console.log(t("ekip WezTerm'de açıldı; bu sekme kapanıyor"));
+    // detached: it outlives ekip and the session it closes
+    if (launch) launch("osascript", ["-e", script]);
+    else spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" }).unref();
+  } else console.log(t("ekip WezTerm'de açıldı; artık WezTerm penceresini kullanın (bu terminal açık kalır)"));
+  return true;
+}
+
+function setDefault([value] = []) {
+  if (!["wezterm", "current"].includes(value)) die("usage: ekip terminal default wezterm|current");
+  saveSettings({ terminal: value });
+  console.log(value === "wezterm" ? t("ekip artık WezTerm'de açılır (bu terminalde açmak için: ekip --here)") : t("ekip artık çalıştırıldığı terminalde açılır"));
+  return 0;
+}
+
+/** `ekip init`, macOS: offer WezTerm once (default yes), then the config and the setting. */
+export async function initTerminal(args, { env = process.env, platform = process.platform, interactive = !!(process.stdin.isTTY && process.stdout.isTTY) && !env.CI, ask: prompt = ask, run = spawnSync, brew = has("brew"), installed = () => weztermInstalled(env) } = {}) {
+  if (platform !== "darwin" || args.includes("--no-terminal")) return "skipped";
+  if (!installed()) {
+    let yes = args.includes("--yes") || args.includes("-y");
+    if (!yes && interactive) yes = !/^(h|hayır|n|no)$/i.test((await prompt(`${t("ekip'in kendi terminalini (WezTerm) kurayım mı? [E/h]")} `)).trim());
+    if (!yes) { console.log(c.gray(t("WezTerm atlandı; sonra: ekip terminal install"))); return "skipped"; }
+    if (!brew) { console.log(t("WezTerm kurulu değil ve Homebrew yok. Önce Homebrew'u kurun (https://brew.sh), sonra: {cmd}", { cmd: "ekip terminal install" })); return "no-brew"; }
+  }
+  return install([], env, { run, brew, platform }) === 0 ? "installed" : "failed";
 }
 
 function status(env = process.env) {
@@ -231,15 +367,18 @@ function status(env = process.env) {
   const user = userConfigState(env);
   const names = { wezterm: "WezTerm", kitty: "kitty", iterm: "iTerm2", none: t("bölme açamayan bir terminal") };
   console.log(`  ${t("şu anki terminal")}: ${c.bold(names[kind])}`);
+  const pref = preference(env, SETTINGS);
+  console.log(`  ${t("ekip açılınca")}: ${pref === "wezterm" ? c.bold(t("WezTerm'e geçer")) : c.bold(t("bu terminalde kalır"))}${env.EKIP_TERMINAL ? c.gray(" (EKIP_TERMINAL)") : ""}  ${c.gray("· ekip terminal default wezterm|current")}`);
   console.log(`  WezTerm: ${weztermInstalled(env) ? c.green(t("kurulu")) : c.gray(t("kurulu değil"))}`);
   console.log(`  ekip.lua: ${fs.existsSync(path.join(configDir(env), "ekip.lua")) ? c.green(t("yazılmış")) : c.gray(t("yok (ekip terminal install)"))}  ·  ${user.file}: ${user.state === "linked" ? c.green(t("ekip.lua'yı yüklüyor")) : user.state === "own" ? c.yellow(t("ekip.lua'yı yüklemiyor")) : c.gray(t("yok"))}`);
   return 0;
 }
 
 export async function main([sub = "status", ...args]) {
-  if (sub === "install") return install(args);
+  if (sub === "install") { const code = install(args); if (code) die("brew install --cask wezterm failed"); return 0; }
+  if (sub === "default") return setDefault(args);
   if (sub === "open") return open(args);
   if (sub === "status") return status();
   if (sub === "config") { process.stdout.write(ekipLua()); return 0; }
-  die("usage: ekip terminal install [--dry-run] | open [--dry-run] [ekip args] | status | config");
+  die("usage: ekip terminal install [--dry-run] | open [--dry-run] [ekip args] | default wezterm|current | status | config");
 }
