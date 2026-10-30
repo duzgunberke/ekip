@@ -204,6 +204,12 @@ Kısa görevler arka planda çalışır ve sonuçlarını bildirir. Uzun süre �
 
 ## Kendi terminali (isteğe bağlı)
 
+<p align="center"><img src="docs/demo/terminal-wezterm.gif" alt="ekip yazınca lead WezTerm'de açılır: solda Claude oturumu, sağda logunu yazan iki işçi, altta çalışan, kuyrukta, engellenen, sizi bekleyen ve biten görevlerle görev bölmesi" width="100%"><br><sub><b>Tek komut</b> · <code>ekip</code> lead'i WezTerm'de açar: işçiler sağda, canlı görevler altta (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub></p>
+
+`ekip` yazın, lead WezTerm'de açılsın: işçi bölmeleri sağda, görev bölmesi altta; Claude ile eskisi
+gibi konuşursunuz. `ekip init` kurar, `ekip --here` bulunduğunuz terminalde kalır, iTerm2 de
+çalışmaya devam eder.
+
 ekip iTerm2'de eskisi gibi çalışır. iTerm2'yi AppleScript ile yönetmek yavaş geliyorsa ya da düz
 terminalde durumları ayırt etmek yoruyorsa `ekip terminal install` ekip için **WezTerm** kurar,
 `ekip terminal open` lead'i onda başlatır: lead solda, işçi bölmeleri sağda bir sütunda, görev
@@ -222,9 +228,23 @@ bulunduğunuz terminalde başlar. `ekip --here` ya da `EKIP_TERMINAL=current` o 
 terminalde kalır, `ekip terminal default wezterm|current` ayarı değiştirir; `ekip run`, `ekip tasks`
 gibi alt komutlar terminal değiştirmez.
 
-Her terminalde durumlar aynı görünür: çalışıyor camgöbeği ●, bitti yeşil ✓, hata kırmızı ✗,
-engellendi turuncu ■ ve nedeni, sizi bekliyor sarı ? en üstte, duraklamış gri ◌, kuyrukta mavi ⧗ ve
-sırası. 256 renk yoksa düz ASCII'ye düşer, `NO_COLOR`'a uyar.
+Her terminalde durumlar aynı görünür; sizi bekleyen her zaman en üstte:
+
+| Durum | Görünüş | | Durum | Görünüş |
+|---|---|---|---|---|
+| sizi bekliyor | sarı `?` | | çalışıyor | camgöbeği `●` |
+| engellendi | turuncu `■` ve nedeni | | kuyrukta | mavi `⧗` ve sırası |
+| hata | kırmızı `✗` | | bitti | yeşil `✓` |
+| duraklamış, çalışan işçi yok | gri `◌` | | | |
+
+256 renk yoksa düz ASCII'ye düşer, `NO_COLOR`'a uyar.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/demo/terminal-status.gif" alt="ekip durum: şimdi çalışan, sizden beklenen, takılan, sonucu ve bağlantısıyla biten işler ve yayın satırı"><br><sub><b>ekip durum</b> · ne çalışıyor, sizden ne bekleniyor, ne takıldı, ne bitti</sub></td>
+    <td width="50%"><img src="docs/demo/terminal-track.gif" alt="ekip track: yüzde, hız ve bitiş saatiyle ilerleyip biten bir yükleme ve beklenenden yavaş olduğunu hemen söyleyen bir kopyalama"><br><sub><b>ekip track</b> · yüzde, hız ve bitiş saatiyle uzun bir yükleme; yavaş bir kopya hemen uyarır</sub></td>
+  </tr>
+</table>
 
 ## Hızlı başlangıç
 
