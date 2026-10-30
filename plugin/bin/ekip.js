@@ -236,7 +236,7 @@ const WORKER_BRIEF = [
   "Never revoke, delete or rotate credentials, certificates, signing identities, API keys or tokens, and never delete accounts, app records or production data, even when it would get you past an error: stop and report what is needed instead.",
   // a worker stopped its own render with pkill -f and killed the renders of two other workers
   "Other workers run on this machine at the same time: stop only processes you started yourself, by their PID (kill <pid>). Never use pkill, killall or kill by name or pattern.",
-  "A long job you start and must leave running after you finish (a render, a queue) is started in the background with its output in a log, then registered with `ekip show --pid <PID> <log>`; it survives when you stop. Never sit polling a long job yourself for many minutes.",
+  "A long job you start and must leave running after you finish (a render, an upload, a queue) is started with `ekip track --label \"<what>\" -- <command>`: it runs detached with its log, progress and stall checks, survives when you stop, and `ekip track ls` shows it. Never sit polling a long job yourself for many minutes.",
   "",
   "TASK:",
 ].join("\n");
@@ -1791,6 +1791,7 @@ ${c.bold("Workers")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
   ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "task"')} work shift: keep every ready pool busy
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        open a live pane on any log
+  ${c.cyan("ekip track")} ${c.gray('--task ID --label "what" [--total N|--measure "cmd"] [--stall MIN] [--eta-max MIN] -- CMD')} a long shell command as a watched job | ls | stop ID
   ${c.cyan("ekip show")} ${c.gray("<log...>")}           open a live pane on any log
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} worker CLIs and quotas
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} persistent team members via hoptell
@@ -1835,6 +1836,7 @@ ${c.bold("İşçiler")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
   ${c.cyan("ekip mesai")} ${c.gray('on [--include-claude]|off|status|all "iş"')} mesai modu: tüm hazır havuzlar aynı anda çalışsın
   ${c.cyan("ekip show")} ${c.gray("<log...>")}        logları canlı izleyen panel aç
+  ${c.cyan("ekip track")} ${c.gray('--task ID --label "ne" [--total N|--measure "komut"] [--stall DK] [--eta-max DK] -- KOMUT')} uzun kabuk komutu izlenen iş olarak | ls | stop ID
   ${c.cyan("ekip agents")} ${c.gray("ls|install|login|test")} işçi CLI'ları ve kotaları
   ${c.cyan("ekip team")} ${c.gray("up|down|ls|open [--open]")} hoptell üzerinden kalıcı ekip üyeleri
   ${c.cyan("ekip tasks")} ${c.gray("[--watch|--all]")}           canlı görev takibi; task step --alive
@@ -1923,6 +1925,8 @@ switch (cmd) {
     openPane(`tail -n 40 -F ${files.map((f) => JSON.stringify(f)).join(" ")}`, { title: `ekip · ${rest.find((x) => x.startsWith("--title="))?.slice(8) ?? path.basename(files[0])}` });
     break;
   }
+  // ekip track [...] -- CMD: a long shell command as a watched job tied to a task step (workers/track.js)
+  case "track": code = (await (await import("../lib/workers/track.js")).main(rest)) ?? 0; break;
   case "skill": case "skills": {
     const [sub = "ls", proj, ...q] = rest;
     const gen = await import("../lib/projects/skillgen.js");

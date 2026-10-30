@@ -46,6 +46,11 @@ export function percent(t) {
 
 /** Estimated finish: elapsed time scaled by what is left, once anything is measurable. */
 export function eta(t) {
+  // a step measured by `ekip track` knows its own finish from its real speed: when it is the last
+  // work of the task, that is the task's finish too
+  const run = (t.steps ?? []).filter((s) => s.status === "running");
+  if (t.status === "running" && !t.hold && run.length && run.every((s) => s.etaAt && Date.parse(s.etaAt) > Date.now()) && !t.steps.some((s) => s.status === "pending" || HELD.includes(s.status)))
+    return new Date(Math.max(...run.map((s) => Date.parse(s.etaAt)))).toISOString();
   const p = percent(t);
   // no guess until there is a real basis: a stalled step or early progress gives absurd numbers
   if (t.status !== "running" || p < 15 || t.hold || paused(t) || t.steps.some((s) => HELD.includes(s.status) || (s.status === "running" && stalledFor(s, t)))) return null;
@@ -103,7 +108,7 @@ export function create({ title, project, steps = [] }) {
 }
 
 /** Mark step n (1-based): running [pct] | done | failed | skipped; starting one finishes earlier running ones. */
-export function step(id, n, status = "done", { pct, note, detail, parallel = false, alive = false } = {}) {
+export function step(id, n, status = "done", { pct, note, detail, parallel = false, alive = false, rate, etaAt } = {}) {
   return update(id, (t) => {
     const s = t.steps[n - 1] ?? die(`task ${id} has no step ${n}`);
     // a late progress update from a script must not reopen a step of a task that is already closed
@@ -114,6 +119,10 @@ export function step(id, n, status = "done", { pct, note, detail, parallel = fal
     // percent did not change yet, as with one very long item; that is progress, not a stall.
     if ((pct != null && pct !== s.pct) || alive || (status === "running" && s.status !== "running")) s.progressAt = now();
     if (detail != null) s.detail = detail;
+    // speed and finish of a measured step (ekip track); a finished step has no finish ahead of it
+    if (rate !== undefined) s.rate = rate;
+    if (etaAt !== undefined) s.etaAt = etaAt;
+    if (status !== "running") delete s.etaAt;
     if (HELD.includes(s.status) && !HELD.includes(status)) { delete s.reason; if (t.hold?.step === n) delete t.hold; }
     Object.assign(s, { status, ...(pct != null ? { pct } : {}), ...(status === "running" && !s.startedAt ? { startedAt: now() } : {}), ...(["done", "failed", "skipped"].includes(status) ? { endedAt: now() } : {}) });
     if (note) t.notes.push({ at: now(), text: note });
