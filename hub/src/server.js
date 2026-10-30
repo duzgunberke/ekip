@@ -246,7 +246,9 @@ const cleanLog = (s) => {
 // ---- tasks (live progress of user requests, pushed by the Mac) ------------------------------------
 
 const TASK_STATUS = ["running", "done", "failed", "cancelled"];
-const STEP_STATUS = ["pending", "running", "done", "failed", "skipped"];
+// blocked / waiting-user: the step waits on a condition or on the user (no stall, no estimate)
+const STEP_STATUS = ["pending", "running", "done", "failed", "skipped", "blocked", "waiting-user"];
+const HOLD_KIND = ["blocked", "waiting-user"];
 const pctOf = (v, field) => {
   if (v == null) return null;
   if (typeof v !== "number" || !Number.isFinite(v)) bad(`${field} must be a number`);
@@ -277,7 +279,7 @@ function cleanTask(b) {
       const st = str(s.status, 20, `steps[${i}].status`, { required: true });
       if (!STEP_STATUS.includes(st)) bad(`steps[${i}].status must be one of ${STEP_STATUS.join(", ")}`);
       return { title: str(s.title, 200, `steps[${i}].title`, { required: true }), status: st, pct: pctOf(s.pct, `steps[${i}].pct`), startedAt: ts(s.startedAt, `steps[${i}].startedAt`), endedAt: ts(s.endedAt, `steps[${i}].endedAt`),
-        progressAt: ts(s.progressAt, `steps[${i}].progressAt`), detail: str(s.detail, 300, `steps[${i}].detail`) ?? null };
+        progressAt: ts(s.progressAt, `steps[${i}].progressAt`), detail: str(s.detail, 300, `steps[${i}].detail`) ?? null, reason: str(s.reason, 500, `steps[${i}].reason`) ?? null };
     }),
     workers: arr(b.workers, 100, "workers").map((w, i) => ({
       runId: str(w.runId, 128, `workers[${i}].runId`) ?? null,
@@ -287,7 +289,12 @@ function cleanTask(b) {
       status: str(w.status, 40, `workers[${i}].status`) ?? null,
       startedAt: ts(w.startedAt, `workers[${i}].startedAt`),
       endedAt: ts(w.endedAt, `workers[${i}].endedAt`),
+      queue: typeof w.queue === "number" && Number.isFinite(w.queue) ? w.queue : null,
+      why: str(w.why, 300, `workers[${i}].why`) ?? null,
     })),
+    hold: b.hold && typeof b.hold === "object" && HOLD_KIND.includes(b.hold.kind) ? { kind: b.hold.kind, reason: str(b.hold.reason, 500, "hold.reason") ?? "", at: ts(b.hold.at, "hold.at") } : null,
+    // the Mac checks the pids: a running step with no live worker left
+    paused: b.paused === true,
     notes: arr(b.notes, 200, "notes").map((n, i) => ({ at: ts(n.at, `notes[${i}].at`), text: str(n.text, 2000, `notes[${i}].text`) ?? "" })),
     pct: pctOf(b.pct, "pct") ?? 0,
     eta: ts(b.eta, "eta"),

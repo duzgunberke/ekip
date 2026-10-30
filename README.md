@@ -105,7 +105,23 @@ Long agent work fails quietly: a CLI hangs, a free model stops answering, a task
 night. ekip handles that itself, so you never have to chase it.
 
 - **Every worker has a watchdog.** 15 minutes without output or 90 minutes in total, and it is stopped;
-  the reason goes onto the task and `auto` moves the work to the next pool.
+  the reason goes onto the task and `auto` moves the work to the next pool. A worker waiting on a
+  long job of its own is not idle while that job uses CPU. After a silent pool the weak pools are
+  skipped, and a second silent pool in a row stops the chain and blocks the task instead of burning
+  another hour.
+- **No ghost workers.** A worker whose process died is closed with the reason (signal, likely cause)
+  by every task command, the pane and the hub sync; `ekip task cancel` stops the task's live workers.
+  A running step with no live worker shows as "paused", not "running".
+- **Waiting is not stalling.** `ekip task block ID "why"` and `ekip task wait ID "what you decide"`
+  mark a task blocked or waiting for you (you get a notification); neither shows a stall warning or
+  an estimate.
+- **Work waits for its turn.** `ekip run --after ID` or `--when "CMD"` waits in the background until
+  a task or run finished, or a shell test passes. Heavy local work (`--heavy`, or a brief about a
+  render) takes one of the machine's slots (from cores and memory, `maxLocalWorkers`) and queues
+  when the Mac is full or overloaded. `--resume RUN` restarts a cut-off brief where it stopped,
+  `--retry-on-kill` restarts a worker killed by load once the load drops.
+- **Pool switches are visible.** Every fallback is noted on the task ("codex out of quota, resets
+  …, moved to copilot"); `--min-tier strong` never falls to a weak pool.
 - **Tasks close themselves** when their steps are done or their last worker ends, and a task nobody
   touched for 6 hours is closed as stalled. The pane and the panel never show yesterday's work as live.
 - **Estimates are measured, not guessed.** The finish time comes from the real rate of progress; with
@@ -119,7 +135,10 @@ night. ekip handles that itself, so you never have to chase it.
 - **Nothing runs out of sight.** Workers open in a pane, and any long job the lead starts itself
   gets one too (`ekip show <log>`).
 - **A pool whose quota ran out leaves the rotation** until it resets, instead of failing every job sent
-  to it; `ekip agents` shows when it comes back.
+  to it; the reset time is read from the CLI's own message and `ekip agents` shows when it comes back.
+- **Workers keep out of each other's way.** Every brief tells them to stop only processes they
+  started, by PID, never with `pkill`/`killall`; a job handed over with `ekip show --pid` survives
+  when its worker is stopped.
 - **The panel tells the truth.** Updates that did not reach the hub are sent again, every finished
   run brings its log, a long step stays "alive" while real work is measured, and the terminal pane
   restarts itself when ekip is updated.
@@ -136,7 +155,8 @@ review to everything.
   different pools to read the diff through the project's review profile: the rules from its
   `CLAUDE.md`, its known gotchas and the checks behind them.
 - **Lessons stay.** When a worker fails and a later attempt works, the lead saves what made the
-  difference into the project's memory.
+  difference into the project's memory. When you correct a mistake, the lead adds it to the project's
+  lessons file (`ekip project lesson NAME "..."`), and every later worker brief gets the whole list.
 - **Repeated work becomes a skill.** When the same kind of task comes up again and again, ekip drafts
   a proper `SKILL.md` for that project from the real runs; you accept it with one command and every
   agent can use it from then on.
@@ -147,6 +167,7 @@ Run `ekip project config <name>` once and the project gets a `.ekip/` folder, co
 code, so everyone who works on it with ekip shares the same setup:
 
 - `rules.md`: the project's rules, added to every worker's brief and to the lead's context.
+- `lessons.md`: mistakes you corrected, added to every worker's brief whatever it is about.
 - `review.md`: the review profile `ekip review` reads changes through.
 - `checks/`: the project's own check scripts; `ekip review` runs them on every change.
 - `dev.json`: the development database mapping (never passwords).

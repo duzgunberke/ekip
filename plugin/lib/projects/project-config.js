@@ -2,6 +2,7 @@
 // works on it shares them. ekip reads it first and falls back to its private data/ folder.
 //
 //   rules.md    project rules: added to every worker brief and to the lead's context
+//   lessons.md  mistakes the user corrected: added to every worker brief, whatever the brief is about
 //   review.md   review profile for `ekip review` (shared instead of data/projects/<name>.review.md)
 //   checks/     extra check scripts `ekip review` runs (the project's own, so they are trusted)
 //   dev.json    development environment mapping (database name, redis index; never secrets)
@@ -16,6 +17,46 @@ const read = (f, max = 4000) => { try { return fs.readFileSync(f, "utf8").slice(
 export function rules(p, max = 2000) {
   const d = dirOf(p);
   return d ? read(path.join(d, "rules.md"), max).trim() : "";
+}
+
+/**
+ * The project's lessons file: "lessons" in the registry (a path, relative to the project), else
+ * .ekip/lessons.md when the project has a .ekip folder, else the private data/projects/<name>.lessons.md.
+ */
+export function lessonsFile(p) {
+  if (p?.lessons) return path.resolve(p.path ?? "", p.lessons);
+  const d = dirOf(p);
+  if (d && fs.existsSync(d)) return path.join(d, "lessons.md");
+  return path.join(HOME, "projects", `${p.name}.lessons.md`);
+}
+
+/**
+ * Lessons for a brief: the list items of the lessons file (and of the private file, when both
+ * exist), newest last, cut to max characters from the newest end so the latest corrections stay.
+ */
+export function lessons(p, max = 1200) {
+  if (!p?.name) return "";
+  const files = [...new Set([lessonsFile(p), path.join(HOME, "projects", `${p.name}.lessons.md`)])];
+  const items = files.flatMap((f) => read(f, 40_000).replace(/<!--[\s\S]*?-->/g, "").split("\n").map((l) => l.trim()).filter((l) => /^[-*]\s+\S/.test(l)));
+  const out = [];
+  let size = 0;
+  for (const l of [...new Set(items)].reverse()) {
+    const line = l.length > 300 ? `${l.slice(0, 297)}...` : l;
+    if (size + line.length + 1 > max) break;
+    out.unshift(line); size += line.length + 1;
+  }
+  return out.join("\n");
+}
+
+/** Adds one lesson ("- YYYY-MM-DD text") to the project's lessons file; returns the file. */
+export function addLesson(p, text) {
+  const line = String(text).replace(/\s+/g, " ").trim();
+  if (!line) throw new Error("empty lesson");
+  const f = lessonsFile(p);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  if (!fs.existsSync(f)) fs.writeFileSync(f, "# Lessons\n\nMistakes the user corrected; ekip adds this list to every worker brief.\n\n");
+  fs.appendFileSync(f, `- ${new Date().toISOString().slice(0, 10)} ${line}\n`);
+  return f;
 }
 
 /** Where the review profile lives: the project's .ekip/review.md when it exists, else data/. */
@@ -52,6 +93,8 @@ who works on the project with ekip shares it.
 
 - \`rules.md\`: project rules every agent must follow. ekip adds them to each worker's brief and to
   the lead's context.
+- \`lessons.md\`: mistakes the user corrected, one list item each (\`ekip project lesson <name> "..."\`).
+  ekip adds them to every worker's brief, whatever the brief is about.
 - \`review.md\`: the review profile \`ekip review\` reads the changes through (lenses, rules, the
   checks behind them). \`ekip review profile <name> --refresh\` regenerates it.
 - \`checks/\`: extra check scripts (\`.sh\`, \`.mjs\`, \`.js\`, \`.py\`) that \`ekip review\` runs from the

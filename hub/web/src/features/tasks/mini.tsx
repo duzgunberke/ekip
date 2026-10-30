@@ -5,7 +5,7 @@ import { useNow } from '@/hooks/use-now'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ProgressBar, currentStep, etaText } from './parts'
+import { ProgressBar, currentStep, etaText, taskState } from './parts'
 import { formatNumber, formatPercent, useT } from '@/lib/i18n'
 
 /** "Aktif görevler" card for Genel bakış. */
@@ -42,6 +42,8 @@ export function ActiveTasksMini() {
             {active.slice(0, 4).map((t) => {
               const cur = currentStep(t)
               const eta = etaText(t, now)
+              const state = taskState(t)
+              const held = t.hold || t.paused
               return (
                 <li key={t.id}>
                   <Link to='/tasks' className='block rounded-lg border px-3 py-2.5 hover:bg-muted/40'>
@@ -51,6 +53,7 @@ export function ActiveTasksMini() {
                     </div>
                     <ProgressBar value={t.pct} className='my-2 h-1.5' label={translate('{name} ilerlemesi', { name: t.title })} />
                     <p className='truncate text-xs text-muted-foreground'>
+                      {held && <span className={state.cls}>{translate(state.label)}{state.reason ? `: ${state.reason}` : ''} · </span>}
                       {[cur?.step.title, eta].filter(Boolean).join(' · ') || t.project}
                     </p>
                   </Link>

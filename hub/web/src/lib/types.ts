@@ -216,7 +216,7 @@ export type RepoGraph = {
 export type SymbolInfo = { name: string; kind: string; line: number; sig: string | null }
 
 export type TaskStatus = 'running' | 'done' | 'failed' | 'cancelled'
-export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'blocked' | 'waiting-user'
 
 export type Task = {
   id: string
@@ -226,8 +226,12 @@ export type Task = {
   createdAt: string | null
   updatedAt: string | null
   endedAt: string | null
-  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null }[]
-  workers: { runId: string | null; via: string | null; model?: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null }[]
+  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null; reason?: string | null }[]
+  workers: { runId: string | null; via: string | null; model?: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null; queue?: number | null; why?: string | null }[]
+  /** the task waits on a condition (blocked) or on the user (waiting-user) */
+  hold?: { kind: 'blocked' | 'waiting-user'; reason: string; at: string | null } | null
+  /** a step is running but no worker is alive (checked on the Mac) */
+  paused?: boolean
   notes: { at: string | null; text: string }[]
   pct: number
   eta: string | null

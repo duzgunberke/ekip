@@ -93,7 +93,22 @@ Uzun agent işleri sessizce bozulur: bir CLI donar, ücretsiz bir model cevap ve
 bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanız gerekmez.
 
 - **Her worker'ın bir bekçisi var.** 15 dakika çıktı yoksa ya da toplam 90 dakika aşıldıysa durdurulur;
-  nedeni göreve yazılır ve `auto` işi sıradaki havuza taşır.
+  nedeni göreve yazılır ve `auto` işi sıradaki havuza taşır. Kendi başlattığı uzun bir işi bekleyen
+  worker, o iş CPU kullandıkça sessiz sayılmaz. Sessiz kalan bir havuzdan sonra zayıf havuzlar atlanır;
+  üst üste ikinci sessiz havuz zinciri durdurur ve bir saat daha yakmak yerine görevi engeller.
+- **Hayalet worker yok.** Süreci ölen worker, her görev komutunda, bölmede ve hub eşitlemesinde nedeniyle
+  (sinyal, olası sebep) kapatılır; `ekip task cancel` görevin canlı worker'larını durdurur. Çalışan
+  worker'ı kalmamış bir adım "sürüyor" değil "duraklamış" görünür.
+- **Beklemek takılmak değildir.** `ekip task block ID "neden"` ve `ekip task wait ID "neye karar
+  vereceksiniz"` görevi engellendi ya da sizi bekliyor diye işaretler (bildirim gelir); ikisi de
+  takıldı uyarısı ya da tahmin göstermez.
+- **İş sırasını bekler.** `ekip run --after ID` ya da `--when "KOMUT"` bir görev veya çalıştırma bitene ya
+  da bir kabuk testi geçene kadar arka planda bekler. Ağır yerel iş (`--heavy` ya da render içeren bir
+  brief) makinenin yuvalarından birini alır (çekirdek ve belleğe göre, `maxLocalWorkers`); Mac dolu ya
+  da aşırı yüklüyse kuyrukta bekler. `--resume RUN` yarıda kalan brief'i kaldığı yerden sürdürür,
+  `--retry-on-kill` yük yüzünden öldürülen worker'ı yük düşünce bir kez yeniden başlatır.
+- **Havuz değişimi görünür.** Her geçiş göreve not düşer ("codex kotası bitti, yenilenme …, copilot'a
+  geçildi"); `--min-tier strong` zayıf bir havuza hiç düşmez.
 - **Görevler kendiliğinden kapanır:** adımlar bitince ya da son worker bitince. 6 saat kimsenin
   dokunmadığı görev "takıldı" olarak kapanır. Panel ve terminal dünkü işi canlı göstermez.
 - **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
@@ -107,8 +122,11 @@ bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanı
   (kanıt değil, sinyal).
 - **Hiçbir şey gözden uzakta çalışmaz.** Worker'lar bir bölmede açılır; liderin kendi başlattığı
   uzun işler de (`ekip show <log>`).
-- **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; `ekip agents`
-  ne zaman geri geleceğini gösterir.
+- **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; yenilenme
+  zamanı CLI'ın kendi mesajından okunur ve `ekip agents` ne zaman geri geleceğini gösterir.
+- **Worker'lar birbirinin işine karışmaz.** Her brief, yalnız kendi başlattıkları süreçleri PID ile
+  durdurmalarını söyler, `pkill`/`killall` asla; `ekip show --pid` ile devredilen iş, worker'ı
+  durdurulsa da yaşar.
 - **Panel doğruyu söyler.** Hub'a ulaşmayan güncellemeler yeniden gönderilir, biten her çalıştırma
   logunu getirir, gerçek iş ölçüldükçe uzun bir adım "canlı" kalır ve terminal paneli ekip
   güncellenince kendini yeniler.
@@ -125,7 +143,8 @@ yerine bunları öğrenir.
   projenin inceleme profiliyle okutur: `CLAUDE.md` kuralları, bilinen tuzaklar ve onları yakalayan
   kontroller.
 - **Dersler kalır.** Bir worker başarısız olup sonraki deneme işe yarayınca lider, farkı yaratan şeyi
-  projenin belleğine yazar.
+  projenin belleğine yazar. Bir hatayı düzelttiğinizde lider onu projenin dersler dosyasına ekler
+  (`ekip project lesson AD "..."`); sonraki her worker brief'i listenin tamamını alır.
 - **Tekrarlanan iş beceriye dönüşür.** Aynı türden iş defalarca gelince ekip, gerçek çalıştırmalardan o
   projeye özel düzgün bir `SKILL.md` taslağı çıkarır; tek komutla kabul edersiniz ve o andan itibaren
   her agent kullanır.
@@ -136,6 +155,7 @@ yerine bunları öğrenir.
 klasörü gelir; o projede ekip ile çalışan herkes aynı ayarları kullanır:
 
 - `rules.md`: projenin kuralları; her worker'ın brief'ine ve liderin bağlamına eklenir.
+- `lessons.md`: düzelttiğiniz hatalar; konusu ne olursa olsun her worker'ın brief'ine eklenir.
 - `review.md`: `ekip review`'un değişiklikleri okuduğu inceleme profili.
 - `checks/`: projenin kendi kontrol script'leri; `ekip review` her değişiklikte çalıştırır.
 - `dev.json`: geliştirme veritabanı eşlemesi (şifre asla).

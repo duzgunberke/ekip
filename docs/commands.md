@@ -18,11 +18,12 @@ Everyday
   ekip doctor [--fix]
   ekip update                     bring in the newest release (shows what changed)
   ekip version                    this install's version and the newest release
-  ekip show <log...>              open a live pane on any log
+  ekip show [--pid PID] <log...>  open a live pane on any log (--pid: the job survives its worker)
   ekip project config NAME        create the project's shared .ekip/ folder (rules, review profile, checks)
 
 Workers
   ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"
+  ekip run [--after ID | --when "CMD"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]
   ekip review [--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]
   ekip review profile NAME [--refresh]
   ekip clean <id>
@@ -36,11 +37,13 @@ Development environment
 
 Projects and memory
   ekip project add|remove|move|scan|ls|show|sync|card
+  ekip project lesson NAME "lesson"   a corrected mistake, added to every worker brief
   ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
   ekip skill ls|search|show|learn|prune|candidates|accept|reject
   ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
   ekip tasks [--watch|--all]
   ekip task new|step|add|note|done|fail|cancel
+  ekip task block|wait ID "why" | unblock ID
   ekip tasks sync
 
 VPS hub
@@ -63,6 +66,16 @@ On first lead start, ekip greets you and suggests missing setup steps. `ekip doc
 
 `ekip run` sends a worker brief; use `-` to read it from standard input. `--via auto` chooses among tested, eligible pools. A comma-separated list such as `--via agy,codex` races workers in separate Git worktrees and branches. `--worktree` gives one worker its own worktree. Child runs are capped; `--allow-nested` is an internal override for bounded nested work, not a general way to remove the cap.
 
+Options that keep work moving without you:
+
+- `--after ID` starts the run once task `ID` (from `ekip task new`) is done or run `ID` (its log name in `data/runs`) exited 0; `--when "CMD"` starts it once the shell command exits 0. Both are checked every 30 seconds for up to `waitMaxH` hours (default 24) in a background process, so the run starts even after the lead's turn ended; its report goes to `data/queued/`. The task shows the step as blocked ("waiting for a condition") meanwhile. `--foreground` waits in the calling process instead. A failed dependency blocks the task and does not start the run.
+- `--resume RUN` runs the brief of run `RUN` again, with the same task link and label, prefixed with a note to look at the half-finished changes and continue rather than start over.
+- `--min-tier strong` never falls back to a weak pool (pools on the free-tier models; strong ones are agy, codex, gemini, copilot and claude, `strongPools` in `data/config.json`); `--no-fallback-free` only keeps the free pool out. A pool named with `--via` always runs.
+- `--heavy` takes one of the machine's heavy slots before starting (default count from cores and memory, e.g. 3 on 8 cores and 16 GB; `maxLocalWorkers`), `--light` never does; without either, a brief that mentions a render, encode or similar is heavy. With no free slot, or a 1-minute load above 3x the cores (`maxLoadPerCore`), the run waits in line and the task shows "queued (place n)".
+- `--retry-on-kill` restarts a worker that was killed by a signal (137, 143) once, after the load has come down; the cause ekip guessed (load, memory pressure, an outside signal) is noted on the task either way.
+
+Every fallback from one pool to the next is noted on the task with its reason, including the quota reset time when the CLI gave one. After a pool was stopped for silence, the weak pools left in the order are skipped; a second silent pool in a row stops the chain, blocks the task and sends a notification. A quota message's reset time (`Resets in …`, `try again at …`, `try again in …`) is written to the pool's state in `data/config.json`; `ekip agents` shows "limited until …" and `auto` skips the pool until then or until a later run on it succeeds.
+
 Every pool takes a limited number of workers at once (`poolConcurrency` in `data/config.json`; defaults agy, codex and copilot 2, qwen, opencode and grok 1, free 3, claude 0). A running worker is a run log without an `[exit]` line whose `ekip run` process is alive; `--via auto` skips pools at capacity (the free pool stays as the last fallback). `ekip mesai on` (work shift) adds a section to new lead sessions telling the lead to split requests into parallel parts over every free slot; `--include-claude` gives the headless Claude pool capacity 1. `ekip mesai status` prints each pool's state, running/capacity and success rate; `ekip mesai all "task"` races the task on every ready pool with a free slot, like `--via a,b,c`. `ekip status`, `ekip limits`, the task pane header and the panel's Pools page show running/capacity too.
 
 `ekip review` reviews the current changes with project profile lenses and configured checks. `--dry-run` prints the plan without running checks or reviewers; `--checks-only` skips reviewer runs. `--via` selects review pools. `ekip review profile NAME [--refresh]` creates or refreshes a registered project's profile. Review check commands pass through a safety filter.
@@ -70,6 +83,8 @@ Every pool takes a limited number of workers at once (`poolConcurrency` in `data
 ### Tasks and liveness
 
 `ekip tasks` lists live tasks; `--watch` follows updates and `--all` includes closed tasks. The lead creates and updates tasks with `ekip task new`, `step`, `add`, `note`, `done`, `fail`, and `cancel`. A step can be marked `running`, `done`, `failed`, or `skipped`; `--pct`, `--note`, `--detail`, `--parallel`, and `--alive` provide progress context. `--alive` refreshes liveness during a long step. `ekip tasks sync` resends task state to the hub if the panel is stale. `ekip reconcile` closes runs whose processes disappeared without reporting.
+
+`ekip task block ID "reason"` marks the running (or next) step `blocked`, `ekip task wait ID "what the user decides"` marks it `waiting-user` and sends a notification; `--step N` picks the step. Neither shows a stall warning or an estimate, and a held task waits up to 72 hours instead of 6 before it is closed. `ekip task unblock ID` (or marking the step running) ends the hold. `ekip task cancel` and `done` also stop the task's live workers (SIGTERM to their `ekip run`). Every task command, the pane and the hub sync close workers whose process is gone, with the reason from their log; a task with a running step and no live worker for 5 minutes shows as "paused: no live worker".
 
 ### Development databases
 

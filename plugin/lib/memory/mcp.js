@@ -17,8 +17,8 @@ export const TOOLS = [
     inputSchema: { type: "object", properties: { project: P } } },
   { name: "memory_search", description: "Search the project's long-term memory (facts extracted from past sessions, plus raw notes and conversation snippets).",
     inputSchema: { type: "object", properties: { project: P, query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"] } },
-  { name: "memory_remember", description: "Store a durable note (decision, convention, gotcha, fact) in the project's long-term memory.",
-    inputSchema: { type: "object", properties: { project: P, text: { type: "string" } }, required: ["text"] } },
+  { name: "memory_remember", description: "Store a durable note (decision, convention, gotcha, fact) in the project's long-term memory. kind \"lesson\" or \"feedback\" (a mistake the user corrected) also goes into the project's lessons file, which every worker brief gets in full.",
+    inputSchema: { type: "object", properties: { project: P, text: { type: "string" }, kind: { type: "string", enum: ["fact", "decision", "lesson", "feedback"] } }, required: ["text"] } },
   { name: "wiki_search", description: "Full-text search of the project's LLM wiki (built from its README, CLAUDE.md, docs and card). Returns page refs to read with wiki_read.",
     inputSchema: { type: "object", properties: { project: P, query: { type: "string" }, limit: { type: "integer" } }, required: ["query"] } },
   { name: "wiki_read", description: "Read project wiki pages by ref (page id or path without .md, as returned by wiki_search). Pass refs: [] to list all pages.",
@@ -109,9 +109,14 @@ async function runTool(name, a = {}) {
       const hits = await mem.recall(project(a.project), a.query, a.limit ?? 8);
       return redact(JSON.stringify(hits.length ? hits : "no memories found"));
     }
-    case "memory_remember":
-      await mem.remember(project(a.project), a.text);
+    case "memory_remember": {
+      const p = project(a.project);
+      const lesson = a.kind === "lesson" || a.kind === "feedback";
+      await mem.remember(p, lesson ? `Lesson (the user corrected this): ${a.text}` : a.text);
+      // a lesson must reach every brief, not only the ones whose words match it
+      if (lesson && p.path) return `remembered; lesson added to ${(await import("../projects/project-config.js")).addLesson(p, a.text)}`;
       return "remembered";
+    }
     case "wiki_search": {
       const p = project(a.project);
       if (!p.tdai?.wikiId) throw new Error(`${p.name} has no wiki`);

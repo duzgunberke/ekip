@@ -1,4 +1,4 @@
-import { Check, Circle, Minus, Play, X } from 'lucide-react'
+import { Check, Circle, Hourglass, Minus, Pause, Play, X } from 'lucide-react'
 import { clock, span } from '@/lib/format'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -39,8 +39,17 @@ export const currentStep = (t: Task) => {
   return j >= 0 ? { index: j, step: t.steps[j] } : null
 }
 
+// What really holds a running task: blocked, waiting for the user, or paused with no live worker.
+export function taskState(t: Task): { label: string; cls: string; reason?: string } {
+  if (t.hold?.kind === 'waiting-user') return { label: 'Kullanıcı bekleniyor', cls: 'text-primary', reason: t.hold.reason }
+  if (t.hold) return { label: 'Engellendi', cls: 'text-status-cancelled', reason: t.hold.reason }
+  if (t.paused) return { label: 'Duraklamış: çalışan ajan yok', cls: 'text-status-failed' }
+  return { label: 'Çalışıyor', cls: 'text-status-running' }
+}
+
 export function etaText(t: Task, now: number) {
-  if (!t.eta) return null
+  // no estimate while the task waits on something outside it
+  if (!t.eta || t.hold || t.paused) return null
   const ms = Date.parse(t.eta) - now
   if (Number.isNaN(ms)) return null
   return ms > 0
@@ -60,6 +69,8 @@ const STEP_ICON = {
   pending: { icon: Circle, cls: 'text-muted-foreground/60', label: 'bekliyor' },
   failed: { icon: X, cls: 'bg-status-failed/15 text-status-failed', label: 'başarısız' },
   skipped: { icon: Minus, cls: 'text-muted-foreground/60', label: 'atlandı' },
+  blocked: { icon: Pause, cls: 'bg-status-cancelled/15 text-status-cancelled', label: 'engellendi' },
+  'waiting-user': { icon: Hourglass, cls: 'bg-primary/15 text-primary', label: 'kullanıcı bekleniyor' },
 } as const
 
 export function StepList({ task, now, compact }: { task: Task; now: number; compact?: boolean }) {
@@ -73,12 +84,14 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
         const m = STEP_ICON[s.status] ?? STEP_ICON.pending
         const Icon = m.icon
         const running = s.status === 'running'
+        const held = s.status === 'blocked' || s.status === 'waiting-user'
         return (
           <li
             key={i}
             className={cn(
               'flex items-start gap-2.5 rounded-lg px-2 py-1.5',
-              running && 'bg-status-running/8 ring-1 ring-status-running/25'
+              running && 'bg-status-running/8 ring-1 ring-status-running/25',
+              held && 'bg-muted/50 ring-1 ring-border'
             )}
           >
             <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full', m.cls)}>
@@ -104,7 +117,13 @@ export function StepList({ task, now, compact }: { task: Task; now: number; comp
                   </span>
                 )}
               </div>
-              {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && !workerRunning && (
+              {held && (
+                <p className={cn('mt-1 text-xs font-medium', s.status === 'blocked' ? 'text-status-cancelled' : 'text-primary')}>
+                  {t(m.label)}
+                  {s.reason ? `: ${s.reason}` : ''}
+                </p>
+              )}
+              {running && s.progressAt && now - Date.parse(s.progressAt) > 15 * 60 * 1000 && !workerRunning && !task.paused && (
                 <p className='mt-1 text-xs font-medium text-destructive'>
                   {t('{duration} boyunca ilerleme yok', { duration: elapsed(s.progressAt, null, now) })}
                 </p>

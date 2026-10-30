@@ -349,6 +349,13 @@ export async function main(argv) {
     if (!p) die("kullanım: ekip project config <ad>  (projede paylaşılan .ekip/ klasörünü kurar)");
     const r = (await import("./project-config.js")).initConfig(p);
     console.log(`${r.dir}${r.made.length ? `\n  oluşturuldu: ${r.made.join(", ")}` : "\n  zaten vardı"}\n  .ekip/rules.md'yi doldurun ve klasörü projeyle birlikte commit edin.`);
+  } else if (sub === "lesson" || sub === "lessons") {
+    // ekip project lesson <name> "text": a mistake the user corrected, added to every later brief
+    const p = args[0] && !args[0].startsWith("-") ? getProject(args[0]) : null;
+    if (!p) die('kullanım: ekip project lesson <ad> "ders"  |  ekip project lessons <ad>');
+    const cfg = await import("./project-config.js");
+    if (sub === "lessons" || !args[1]) { console.log(cfg.lessons(p, 100_000) || `(${cfg.lessonsFile(p)})`); return; }
+    console.log(cfg.addLesson(p, args.slice(1).join(" ")));
   } else if (sub === "remove" || sub === "rm") {
     // For a project you deleted or no longer work on: registry entry, card and server-side wiki and
     // code graphs go; the project folder itself is never touched.
@@ -378,5 +385,5 @@ export async function main(argv) {
     if (!c.ok) die(`card failed: ${c.error}`);
     updateProject(p.name, { card: c.file, summary: c.summary });
     console.log(c.file);
-  } else die("usage: ekip project add|scan|ls|show|sync|card ...");
+  } else die("usage: ekip project add|scan|ls|show|sync|card|config|lesson|lessons ...");
 }
