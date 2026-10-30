@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ActiveTaskCard } from './active-card'
+import { ResultLinks, StatusDigest } from './digest-card'
 import { StepList, elapsed } from './parts'
 import { formatNumber, useT } from '@/lib/i18n'
 import { ProviderLogo } from '@/components/provider-logo'
@@ -58,6 +59,7 @@ export function Tasks() {
           />
         ) : (
           <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8'>
+            <StatusDigest tasks={list} now={now} />
             <section aria-labelledby='active-h' aria-live='polite'>
               <h2 id='active-h' className='sr-only'>
                 {t('Aktif görevler')}
@@ -96,7 +98,7 @@ export function Tasks() {
 function FinishedRow({ task: t, now }: { task: Task; now: number }) {
   const translate = useT()
   const [open, setOpen] = useState(false)
-  const result = t.notes[t.notes.length - 1]?.text
+  const result = t.result?.text || t.notes[t.notes.length - 1]?.text
   const panelId = `task-${t.id}`
   return (
     <div>
@@ -116,7 +118,12 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
             <StatusBadge status={t.status} />
             <span className='min-w-0 truncate font-medium'>{t.title}</span>
           </div>
-          {result && <p className='mt-1 line-clamp-2 text-sm text-muted-foreground'>{result}</p>}
+          {result && (
+            <p className='mt-1 line-clamp-2 text-sm text-muted-foreground'>
+              {t.result?.text && <span className='font-medium text-foreground'>{translate('Sonuç')}: </span>}
+              {result}
+            </p>
+          )}
         </div>
         <div className='hidden shrink-0 text-end text-xs text-muted-foreground sm:block'>
           <p className='tabular-nums'>{elapsed(t.createdAt, t.endedAt ?? t.updatedAt, now)}</p>
@@ -125,6 +132,7 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
           </p>
         </div>
       </button>
+      {(t.result?.links.length ?? 0) > 0 && <ResultLinks links={t.result!.links} className='px-4 pb-3 sm:ps-11' />}
       {open && (
         <div id={panelId} className='grid gap-5 border-t bg-muted/15 px-4 py-4 sm:px-11 lg:grid-cols-2'>
           <section>

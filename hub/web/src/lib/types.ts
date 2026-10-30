@@ -226,15 +226,30 @@ export type Task = {
   createdAt: string | null
   updatedAt: string | null
   endedAt: string | null
-  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null; reason?: string | null }[]
+  steps: { title: string; status: StepStatus; pct: number | null; startedAt: string | null; endedAt: string | null; progressAt?: string | null; detail?: string | null; reason?: string | null; rate?: string | null; etaAt?: string | null }[]
   workers: { runId: string | null; via: string | null; model?: string | null; label: string | null; status: string | null; startedAt: string | null; endedAt: string | null; queue?: number | null; why?: string | null }[]
   /** the task waits on a condition (blocked) or on the user (waiting-user) */
   hold?: { kind: 'blocked' | 'waiting-user'; reason: string; at: string | null } | null
   /** a step is running but no worker is alive (checked on the Mac) */
   paused?: boolean
+  /** what the task produced: ekip task done/result, or the first paragraph of a worker's report (auto) */
+  result?: { text: string; links: string[]; at: string | null; auto?: boolean } | null
+  /** the decision the task waits for (ekip task ask), until ekip task answer */
+  ask?: { question: string; options: string[]; at: string | null } | null
+  answers?: { question: string; answer: string; at: string | null }[]
   notes: { at: string | null; text: string }[]
   pct: number
   eta: string | null
   host: string | null
   receivedAt: string
+}
+
+/** ekip's own release state (GET /api/release): main's last commit, its CI test, the hub's commit */
+export type ReleaseInfo = {
+  /** newest release tag (from the CI poller's mirror) */
+  version: string | null
+  main: { sha: string; at: string | null } | null
+  ci: { status: 'pass' | 'fail' | string | null; step: string | null; sha: string | null; startedAt: string | null; finishedAt: string | null } | null
+  testing: boolean
+  hub: { commit: string | null; version: string | null; startedAt: string | null }
 }
