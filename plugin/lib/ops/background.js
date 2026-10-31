@@ -56,9 +56,10 @@ export const notable = (jobs) => jobs.filter((j) => j.state !== "ok");
  * The pane's single line, in the pools' style (workers/pool-view.js): the label in the shared gutter,
  * then "● vektörleme  [logo] NVIDIA · kuyrukta 120   ● içe aktarma …"; [] when quiet. opts: gutter
  * (columns before the first item; 1 drops the label, as a narrow pane does), mark(id) → { width,
- * paint } for the provider's logo.
+ * paint } for the provider's logo, stops: the footer grid's column x (pool-view.js footerGrid), so
+ * each job starts on a column of the pools under it.
  */
-export function backgroundLine(jobs, width, st, { gutter = null, mark = null } = {}) {
+export function backgroundLine(jobs, width, st, { gutter = null, mark = null, stops = [] } = {}) {
   const list = notable(jobs);
   if (!list.length) return [];
   const label = t("arka plan");
@@ -68,7 +69,10 @@ export function backgroundLine(jobs, width, st, { gutter = null, mark = null } =
     const state = j.state === "error" ? "failed" : "running";
     const sym = st.ascii ? (j.state === "error" ? "x" : "*") : j.state === "error" ? "✗" : "●";
     const m = j.provider && mark ? mark(j.provider) : { width: 0, paint: () => "" };
-    const gap = i ? 3 : 0, head = 2 + [...j.label].length + 2 + (m.width ? m.width + 1 : 0);
+    const head = 2 + [...j.label].length + 2 + (m.width ? m.width + 1 : 0);
+    // the next column of the grid when the job still has room there, three spaces otherwise
+    const stop = i ? stops.find((x) => x >= used + 3 && width - 1 - x - head >= 4) : null;
+    const gap = !i ? 0 : stop != null ? stop - used : 3;
     const room = width - 1 - used - gap - head;
     if (room < 4) break;
     const detail = j.detail ? clipWords(j.detail, room) : "";

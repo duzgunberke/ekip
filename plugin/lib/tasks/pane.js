@@ -9,7 +9,7 @@ import { asciiOnly, bar as stateBar, colorMode, glyph, paint } from "../core/sta
 import { CHEVRON, FAN } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
 import { stripText } from "../ops/setup.js";
-import { chipLines, gutterWidth, imageProtocol, logoMark } from "../workers/pool-view.js";
+import { chipLines, footerGrid, gutterWidth, imageProtocol, logoMark } from "../workers/pool-view.js";
 import { kittyUpload } from "../workers/logos.js";
 import { backgroundLine } from "../ops/background.js";
 
@@ -300,7 +300,9 @@ export function renderPane(m, { width = 100, height = 30, stream = process.stdou
   // some; one label gutter for it, the pools and the free pool's providers, so the columns line up
   const logos = { proto: imageProtocol(stream, env, m.logos), logos: m.logos ?? "auto" };
   const gutter = gutterWidth([t("arka plan"), poolLabel(m.mesai), t("sağlayıcılar")], width);
-  const bg = m.background ? backgroundLine(m.background, width, st, { gutter, mark: (id) => logoMark(id, st, logos) }) : [];
+  // the background jobs start on the pools' grid columns
+  const stops = m.background && m.pools && !Array.isArray(m.pools) ? footerGrid(m.pools, width, st, { ...logos, gutter, label: poolLabel(m.mesai) })?.stops ?? [] : [];
+  const bg = m.background ? backgroundLine(m.background, width, st, { gutter, stops, mark: (id) => logoMark(id, st, logos) }) : [];
   const foot = [...bg, ...poolLines(m.pools, width, st, { mesai: m.mesai, gutter, ...logos })];
   const loose = (m.loose ?? []).map((r) => {
     const parts = fitParts([{ text: r.via, paint: st.bold }, { text: r.label, shrink: true }, ...(r.note ? [{ text: r.note, paint: st.muted }] : [])], width - 5, "  ");
