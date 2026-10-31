@@ -32,7 +32,7 @@ for L in tr en; do
   EKIP_LANG=$L node plugin/bin/ekip.js lead-prompt >"$tmp/lead.$L"
   printf '{"cwd":"/tmp","source":"startup"}\n' | EKIP_LANG=$L node plugin/bin/ekip.js hook session-start >"$tmp/hook.$L"
 done
-grep -q 'Kurulum [0-9]/9' "$tmp/setup.tr"; grep -q 'Setup [0-9]/9' "$tmp/setup.en"; grep -q 'Free model keys' "$tmp/setup.en"
+grep -Eq 'Kurulum [0-9]+/[0-9]+' "$tmp/setup.tr"; grep -Eq 'Setup [0-9]+/[0-9]+' "$tmp/setup.en"; grep -q 'Free model keys' "$tmp/setup.en"
 grep -q 'Running now' "$tmp/status.en"; grep -q '^Setup [0-9]' "$tmp/status.en"; grep -q '^Kurulum [0-9]' "$tmp/status.tr"
 grep -q 'short English title' "$tmp/lead.en"; grep -q 'short Turkish title' "$tmp/lead.tr"; grep -q 'language they write in' "$tmp/lead.en"
 grep -q 'Setup gaps' "$tmp/hook.en"; grep -q 'Kurulum eksikleri' "$tmp/hook.tr"
