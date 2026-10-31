@@ -10,6 +10,7 @@ import { HOME, ROOT, SETTINGS, ask, die, has, saveSettings } from "../core/core.
 import { TASK_TITLE, detect, paneShell, parseWeztermList, weztermBin } from "../core/terminal.js";
 import { c } from "../core/ui.js";
 import { t } from "../core/i18n.js";
+import { appLine, appState, ensureApp } from "./terminal-app.js";
 
 export const configDir = (env = process.env) => path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "wezterm");
 // WezTerm reads the first of these that exists
@@ -203,6 +204,7 @@ export function install(args, env = process.env, { run = spawnSync, brew = has("
     step(t("{file} sizin; ekip ona dokunmaz. ekip'in ayarlarını istiyorsanız 'return config' satırından önce ekleyin:", { file: user.file }));
     console.log(c.gray(`      package.path = ${lua(dir)} .. "/?.lua;" .. package.path\n      require("ekip").apply(config)`));
   }
+  if (platform === "darwin" && (dry || weztermInstalled(env))) ensureApp(env, { run, dry, step, platform, force: args.includes("--rebuild-app") });
   if (!dry) saveSettings({ terminal: "wezterm" });
   console.log(`\n  ${t("Başlatmak için: {cmd}  (lead solda, işçi bölmeleri sağda, görev bölmesi altta; Cmd+Alt+T görev bölmesi)", { cmd: c.cyan("ekip terminal open") })}`);
   return 0;
@@ -370,6 +372,8 @@ function status(env = process.env) {
   const pref = preference(env, SETTINGS);
   console.log(`  ${t("ekip açılınca")}: ${pref === "wezterm" ? c.bold(t("WezTerm'e geçer")) : c.bold(t("bu terminalde kalır"))}${env.EKIP_TERMINAL ? c.gray(" (EKIP_TERMINAL)") : ""}  ${c.gray("· ekip terminal default wezterm|current")}`);
   console.log(`  WezTerm: ${weztermInstalled(env) ? c.green(t("kurulu")) : c.gray(t("kurulu değil"))}`);
+  const app = appLine(appState(env));
+  if (app) console.log(`  ekip.app: ${app[0] === "ok" ? c.green(app[1]) : c.yellow(app[1])}`);
   console.log(`  ekip.lua: ${fs.existsSync(path.join(configDir(env), "ekip.lua")) ? c.green(t("yazılmış")) : c.gray(t("yok (ekip terminal install)"))}  ·  ${user.file}: ${user.state === "linked" ? c.green(t("ekip.lua'yı yüklüyor")) : user.state === "own" ? c.yellow(t("ekip.lua'yı yüklemiyor")) : c.gray(t("yok"))}`);
   return 0;
 }
@@ -380,5 +384,5 @@ export async function main([sub = "status", ...args]) {
   if (sub === "open") return open(args);
   if (sub === "status") return status();
   if (sub === "config") { process.stdout.write(ekipLua()); return 0; }
-  die("usage: ekip terminal install [--dry-run] | open [--dry-run] [ekip args] | default wezterm|current | status | config");
+  die("usage: ekip terminal install [--dry-run] [--rebuild-app] | open [--dry-run] [ekip args] | default wezterm|current | status | config");
 }

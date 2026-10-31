@@ -49,6 +49,11 @@ export async function main(args = []) {
   line(env.gitIdentity ? "ok" : "bad", "git", env.gitIdentity ? t("kimlik tanımlı") : t("Git kimliği tanımlı değil"));
   line(env.ghAuth ? "ok" : "warn", "gh", env.ghAuth ? t("oturum açık") : env.ghInstalled ? t("gh oturumu açık değil") : t("GitHub CLI (gh) kurulu değil"));
   if (!env.gitIdentity) problems++;
+  { // ekip.app: WezTerm under ekip's icon, rebuilt after a WezTerm upgrade
+    const ta = await import("./terminal-app.js");
+    const app = ta.appLine(ta.appState());
+    if (app) line(app[0], "ekip.app", app[1]);
+  }
 
   console.log(title(t("Bağlantı")));
   if (REMOTE) {
