@@ -330,7 +330,8 @@ async function addConversation(p, sessionId, messages) {
   let sent = 0;
   // a busy memory server times out on a full batch: the same messages go again once, in two halves
   const add = async (batch, retry = true) => {
-    try { await coreData("/conversation/add", { ...s, session_id: sessionId, messages: batch }, 30000); }
+    // 31 Oct: a loaded server answered 200 after 47-87 s; giving up at 30 s dropped work it had done
+    try { await coreData("/conversation/add", { ...s, session_id: sessionId, messages: batch }, 120_000); }
     catch (e) {
       if (!retry || batch.length < 2 || !/timeout|aborted/i.test(String(e?.message ?? e))) throw e;
       const half = Math.ceil(batch.length / 2);
