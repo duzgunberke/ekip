@@ -67,7 +67,8 @@ test("pairing: a code works once, expires after ten minutes, and strangers get n
   const { code } = s.tg.linkCode({ lang: "en" });
   assert.match(code, /^[A-Z2-9]{8}$/);
   assert.ok(!JSON.stringify(s.store.phone.data).includes(code), "only the code's hash is stored");
-  await s.tg.handleUpdate(msg(`/link ${code.toLowerCase()}`));
+  // pasted with the bot's name after it, as the CLI used to print it
+  await s.tg.handleUpdate(msg(`/link ${code.toLowerCase()}  (@ekip_test_bot)`));
   await s.tg.flush();
   assert.equal(s.store.phone.data.chats.length, 1);
   assert.equal(s.api.of("sendMessage").length, 1);

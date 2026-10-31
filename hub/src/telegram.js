@@ -482,7 +482,8 @@ export class Telegram {
     const text = String(m.text ?? m.caption ?? "").trim();
     const cmd = text.match(/^\/([A-Za-z_]+)(?:@\w+)?(?:\s+([\s\S]*))?$/);
     if (!this.paired(chat)) {
-      if (cmd?.[1].toLowerCase() === "link" && cmd[2]) await this.tryLink(chat, cmd[2].trim(), m);
+      // only the code: a pasted "(@bot)" or anything after the first word is not part of it (31 Oct)
+      if (cmd?.[1].toLowerCase() === "link" && cmd[2]) await this.tryLink(chat, cmd[2].trim().split(/\s+/)[0], m);
       return; // a stranger gets no answer at all
     }
     const rep = m.reply_to_message ? this.st.replies[`${chat}:${m.reply_to_message.message_id}`] : null;

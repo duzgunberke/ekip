@@ -483,7 +483,9 @@ async function linkCode({ out, fetchFn }) {
     return null;
   }
   writeState({ linked: true, linkedAt: now(), mode: readState().mode ?? "on" });
-  out(t("Telegram'da botuna şunu gönder: /link {code}", { code: r.code }) + (r.bot ? `  (@${r.bot})` : ""));
+  // the bot's name on its own line: pasted with the code it made the code wrong (31 Oct)
+  if (r.bot) out(t("Telegram'da @{bot} sohbetini aç (BotFather değil)", { bot: r.bot }));
+  out(t("ve yalnız şunu gönder: /link {code}", { code: r.code }));
   out(t("Kod 10 dakika geçerli ve tek kullanımlık. Sonra: ekip phone status"));
   return r.code;
 }
