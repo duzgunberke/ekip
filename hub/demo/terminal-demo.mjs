@@ -66,10 +66,10 @@ function writeState({ tasks = [], tracks = [], runs = [], release = null }) {
     if (r.mtimeAgoMin) fs.utimesSync(file, new Date(Date.now() - min(r.mtimeAgoMin)), new Date(Date.now() - min(r.mtimeAgoMin)));
   }
   fs.writeFileSync(path.join(HOME, "release-status.json"), JSON.stringify(release ?? {
-    at: iso(0), version: "1.5.0", latest: "1.5.0", behind: false,
-    main: { sha: "4f1c9a2e7b3d8c6a5e0f1b2c3d4e5f6a7b8c9d0e", at: iso(-min(26)) },
-    ci: { sha: "4f1c9a2", status: "pass", finishedAt: iso(-min(12)) }, testing: null,
-    hub: { commit: "4f1c9a2", version: "1.5.0" },
+    at: iso(0), version: "1.7.0", latest: "1.7.0", behind: false,
+    main: { sha: "abc1234e7b3d8c6a5e0f1b2c3d4e5f6a7b8c9d0e", at: iso(-min(26)) },
+    ci: { sha: "abc1234", status: "pass", finishedAt: iso(-min(12)) }, testing: null,
+    hub: { commit: "abc1234", version: "1.7.0" },
   }));
 }
 
@@ -392,7 +392,7 @@ async function hero() {
     { ...splitV([wx + 1, taskRect[1] - 1, ww - 2, 1]), from: 1.75, fade: 0.4 },
     { ...term(taskRect, [{ at: 0, text: "" }, ...pane], { size: 13 }), from: 1.75, fade: 0.4, style: "filter:brightness(.92)" },
   ];
-  await capture({ name: "hero", width: W, height: H, duration: 18.5, layers }, { mp4: "terminal-wezterm.mp4", gif: "terminal-wezterm.gif", fps: 12, gifFps: 10 });
+  await capture({ name: "hero", width: W, height: H, duration: 18.5, layers }, { mp4: "terminal-wezterm.mp4", gif: "terminal-wezterm.gif", fps: 12, gifFps: 10, stills: [{ at: 17.5, file: "terminal-wezterm-hero.png" }] });
 }
 
 // ---- `ekip status` -------------------------------------------------------------------------------
@@ -430,15 +430,17 @@ async function status() {
   parts.forEach((p, i) => sh.print(at + i * 0.35, `${i ? "\n" : ""}${p.join("\n")}`, { prompt: i === parts.length - 1 }));
   const rows = sh.lines.length + 1;
   const H = Math.round(31 + 16 + rows * 14 * LINE + 30);
-  const win = [16, 14, W - 32, H - 28];
+  // a 16:10 canvas like the other README cards, the window centred on it
+  const CW = Math.round(H * 1.6), win = [Math.round((CW - W) / 2) + 16, 14, W - 32, H - 28];
   const layers = [...windowFrame(win, { title: "ekip · payments-api" }), term([win[0] + 1, win[1] + 31, win[2] - 2, win[3] - 32], sh.frames, { pad: [10, 14] })];
-  await capture({ name: "status", width: W, height: H, duration: 9, layers }, { gif: "terminal-status.gif", fps: 10, colors: 96, stills: [{ at: 8.5, file: "terminal-status.png" }] });
+  await capture({ name: "status", width: CW, height: H, duration: 9, layers }, { gif: "terminal-status.gif", fps: 10, colors: 96, stills: [{ at: 8.5, file: "terminal-status.png" }] });
 }
 
 // ---- `ekip track` ----------------------------------------------------------------------------------
 
 async function track() {
-  const W = 1240, H = 800, win = [16, 14, W - 32, H - 28];
+  // 16:10 canvas (1280 × 800) like the other README cards, the 1240 px window centred on it
+  const W = 1280, H = 800, win = [36, 14, 1208, H - 28];
   const [wx, wy, ww, wh] = win;
   const top = wy + 31 + 24, paneH = 370, shellRect = [wx + 1, top, ww - 2, wh - 31 - 24 - paneH - 1], taskRect = [wx + 1, top + shellRect[3] + 1, ww - 2, paneH - 1];
   const charW = 13 * 0.602, rowH = 13 * LINE, cols = Math.floor((taskRect[2] - 20) / charW), rows = Math.floor((taskRect[3] - 16) / rowH);
@@ -485,7 +487,7 @@ async function track() {
 
   // the macOS notification the slow job sends
   const mark = fs.readFileSync(path.join(root, "docs/brand/logo-mark.svg"), "utf8");
-  const toast = { rect: [W - 440, 250, 400, 96], raw: true, from: keys[2] + 0.2, until: keys[2] + 4.2, fade: 0.25, style: "border-radius:16px;background:rgba(40,43,51,.96);box-shadow:0 12px 40px rgba(0,0,0,.5);border:1px solid #3A3F4A", frames: [{ at: 0, html: `<div style="display:flex;gap:12px;padding:14px 16px;font:13px/1.35 -apple-system,BlinkMacSystemFont,'Inter',sans-serif;color:#ECEEF2"><img src="data:image/svg+xml;base64,${Buffer.from(mark).toString("base64")}" style="width:38px;height:38px;border-radius:9px;background:#0E1014;padding:4px;box-sizing:border-box"><div style="min-width:0"><b>Copy raw footage to the NAS</b><div style="color:#F5A524">⚠ ${t("Beklenenden yavaş")}</div><div style="color:#C9CED8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:310px">speed ${nas.rate}, takes ${t("{h} sa {m} dk", { h: Math.floor(takes / 60), m: takes % 60 })}; limit 60 min</div></div></div>` }] };
+  const toast = { rect: [wx + ww - 424, 250, 400, 96], raw: true, from: keys[2] + 0.2, until: keys[2] + 4.2, fade: 0.25, style: "border-radius:16px;background:rgba(40,43,51,.96);box-shadow:0 12px 40px rgba(0,0,0,.5);border:1px solid #3A3F4A", frames: [{ at: 0, html: `<div style="display:flex;gap:12px;padding:14px 16px;font:13px/1.35 -apple-system,BlinkMacSystemFont,'Inter',sans-serif;color:#ECEEF2"><img src="data:image/svg+xml;base64,${Buffer.from(mark).toString("base64")}" style="width:38px;height:38px;border-radius:9px;background:#0E1014;padding:4px;box-sizing:border-box"><div style="min-width:0"><b>Copy raw footage to the NAS</b><div style="color:#F5A524">⚠ ${t("Beklenenden yavaş")}</div><div style="color:#C9CED8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:310px">speed ${nas.rate}, takes ${t("{h} sa {m} dk", { h: Math.floor(takes / 60), m: takes % 60 })}; limit 60 min</div></div></div>` }] };
   const layers = [
     ...windowFrame(win, { title: "ekip · storefront-web", tabs: [tabBar(0, { title: "storefront-web", counts: { running: 0, waiting: 0, blocked: 0 }, width: ww - 2 }), ...tabs] }),
     term(shellRect, sh.frames, { scroll: true }),
