@@ -90,6 +90,11 @@ if (process.platform === "darwin") {
   assert.equal(app.ensureApp(env, { run }).state, "ok");
   assert.equal(app.appState(env, { run }).built, version);
   assert.deepEqual(fs.readdirSync(path.dirname(target)), ["ekip.app"], "no temp copy left behind");
+  // the old notifications applet's id written over it: stale, and the rebuild brings the id back
+  spawnSync("plutil", ["-replace", "CFBundleIdentifier", "-string", "io.ekip.notifier", path.join(target, "Contents/Info.plist")]);
+  assert.equal(app.appState(env, { run }).state, "stale");
+  assert.equal(app.ensureApp(env, { run }).state, "ok");
+  assert.equal(plist("CFBundleIdentifier").stdout.trim(), "io.ekip.terminal");
   // an ekip.app that is not ekip's is left alone
   const foreign = path.join(tmp, "foreign", "ekip.app");
   fs.mkdirSync(path.join(foreign, "Contents"), { recursive: true });

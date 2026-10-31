@@ -61,6 +61,9 @@ export function appState(env = process.env, { run = spawnSync, platform = proces
   if (!source) return { app, source, state: "no-wezterm" };
   if (!isTerminalApp(app)) return { app, source, state: "missing" };
   const built = builtFrom(app, run), current = weztermVersion(source, run);
+  // another bundle id (the old notifications applet written over it): notifications lose the logo
+  const id = read(run, "plutil", ["-extract", "CFBundleIdentifier", "raw", path.join(app, "Contents/Info.plist")]);
+  if (id && id !== APP_ID) return { app, source, built, current, state: "stale", why: "id" };
   return { app, source, built, current, state: built && current && built !== current ? "stale" : "ok" };
 }
 
@@ -132,6 +135,7 @@ export function ensureApp(env = process.env, { run = spawnSync, dry = false, ste
 /** One status line: [level, text] or null where it does not apply. */
 export function appLine(s) {
   if (s.state === "ok") return ["ok", t("kurulu (WezTerm {v})", { v: s.built || "?" })];
+  if (s.state === "stale" && s.why === "id") return ["warn", t("kimliği bozulmuş, bildirimler logosuz gelir → ekip terminal install")];
   if (s.state === "stale") return ["warn", t("WezTerm {a} için üretilmiş, kurulu WezTerm {b} → ekip terminal install", { a: s.built, b: s.current })];
   if (s.state === "missing") return ["warn", t("yok; Dock'ta WezTerm simgesi görünür → ekip terminal install")];
   return null;

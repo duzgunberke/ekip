@@ -60,7 +60,9 @@ export const TERMINAL_APP_ID = "io.ekip.terminal";
 const terminalApp = () => fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/ekip.icns"));
 export function ensureNotifierApp() {
   if (process.platform === "darwin" && terminalApp()) return true;
-  if (process.platform !== "darwin" || fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/applet.icns"))) return fs.existsSync(NOTIFIER_APP);
+  // an existing bundle is never written into: on 31 Oct an old ekip process compiled the applet over
+  // the ekip terminal, its id went back to the applet's and notifications lost the logo
+  if (process.platform !== "darwin" || fs.existsSync(NOTIFIER_APP)) return fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/applet.icns"));
   const png = path.join(ROOT, "plugin/assets/ekip-icon.png");
   if (!fs.existsSync(png)) return false;
   try {
