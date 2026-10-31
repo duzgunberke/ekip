@@ -542,6 +542,7 @@ export function paneModel({ tasks = [], digest = null, pools = [], version = nul
     if (x.pct != null) cards.push({ id: x.id, state: "running", title: x.title, project: x.project, pct: x.pct, status: tr("sürüyor"), when: [...(w?.rate ? [w.rate] : []), ...(x.eta ? [tr("bitiş ~{time}", { time: hhmm(Date.parse(x.eta)) })] : [])], step: null, workers: w ? [{ state: "running", via: w.via, label: null, note: w.lastLine || null }] : [] });
     else if (w) loose.push({ state: "running", via: w.via, label: x.title, note: w.since ? fmtDur(Date.now() - Date.parse(w.since)) : null });
   }
+  if (serving) for (const r of loose) if (onFree(r.via)) r.note = [r.note, serving].filter(Boolean).join(" · ");
   const counts = digest ? { waiting: digest.waiting.length, stuck: digest.stuck.length, running: digest.running.length, done: digest.done.length } : { waiting: 0, stuck: 0, running: tasks.filter((t) => t.status === "running").length, done: 0 };
   const recent = (digest?.done ?? []).slice(0, 3).map((d) => ({ title: d.title, result: d.result }));
   // missing required setup steps: one amber line under the header (cached check, refreshed in the background)

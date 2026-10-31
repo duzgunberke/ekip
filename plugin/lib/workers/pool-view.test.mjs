@@ -81,7 +81,7 @@ const jobs = bg.backgroundJobs({
 });
 assert.deepEqual(jobs.map((j) => [j.id, j.state]), [["embeddings", "running"], ["backfill", "error"], ["import", "running"], ["index:shop", "running"]]);
 assert.match(jobs[0].detail, /^NVIDIA · 280 queued · last success 2 min ago$/);
-assert.match(jobs[1].detail, /120\/400 \(%30\) · stopped → ekip memory reindex/);
+assert.match(jobs[1].detail, /120\/400 \(30%\) · stopped → ekip memory reindex/);
 for (const w of [40, 70, 100]) { const l = bg.backgroundLine(jobs, w, plain); assert.equal(l.length, 1); assert.ok(cols(l[0]) <= w, `${w}: ${l[0]}`); assert.ok(!/\S…\S/.test(l[0])); }
 assert.deepEqual(bg.backgroundLine([{ id: "embeddings", label: "embeddings", state: "ok" }], 80, plain), [], "quiet: no line");
 const quietPane = renderPane({ clock: "10:00", counts: {}, cards: [], pools: view, background: jobs }, { width: 90, height: 18, stream: { isTTY: false }, env: {} });

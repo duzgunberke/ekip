@@ -4,7 +4,7 @@
 // worker column, task pane). Only that window is captured (screencapture -l <window id>), never the
 // rest of the screen, and the process is stopped by its own pid afterwards.
 //
-//   node hub/demo/wezterm-shots.mjs [--keep] [--check] [OUT_DIR]   (default OUT_DIR: docs/screenshots)
+//   node hub/demo/wezterm-shots.mjs [--keep] [--check] [--pools] [OUT_DIR]   (default OUT_DIR: docs/screenshots)
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -88,8 +88,8 @@ config.check_for_updates = false
 wezterm.on("gui-startup", function()
   local tab, lead, window = wezterm.mux.spawn_window({ cwd = ${q(project)}, args = { "/bin/zsh", "-c", ${q(`printf "\\033[?25l${leadText.replace(/"/g, '\\"')}"; sleep 900`)} } })
   window:gui_window():set_inner_size(${w}, ${h})
-  local tasks = lead:split({ direction = "Bottom", size = ${scene === "empty" ? 0.42 : 0.5}, cwd = ${q(project)}, args = { ${tasks.map(q).join(", ")} } })
-  ${scene === "empty" ? "" : `local col = lead:split({ direction = "Right", size = 0.4, cwd = ${q(project)}, args = { ${show("ekip · codex", codex).map(q).join(", ")} } })
+  local tasks = lead:split({ direction = "Bottom", size = ${scene === "empty" ? 0.42 : scene === "pools" ? 0.78 : 0.5}, cwd = ${q(project)}, args = { ${tasks.map(q).join(", ")} } })
+  ${scene === "empty" || scene === "pools" ? "" : `local col = lead:split({ direction = "Right", size = 0.4, cwd = ${q(project)}, args = { ${show("ekip · codex", codex).map(q).join(", ")} } })
   col:split({ direction = "Bottom", size = 0.5, cwd = ${q(project)}, args = { ${show("ekip · copilot", copilot).map(q).join(", ")} } })`}
   ${scene === "tabs" ? `${extraTabs()}
   tab:activate()` : ""}
@@ -130,7 +130,8 @@ try {
   // --check: extra windows to look at (several tabs, home, a long folder name, narrow widths), not for the docs
   const shots = args.includes("--check")
     ? [["check-narrow-1100", "busy", 1100, 900], ["check-tabs-wide", "tabs", 1600, 700], ["check-tabs-900", "tabs", 900, 700], ["check-tabs-640", "tabs", 640, 600]]
-    : [["terminal-wezterm-layout", "busy", 1600, 1000], ["terminal-empty", "empty", 1600, 900]];
+    : args.includes("--pools") ? [["terminal-pools", "pools", 1500, 760]]
+    : [["terminal-wezterm-layout", "busy", 1600, 1000], ["terminal-empty", "empty", 1600, 900], ["terminal-pools", "pools", 1500, 760]];
   for (const [name, scene, w, h] of shots) await shot(name, scene, w, h);
 } finally {
   holder.kill("SIGTERM");

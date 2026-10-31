@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { HOME } from "../core/core.js";
 import { c } from "../core/ui.js";
-import { t } from "../core/i18n.js";
+import { t, lang } from "../core/i18n.js";
 import { PROVIDER_NAMES } from "../workers/pool-view.js";
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(HOME, f), "utf8")); } catch { return null; } };
@@ -36,7 +36,7 @@ export function backgroundJobs({ routing = readJson("freellmapi-routing-last.jso
   // the backfill the doctor measured (layer done/total, running or stopped)
   if (vectors?.layer && vectors.layer !== "done") {
     const pct = vectors.total ? Math.round((vectors.done / vectors.total) * 100) : null;
-    out.push({ id: "backfill", label: t("vektör doldurma"), state: vectors.running ? "running" : "error", detail: `${vectors.done ?? 0}/${vectors.total ?? "?"}${pct != null ? ` (%${pct})` : ""}${vectors.running ? "" : ` · ${t("durdu")} → ekip memory reindex`}` });
+    out.push({ id: "backfill", label: t("vektör doldurma"), state: vectors.running ? "running" : "error", detail: `${vectors.done ?? 0}/${vectors.total ?? "?"}${pct != null ? ` (${lang === "en" ? `${pct}%` : `%${pct}`})` : ""}${vectors.running ? "" : ` · ${t("durdu")} → ekip memory reindex`}` });
   }
   // the Claude history import holds a lock with its pid while it runs
   let pid = importPid;
