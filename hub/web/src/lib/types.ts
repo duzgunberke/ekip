@@ -269,6 +269,19 @@ export type Task = {
   paused?: boolean
   /** what the task produced: ekip task done/result, or the first paragraph of a worker's report (auto) */
   result?: { text: string; links: string[]; at: string | null; auto?: boolean } | null
+  /** the automatic review of the last worker result (review/auto.js on the Mac) */
+  review?: {
+    state: 'pending' | 'reviewing' | 'fixing' | 'passed' | 'failed' | 'error'
+    author?: string | null
+    reviewer?: string | null
+    round?: number
+    max?: number
+    met?: number | null
+    total?: number | null
+    findings?: number
+    items?: string[]
+    at?: string | null
+  } | null
   /** the decision the task waits for (ekip task ask), until ekip task answer */
   ask?: { question: string; options: string[]; at: string | null } | null
   answers?: { question: string; answer: string; at: string | null }[]

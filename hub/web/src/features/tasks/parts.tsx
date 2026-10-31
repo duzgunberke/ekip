@@ -47,6 +47,20 @@ export function taskState(t: Task): { label: string; cls: string; reason?: strin
   return { label: 'Çalışıyor', cls: 'text-status-running' }
 }
 
+// The automatic review as one line, the same words as the pane and `ekip status` on the Mac.
+export function reviewLine(t: Task): { text: string; cls: string } | null {
+  const r = t.review
+  if (!r?.state) return null
+  const round = r.round ? translate('düzeltme turu {n}/{max}', { n: r.round, max: r.max ?? 2 }) : ''
+  const join = (...xs: string[]) => xs.filter(Boolean).join(' · ')
+  if (r.state === 'pending') return { text: translate('incelemeye gidiyor'), cls: 'text-status-running' }
+  if (r.state === 'reviewing') return { text: join(translate('inceleniyor (reviewer: {pool})', { pool: r.reviewer ?? '?' }), round), cls: 'text-status-running' }
+  if (r.state === 'fixing') return { text: join(round, translate('düzeltiyor: {pool}', { pool: r.author ?? '?' }), r.findings ? translate('{n} bulgu', { n: r.findings }) : ''), cls: 'text-status-running' }
+  if (r.state === 'passed') return { text: translate('review: geçti (kriter {met}/{total})', { met: r.met ?? '?', total: r.total ?? '?' }), cls: 'text-status-done' }
+  if (r.state === 'failed') return { text: translate('review: düştü ({n} bulgu)', { n: r.findings ?? 0 }), cls: 'text-status-failed' }
+  return { text: translate('review: yapılamadı'), cls: 'text-status-cancelled' }
+}
+
 export function etaText(t: Task, now: number) {
   // no estimate while the task waits on something outside it
   if (!t.eta || t.hold || t.paused) return null

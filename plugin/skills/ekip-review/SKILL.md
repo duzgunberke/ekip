@@ -37,3 +37,18 @@ description: Use when reviewing code changes with ekip, previewing checks, inter
    The safety filter exists to avoid that class of side effect.
 14. “Done” means checks are accounted for, must-fix findings are resolved, and
    the two reviewer results have been considered and summarized.
+
+# Automatic review of worker results
+
+With `ekip run --review` or in mesai mode, every worker result is reviewed by a
+pool of another model family before it counts as done; the writer gets at most
+two fix rounds. Read the run's last line (`review: passed (criteria n/n)` or why
+it failed) and do only a short check of your own on a pass. Never report a
+result as done before its review passed.
+
+- `ekip project criteria NAME` lists what deliveries are checked against (ekip's
+  base criteria, the project's checks, its `acceptance.md`, its lessons).
+- `ekip project criterion NAME "<what was checked>"` adds one; the review adds a
+  criterion by itself when the same kind of failure is found twice.
+- A review that still fails leaves a question on the task: fix it yourself,
+  re-dispatch with a sharper brief or `--min-tier strong`, or ask the user.

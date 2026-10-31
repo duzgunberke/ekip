@@ -160,6 +160,10 @@ const RUN_HELP = `usage: ekip run [--via POOL|a,b,c] [--project NAME | --cwd DIR
   --foreground        with --after/--when: wait in this process instead of the background
   --resume RUN        run RUN's brief again (same task and label), told to continue the half-done work
   --retry-on-kill     a worker killed by a signal (load, memory) is restarted once when the load drops
+  --review | --no-review  review the result automatically before it counts as done (default: on in
+                      mesai mode): a pool of another model family checks it against the project's
+                      acceptance criteria (ekip project criteria NAME), the writer fixes what fails
+                      (at most 2 rounds), and the exit code is 0 only when the review passed
 The worker's final report is printed to stdout; its full log is under data/runs/.`;
 
 function parseRun(args) {
@@ -187,6 +191,8 @@ function parseRun(args) {
     else if (a === "--foreground") o.foreground = true;
     else if (a === "--resume") o.resume = args[++i];
     else if (a === "--retry-on-kill") o.retryOnKill = true;
+    else if (a === "--review") o.review = true;
+    else if (a === "--no-review") o.review = false;
     else if (a === "--brief-file") o.task = fs.readFileSync(args[++i], "utf8");
     else if (a.startsWith("--")) die(`unknown option ${a} (ekip run --help)`);
     else if (a === "-") o.task = fs.readFileSync(0, "utf8");
@@ -194,6 +200,8 @@ function parseRun(args) {
     else o.task += ` ${a}`;
   }
   if (o.resume) resumeBrief(o, args);
+  // the brief as given, before project knowledge is appended: the reviewer and fix rounds start from it
+  o.brief0 = o.task;
   if (!o.task?.trim()) die('usage: ekip run [--via auto|agy|free|claude|a,b,c] [--project NAME | --cwd DIR] [--model M] [--plugin NAME] [--skill NAME] "task"   (or - to read the task from stdin)');
   o.vias = o.via.split(",").map((v) => v.trim()).filter(Boolean);
   for (const v of o.vias) if (!VIAS.includes(v)) die(`--via takes ${VIAS.join(", ")} or a comma list of them`);
@@ -536,9 +544,14 @@ async function runOneTracked(o, via, id, tasks) {
   try { (await import("../lib/projects/skillgen.js")).recordRunFinish({ runId: id, project: o.project, via: r.via ?? via, label: o.label, brief: o.task, status: r.ok ? "done" : "failed" }); } catch { /* usage logging must never affect a run */ }
   activeRuns.delete(id);
   const why = r.ok ? null : r.out.match(/\d+ dk (sessiz kaldı|sınırını aştı), durduruldu/)?.[0] ?? r.out.match(/\[ekip\] (işçi SIG\w+ sinyaliyle öldü[^\n]*)/)?.[1] ?? r.stopped ?? "başarısız oldu";
-  // a finished worker's report gives the task its result (first paragraph, up to three links) until the lead writes its own
-  const result = r.ok && tasks ? tasks.autoResult(o.taskId, r.out, o.label) : null;
-  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why ?? (result ? t("bitti, sonuç göreve yazıldı; lead inceliyor") : null), r.model, r.via);
+  // a finished worker's report gives the task its result (first paragraph, up to three links) until the lead writes its own;
+  // a result that goes to the automatic review first gets it only once the review passed (review/auto.js),
+  // and the review is opened before the worker ends, so the task cannot close in between
+  const role = process.env.EKIP_REVIEW_ROLE;
+  if (r.ok && tasks && o.autoReview) tasks.setReview(o.taskId, { state: "pending", author: r.via, round: 0, pid: process.pid });
+  const result = r.ok && tasks && !o.autoReview && !role ? tasks.autoResult(o.taskId, r.out, o.label) : null;
+  const done = role === "reviewer" ? t("inceleme bitti") : role === "fix" ? t("düzeltme bitti; yeniden incelemeye gidiyor") : o.autoReview ? t("bitti; sonuç otomatik incelemeye gidiyor") : result ? t("bitti, sonuç göreve yazıldı; lead inceliyor") : null;
+  tasks?.endWorker(o.taskId, id, r.ok ? "done" : r.killed ? "killed" : "failed", why ?? (r.ok ? done : null), r.model, r.via);
   return r;
 }
 
@@ -804,11 +817,16 @@ async function run(args) {
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${o.vias.join("+")}`;
   // --worktree: one pool, but on its own branch like a race, so a worker that edits code that is
   // running right now (ekip itself, a dev server) cannot break it halfway through
+  // automatic review (review/auto.js): one pool's result is checked by another family before it counts
+  const auto = await import("../lib/review/auto.js");
+  o.autoReview = o.vias.length === 1 && auto.wanted(o);
   if (o.vias.length === 1 && !o.worktree) {
+    const snap = o.autoReview ? auto.snapshot(o.cwd) : null;
     const r = await runOne(o, o.vias[0], id);
-    process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${r.out}\n`);
+    const rv = r.ok && o.autoReview ? await reviewed(o, r, snap, id) : null;
+    process.stdout.write(`[ekip worker: ${r.ok ? r.via : "all pools failed"}]\n${rv?.out ?? r.out}\n`);
     await report({ id, via: r.via, model: r.model, project: o.project, task: o.task, status: r.ok ? "done" : "failed", report: r.out.slice(-4000) });
-    return r.ok ? 0 : 1;
+    return r.ok && (!rv || rv.ok) ? 0 : 1;
   }
   // Several pools on the same task: each gets its own git worktree and branch, so they cannot
   // collide; you (or the lead) compare the branches and merge the best one.
@@ -822,7 +840,11 @@ async function run(args) {
     const wt = git(top, ["worktree", "add", "-b", branch, dir, "HEAD"]);
     if (wt.status !== 0) return { via, branch, ok: false, out: wt.stderr.trim() };
     const sub = path.relative(top, o.cwd);
-    const r = await runOne({ ...o, cwd: path.join(dir, sub) }, via, `${id}-${via}`);
+    const wo = { ...o, cwd: path.join(dir, sub) };
+    const snap = o.autoReview ? auto.snapshot(wo.cwd) : null;
+    let r = await runOne(wo, via, `${id}-${via}`);
+    // --worktree with one pool: reviewed (and fixed) in its worktree before the branch is committed
+    if (r.ok && o.autoReview) { const rv = await reviewed(wo, r, snap, `${id}-${via}`); r = { ...r, ok: rv.ok, out: rv.out }; }
     git(dir, ["add", "-A"]);
     git(dir, ["-c", "user.name=ekip", "-c", "user.email=ekip@localhost", "commit", "-qm", `ekip ${via}: ${o.task.split("\n")[0].slice(0, 60)}`]);
     const stat = git(top, ["diff", "--stat", `HEAD...${branch}`]).stdout.trim();
@@ -834,6 +856,22 @@ async function run(args) {
   }
   process.stdout.write(`\nCompare: git diff HEAD...<branch>. Keep one: git merge <branch>. Clean up: ekip clean ${short}\n`);
   return results.some((r) => r.ok) ? 0 : 1;
+}
+
+// The automatic review of a finished run and its fix rounds (lib/review/auto.js). A passed review
+// gives the task its result (the writer's last report, with the review file as a link); the text
+// printed for the lead ends with the review line. ok only when the review passed.
+async function reviewed(o, r, snap, id) {
+  const auto = await import("../lib/review/auto.js");
+  const rv = await auto.reviewLoop({ o, first: { via: r.via, out: r.out }, snap, runId: id, say });
+  if (rv.verdict === "pass" && o.taskId) {
+    const tasks = await import("../lib/tasks/tasks.js");
+    const res = tasks.autoResult(o.taskId, rv.report, o.label);
+    if (res) tasks.setResult(o.taskId, `${res.text} · ${rv.summary}`, [...res.links, ...rv.links.slice(-1)], { auto: true });
+  }
+  const findings = (rv.findings ?? []).map((f) => `  - ${[f.severity, f.where || "-", f.criterion || "-", f.problem].join(" | ")}`);
+  const line = `[ekip ${rv.summary}${rv.reviewer ? ` · reviewer ${rv.reviewer}` : ""} · ${t("{n} düzeltme turu", { n: rv.rounds })}]`;
+  return { ok: rv.verdict === "pass", out: [rv.report, "", line, ...findings, ...rv.links.map((l) => `  ${l}`)].join("\n") };
 }
 
 // The background copy of a run with --after/--when: same options, the brief in a file (stdin is
@@ -1241,6 +1279,29 @@ quotas, through the shell command \`ekip run\` (\`ekip agents\` shows which pool
 - Run independent workers in parallel (Bash run_in_background; you are notified on exit). Never two
   concurrent workers on the same files without worktrees.
 - Review every result (git diff, tests) before you report. Re-dispatch with a sharper brief or fix it.
+
+## Automatic review (on in mesai mode and with \`ekip run --review\`)
+The user wants to hand work over and leave. So no worker result reaches the user unchecked:
+- With review on, \`ekip run\` does not end when the worker ends. A pool of ANOTHER model family
+  reviews the result against the project's written acceptance criteria (\`ekip project criteria
+  NAME\`: ekip's base criteria, the project's checks, its acceptance.md and its lessons), runs the
+  checks itself and answers PASS or FAIL with findings. On FAIL the writer gets the findings for at
+  most 2 fix rounds; still failing, the task waits for a decision (\`ekip task ask\`). The run's last
+  line says \`review: passed (criteria n/n)\` or why it failed; its exit code is 0 only when it passed.
+- Never tell the user a worker's job is done before its review passed. When it passed, look only at
+  the review summary and do a short check of your own (the diff stat, one key file or output);
+  do not redo the review. When it failed after the rounds, decide: fix it yourself, re-dispatch with
+  a sharper brief or \`--min-tier strong\`, or ask the user.
+- While the user is away the flow goes on by itself: review → fix rounds → a merge proposal on the
+  task (\`ekip task done $id "<result>, ready to merge: <branch>"\`). Never sit waiting for the user
+  in between.
+- Never miss a finish: start every \`ekip run\` with Bash run_in_background (the exit notification
+  is your wake-up; with review on it comes after the review), or put a waiter on it
+  (\`ekip track --wait\`, an until-loop in a background Bash call). One waiter per worker.
+- Criteria grow: every \`ekip project lesson\` is also a criterion; add a check that a delivery
+  must pass with \`ekip project criterion NAME "<what was checked>"\`. The review adds a criterion
+  by itself when the same kind of failure is found twice.
+- Housekeeping runs and races (\`--via a,b\`) are not reviewed; \`--no-review\` skips one run.
 - A long job you start yourself outside \`ekip run\` (an import, a render, a loop) runs through
   \`ekip track\` (above); \`ekip show <log...>\` only opens a pane on a log that already exists.
 - A worker that edits code that is running right now (ekip itself, a live dev server) gets
@@ -1274,7 +1335,9 @@ The user wants every ready pool busy at once. \`ekip mesai status\` shows each p
   (Bash run_in_background). auto skips pools that are full or out of quota, so parallel runs spread out.
 - Race uncertain or quality-critical parts (\`--via a,b\`), or run one task on every free pool with
   \`ekip mesai all "<task>"\`; compare the branches and merge the best.
-- When a worker finishes, review it and dispatch the next part at once, so no pool sits idle.
+- Automatic review is on: each \`ekip run\` ends only after a reviewer of another model family passed
+  the result (or the fix rounds ran out). When one ends, read its review line and dispatch the next
+  part at once, so no pool sits idle.
 - Keep your own Claude for planning, integration and review only; do not do the parts yourself.${SETTINGS.mesaiClaude ? "\n- The headless claude pool is included as one more worker (capacity 1); use it like the others." : ""}
 `;
 
@@ -1843,6 +1906,7 @@ ${c.bold("Everyday")}
 ${c.bold("Workers")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"')}
   ${c.cyan("ekip run")} ${c.gray('[--after ID | --when "CMD"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]')}
+  ${c.cyan("ekip run")} ${c.gray("--review | --no-review")}   reviewed by another model family before it counts (on in mesai)
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} review changes
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} generate project review profile
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               remove worktrees from a multi-pool race
@@ -1861,6 +1925,7 @@ ${c.bold("Development environment")}
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip project lesson")} ${c.gray('NAME "lesson"')}    a corrected mistake, added to every worker brief
+  ${c.cyan("ekip project criteria")} ${c.gray("NAME")}        what every delivery is reviewed against (criterion NAME "..." adds one)
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|catch-up|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
@@ -1893,6 +1958,7 @@ ${c.bold("Günlük")}
 ${c.bold("İşçiler")}
   ${c.cyan("ekip run")} ${c.gray('[--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "iş"')}
   ${c.cyan("ekip run")} ${c.gray('[--after ID | --when "KOMUT"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]')}
+  ${c.cyan("ekip run")} ${c.gray("--review | --no-review")}   sonuç sayılmadan önce başka model ailesi inceler (mesaide açık)
   ${c.cyan("ekip review")} ${c.gray("[--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]")} ${t("değişiklikleri denetle")}
   ${c.cyan("ekip review profile")} ${c.gray("NAME [--refresh]")} ${t("inceleme profili oluştur")}
   ${c.cyan("ekip clean")} ${c.gray("<id>")}               çoklu havuz yarışının worktree'lerini sil
@@ -1910,6 +1976,7 @@ ${c.bold("Geliştirme ortamı")}
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip project lesson")} ${c.gray('NAME "ders"')}      düzeltilen bir hata, her işçi brief'ine eklenir
+  ${c.cyan("ekip project criteria")} ${c.gray("NAME")}        her teslimin incelendiği kriterler (criterion NAME "..." ekler)
   ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|catch-up|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 

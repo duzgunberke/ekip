@@ -11,7 +11,7 @@ import { HOME, ROOT, RUNS, SETTINGS } from "../core/core.js";
 import { c, fit } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
 import { clip as paneClip } from "./pane.js";
-import { list, reapDead, paused, percent, eta, stalledFor, pidAlive, fmtDur } from "./tasks.js";
+import { list, reapDead, paused, percent, eta, stalledFor, pidAlive, fmtDur, reviewLabel } from "./tasks.js";
 
 const DAY = 24 * 3600_000;
 const OPEN_WORKER = ["running", "queued", "waiting"];
@@ -81,7 +81,7 @@ export async function collect() {
       return { via: w.via ?? "?", label: w.label, status: w.status, queue: w.queue ?? null, why: w.why ?? null, since: w.startedAt, lastLine: clip(job?.lastLine || (w.log ? lastLine(w.log) : ""), 160), pct: job?.pct ?? null, rate: job?.rate ?? null, etaAt: job?.etaAt ?? null };
     });
     const cur = steps.filter((s) => s.status === "running").map((s) => ({ n: steps.indexOf(s) + 1, title: s.title, pct: s.pct ?? null, detail: s.detail ?? null, rate: s.rate ?? null, etaAt: s.etaAt ?? null }));
-    running.push({ id: x.id, title: x.title, project: x.project, pct: percent(x), eta: eta(x), steps: cur, total: steps.length, workers });
+    running.push({ id: x.id, title: x.title, project: x.project, pct: percent(x), eta: eta(x), steps: cur, total: steps.length, workers, review: reviewLabel(x.review) || null });
   }
   // a tracked job or a worker without a running task is real work too
   const taskIds = new Set(open.map((x) => x.id));
@@ -92,7 +92,7 @@ export async function collect() {
   for (const x of tasks.filter((y) => y.status !== "running" && Date.now() - Date.parse(y.endedAt ?? y.updatedAt) < DAY)) {
     const last = x.notes?.at(-1)?.text;
     if (x.status === "failed") stuck.push({ id: x.id, title: x.title, project: x.project, why: last ?? t("başarısız bitti"), since: x.endedAt ?? x.updatedAt, failed: true, actions: (x.notes ?? []).filter((n) => ACTION.test(n.text) && n.text !== last).slice(-2).map((n) => n.text) });
-    else if (x.status === "done") done.push({ id: x.id, title: x.title, project: x.project, at: x.endedAt ?? x.updatedAt, result: x.result?.text || last || null, links: x.result?.links ?? [], auto: !!x.result?.auto });
+    else if (x.status === "done") done.push({ id: x.id, title: x.title, project: x.project, at: x.endedAt ?? x.updatedAt, result: x.result?.text || last || null, links: x.result?.links ?? [], auto: !!x.result?.auto, review: reviewLabel(x.review) || null });
   }
   done.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   // tracked jobs that finished without a task: their end is a result too
@@ -197,6 +197,7 @@ function runningLines(x) {
     if (w.lastLine) lines.push(fit(`       ${c.gray(`${t("son çıktı")}: ${w.lastLine}`)}`));
   }
   if (!x.workers.length && x.steps.some((s) => s.detail)) lines.push(fit(`       ${c.gray(x.steps.find((s) => s.detail).detail)}`));
+  if (x.review) lines.push(fit(`     ${c.magenta("⚖")} ${x.review}`));
   return lines;
 }
 
@@ -230,6 +231,7 @@ export function render(d, rel) {
   for (const x of d.done.slice(0, 8)) {
     out.push(fit(`  ${c.green("✓")} ${c.bold(x.title)}${x.project ? c.gray(` · ${x.project}`) : ""} ${c.gray(`· ${clock(x.at)} (${ago(x.at)})`)}`));
     if (x.result) out.push(fit(`     ${t("Sonuç")}: ${clip(x.result, 300)}`));
+    if (x.review) out.push(fit(`     ${c.gray(x.review)}`));
     for (const l of x.links) out.push(`     ${c.under(l)}`);
   }
   if (d.done.length > 8) out.push(c.gray(`  … ${t("{n} iş daha (ekip tasks --all)", { n: d.done.length - 8 })}`));

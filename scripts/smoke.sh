@@ -24,6 +24,7 @@ echo '== guided setup =='; node plugin/lib/ops/setup.test.mjs
 echo '== pools and background work =='; node plugin/lib/workers/pool-view.test.mjs
 echo '== Claude history gap and catch-up =='; node plugin/lib/memory/history.test.mjs
 echo '== pool logos: the panel list, PNGs, image protocols =='; node plugin/lib/workers/logos.test.mjs
+echo '== automatic review: criteria, reviewer of another family, fix rounds =='; node plugin/lib/review/auto.test.mjs 2>&1 | grep -v '^ekip [›!]'
 echo '== every t() key has an English entry =='; node plugin/lib/core/i18n.test.mjs
 # both languages: the setup list, the digest, the lead's system text and the session-start hook
 for L in tr en; do
