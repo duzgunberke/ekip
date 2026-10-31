@@ -244,6 +244,10 @@ async function capture(scene, { mp4, gif, stills = [], fps = 12, gifFps = fps, c
     const r = await cdp("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(dir, `${String(i).padStart(4, "0")}.png`), Buffer.from(r.result.data, "base64"));
   }
+  // the finished state as frame 0: GitHub shows a paused GIF's first frame (reduced motion), and on a
+  // loop the last frame already equals it, so playing it shows nothing extra
+  for (let i = frames - 1; i >= 0; i--) fs.renameSync(path.join(dir, `${String(i).padStart(4, "0")}.png`), path.join(dir, `${String(i + 1).padStart(4, "0")}.png`));
+  fs.copyFileSync(path.join(dir, `${String(frames).padStart(4, "0")}.png`), path.join(dir, "0000.png"));
   for (const s of stills) {
     await cdp("Runtime.evaluate", { expression: `show(${s.at})` });
     const r = await cdp("Page.captureScreenshot", { format: "png" });
