@@ -1,5 +1,6 @@
 // Terminal back ends with a fake `wezterm cli` / `kitty @` / osascript: no terminal is touched.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -56,7 +57,44 @@ const env = { WEZTERM_PANE: "1", TERM_PROGRAM: "WezTerm", EKIP_WEZTERM: "wezterm
   term.wezterm({ run: f.run, env, home: tmp }).openPane("tail -F a.log", { title: "ekip · codex" });
   const shell = f.calls.find((a) => a[1] === "split-pane").slice(-3);
   assert.equal(shell[0], "/bin/zsh");
-  assert.match(shell[2], /\\033\]2;%s\\007' 'ekip · codex'; .*SetUserVar=%s=%s.*ekip_role 'cGFuZQ=='; tail -F a\.log$/);
+  assert.match(shell[2], /\\033\]2;%s\\007' 'ekip · codex'; .*SetUserVar=%s=%s.*ekip_role 'cGFuZQ=='; .*; tail -F a\.log$/);
+}
+
+let ptyChecked = false; // set when the pty check below could run
+{ // a worker pane: its own tint (reset when the command ends) and a header naming the worker
+  const [, , cmd] = term.paneShell("tail -F a.log", { title: "ekip · codex", role: "pane" });
+  assert.ok(cmd.includes(`printf '\\033]11;%s\\007' '${term.WORKER_BG}'`), cmd);
+  assert.ok(cmd.includes(`trap 'printf "\\033]111\\007\\033]110\\007"' EXIT`), cmd);
+  assert.ok(cmd.indexOf("trap ") < cmd.indexOf("]11;"), "the reset is armed before the tint");
+  assert.match(cmd, /\\033\[48;2;[\d;]+m\\033\[38;2;[\d;]+m\\033\[1m %s \\033\[K\\033\[0m\\n' '(işçi|worker) · codex'; tail -F a\.log$/);
+  // a quote in the label stays quoted
+  assert.match(term.paneShell("x", { title: "ekip · o'neil", role: "pane" })[2], /'(işçi|worker) · o'\\''neil'; x$/);
+  // the task pane, a plain pane and the lead's own commands get no tint and no header
+  for (const opts of [{ title: term.TASK_TITLE, role: "tasks" }, { title: "ekip · x" }, {}]) {
+    const c = term.paneShell("x", opts)[2];
+    assert.ok(!/\]11;|\]111|\[48;2|trap /.test(c), c);
+  }
+  // in a pty: tint, header, the command, then the reset; the exit status is the command's
+  // a pty of its own (forkpty), never reading stdin: copy the pane's output, exit with its status
+  const ptyRun = [
+    "import os, sys",
+    "pid, fd = os.forkpty()",
+    "if pid == 0: os.execv(sys.argv[1], sys.argv[1:])",
+    "while True:",
+    "    try: b = os.read(fd, 4096)",
+    "    except OSError: b = b''",
+    "    if not b: break",
+    "    sys.stdout.buffer.write(b)",
+    "sys.stdout.flush()",
+    "sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))",
+  ].join("\n");
+  const r = spawnSync("python3", ["-I", "-c", ptyRun, ...term.paneShell("echo body; exit 3", { title: "ekip · t", role: "pane" })], { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+  if (fs.existsSync("/bin/zsh") && r.status !== null && !r.error && !/No module|Error/.test(r.stderr)) {
+    ptyChecked = true;
+    assert.equal(r.status, 3);
+    const out = r.stdout;
+    assert.ok(out.indexOf(`\x1b]11;${term.WORKER_BG}\x07`) < out.indexOf("body") && out.indexOf("body") < out.indexOf("\x1b]111\x07"), JSON.stringify(out));
+  }
 }
 
 // A fake WezTerm with geometry: split-pane shares the anchor's cells like WezTerm does (one cell for

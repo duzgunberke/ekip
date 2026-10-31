@@ -184,7 +184,17 @@ assert.equal(core.SETTINGS.terminal, undefined);
   const luaText = term.ekipLua({ statusFile: "/x/data/terminal-status.json" });
   assert.ok(luaText.includes('local STATUS = "/x/data/terminal-status.json"'));
   assert.ok(!/tasks\.json/.test(luaText), "the tab bar never parses tasks.json");
-  for (const part of ["window_padding", 'font_with_fallback({ "JetBrains Mono", "Menlo"', "show_new_tab_button_in_tab_bar = false", "format-window-title", "set_left_status", "inactive_pane_hsb", "split = C.border", "local function middle", "wezterm.home_dir"]) assert.ok(luaText.includes(part), part);
+  for (const part of ["window_padding", 'font_with_fallback({ "JetBrains Mono", "Menlo"', "show_new_tab_button_in_tab_bar = false", "format-window-title", "set_left_status", "inactive_pane_hsb", "split = C.split", "local function middle", "wezterm.home_dir"]) assert.ok(luaText.includes(part), part);
+  // lead and worker panes look different: worker tint and idle dimming only for panes named "pane"
+  assert.match(luaText, /worker = "#[0-9A-F]{6}", worker_idle = "#[0-9A-F]{6}", split = "#[0-9A-F]{6}"/);
+  assert.ok(luaText.includes('if role(p) == "pane" then'), "only worker panes are tinted");
+  assert.equal((luaText.match(/inject_output/g) ?? []).length, 1, "one place injects escapes");
+  assert.ok(luaText.includes('"\\x1b]11;" .. C.worker_idle .. "\\x07\\x1b]10;" .. C.faint'), "an unfocused worker gets the deeper tint and muted text");
+  assert.ok(luaText.includes('"\\x1b]11;" .. C.worker .. "\\x07\\x1b]110\\x07"'), "a focused worker gets its text colour back");
+  assert.ok(!/\x1b|\x07/.test(luaText), "no raw escape bytes in ekip.lua");
+  assert.ok(luaText.includes("worker_tint(window, pane)") && luaText.includes("local function who(pane)"));
+  assert.ok(luaText.includes('find("claude", 1, true)'), "the lead is the pane running claude");
+  assert.match(luaText, /inactive_pane_hsb = \{ saturation = [0-9.]+, brightness = 0\.[0-9]+ \}/);
   // what an iTerm2 user relies on
   for (const part of [
     'bind("Enter", "SHIFT", act.SendString("\\x1b\\r"))',
