@@ -149,7 +149,7 @@ const en = {
   "model yok": "no models",
   "{n}/{cap} dolu": "{n}/{cap} full",
   "dinleniyor": "resting",
-  "+{n} kapalı": "+{n} off",
+  "+{n} kapalı": "+{n} off", "{n} çalışıyor": "{n} running", "sağlayıcılar": "providers",
   "Önkoşullar": "Prerequisites",
   "önkoşullar": "prerequisites",
   "ekip Node 22+, git, Claude Code ve (servisler bu Mac'te çalışıyorsa) Docker ile çalışır": "ekip runs on Node 22+, git, Claude Code and (when the services run on this Mac) Docker",

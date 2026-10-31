@@ -241,10 +241,11 @@ export function render(d, rel) {
 
 /** "Havuzlar": the same chips as the task pane (pool-view.js), wrapped to the terminal. */
 export async function poolsSection(stream = process.stdout) {
-  const [{ currentView }, pv, { styleFor }] = await Promise.all([import("../workers/limits.js"), import("../workers/pool-view.js"), import("./pane.js")]);
+  const [{ currentView }, pv, { styleFor }, { kittyUpload }] = await Promise.all([import("../workers/limits.js"), import("../workers/pool-view.js"), import("./pane.js"), import("../workers/logos.js")]);
   const st = styleFor(stream);
   const width = Math.max(40, stream.columns || Number(process.env.COLUMNS) || 100);
-  const lines = pv.chipLines(currentView(), width, st, { proto: pv.imageProtocol(stream, process.env, SETTINGS.poolLogos), logos: SETTINGS.poolLogos ?? "auto", label: "" });
+  const sent = new Set();
+  const lines = pv.chipLines(currentView(), width, st, { proto: pv.imageProtocol(stream, process.env, SETTINGS.poolLogos), logos: SETTINGS.poolLogos ?? "auto", label: "" }).map((l) => kittyUpload(l, sent));
   return [`\n${c.bold(t("Havuzlar"))}`, ...(lines.length ? lines : [c.gray(`  ${t("bağlı havuz yok → ekip setup")}`)])].join("\n");
 }
 

@@ -2,27 +2,19 @@
 // and (hub/web/src/lib/pools.ts) the panel: only the pools this user connected (signed in and tested,
 // or with a successful run; not installed, never signed in and switched-off pools are hidden and
 // counted as "+3 kapalı"), each with its state instead of a bare "0/2": ready (green dot), running n
-// (teal, only when n > 0, "2/2 dolu" once it is full), at its limit until a time (orange, "limitte ·
-// Çar 01:00"). Running first, then ready, then limited. The free pool lists the providers behind it
-// (only those with a key): ready, resting after a 429 ("dinleniyor ~12 dk") or failing.
+// (teal, "2/2 dolu" once it is full), at its limit until a time (orange, "limitte · Çar 01:00").
+// Running first, then ready, then limited. The free pool lists the providers behind it (only those
+// with a key): ready, resting after a 429 ("dinleniyor ~12 dk") or failing.
 //
-// Each pool has a small icon: in WezTerm and iTerm2 (inline images) and kitty (graphics protocol) a
-// one-row PNG badge ekip draws itself (a tinted square with the pool's two letters; no vendor logo),
-// elsewhere the same two letters in colour. "poolLogos" in data/config.json: "auto" (default),
-// "glyph" (letters only) or "off".
-import zlib from "node:zlib";
+// Each pool and provider shows its real logo, the same mark as the web panel (workers/logos.js): an
+// inline image in WezTerm and iTerm2 (OSC 1337) and kitty (graphics protocol), a "◆" in the brand
+// colour elsewhere, nothing with NO_COLOR. "poolLogos" in data/config.json: "auto" (default), "glyph"
+// (the coloured glyph only) or "off". The lines are aligned columns (mark, name, state) under a label
+// gutter shared with the background line.
 import { t, lang } from "../core/i18n.js";
+import { glyphColor, logoImage } from "./logos.js";
 
-// Own colours and two-letter monograms (not brand marks).
-export const MONO = {
-  agy: ["ag", "#4F8EF7"], codex: ["cx", "#10A37F"], gemini: ["gm", "#1C69FF"], copilot: ["cp", "#8957E5"], qwen: ["qw", "#615CED"],
-  opencode: ["oc", "#C9CDD4"], jcode: ["jc", "#E8A33D"], grok: ["gk", "#9CA3AF"], claude: ["cl", "#D97757"], free: ["fr", "#2DD4BF"],
-  google: ["go", "#4285F4"], groq: ["gq", "#F55036"], openrouter: ["or", "#6467F2"], nvidia: ["nv", "#76B900"], zhipu: ["zh", "#3859FF"],
-  ovh: ["ov", "#4A7BD0"], cerebras: ["cb", "#F05A28"], mistral: ["mi", "#FA520F"], cohere: ["co", "#4DB6AC"], cloudflare: ["cf", "#F38020"],
-  huggingface: ["hf", "#FFD21E"], routeway: ["rw", "#A78BFA"], bazaarlink: ["bz", "#F472B6"], router9: ["r9", "#34D399"], modelscope: ["ms", "#60A5FA"],
-};
 export const PROVIDER_NAMES = { google: "Google", groq: "Groq", openrouter: "OpenRouter", nvidia: "NVIDIA", zhipu: "Z.ai", ovh: "OVH", cerebras: "Cerebras", mistral: "Mistral", cohere: "Cohere", cloudflare: "Cloudflare", huggingface: "HuggingFace", routeway: "Routeway", bazaarlink: "BazaarLink", router9: "Router9", modelscope: "ModelScope" };
-export const monogram = (id) => MONO[id] ?? [String(id ?? "?").slice(0, 2), "#98A1B0"];
 
 // ---- the model ------------------------------------------------------------------------------------
 
@@ -89,6 +81,7 @@ export function stateText(p, at = Date.now()) {
 }
 const providerText = (x) => (x.state === "resting" ? `${t("dinleniyor")}${x.minutes ? ` ~${t("{n} dk", { n: x.minutes })}` : ""}` : x.state === "error" ? t("hata") : "");
 
+
 // ---- icons ----------------------------------------------------------------------------------------
 
 /** Which image protocol this output understands: "iterm" (iTerm2, WezTerm), "kitty" or null. */
@@ -99,123 +92,124 @@ export function imageProtocol(stream = process.stdout, env = process.env, settin
   return null;
 }
 
-// 5×7 capitals and digits for the badge
-const FONT = {
-  A: "01110100011000111111100011000110001", B: "11110100011000111110100011000111110", C: "01110100011000010000100001000101110", D: "11110100011000110001100011000111110",
-  E: "11111100001000011110100001000011111", F: "11111100001000011110100001000010000", G: "01110100011000010111100011000101111", H: "10001100011000111111100011000110001",
-  I: "01110001000010000100001000010001110", J: "00111000100001000010000101001001100", K: "10001100101010011000101001001010001", L: "10000100001000010000100001000011111",
-  M: "10001110111010110101100011000110001", N: "10001100011100110101100111000110001", O: "01110100011000110001100011000101110", P: "11110100011000111110100001000010000",
-  Q: "01110100011000110001101011001001101", R: "11110100011000111110101001001010001", S: "01111100001000001110000010000111110", T: "11111001000010000100001000010000100",
-  U: "10001100011000110001100011000101110", V: "10001100011000110001100010101000100", W: "10001100011000110101101011010101010", X: "10001100010101000100010101000110001",
-  Y: "10001100010101000100001000010000100", Z: "11111000010001000100010001000011111", 9: "01110100011000101111000010001001100",
-};
-const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-function chunk(type, data) {
-  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-  const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
-  return Buffer.concat([len, td, crc]);
-}
-const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-
-/** The badge as PNG bytes: a rounded square tinted with the pool's colour, its two letters in white. */
-export function badgePng(id, size = 32) {
-  const [letters, color] = monogram(id);
-  const [r, g, b] = rgb(color);
-  const px = Buffer.alloc(size * size * 4);
-  const rad = Math.round(size * 0.22);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = Math.max(rad - x, x - (size - 1 - rad), 0), dy = Math.max(rad - y, y - (size - 1 - rad), 0);
-    const inside = dx * dx + dy * dy <= rad * rad;
-    const i = (y * size + x) * 4;
-    if (inside) { px[i] = Math.round(r * 0.85); px[i + 1] = Math.round(g * 0.85); px[i + 2] = Math.round(b * 0.85); px[i + 3] = 255; }
-  }
-  const text = letters.toUpperCase().slice(0, 2), scale = Math.max(1, Math.floor(size / 12));
-  const w = text.length * 5 * scale + (text.length - 1) * scale, h = 7 * scale;
-  const ox = Math.floor((size - w) / 2), oy = Math.floor((size - h) / 2);
-  [...text].forEach((ch, k) => {
-    const bits = FONT[ch] ?? FONT.O;
-    for (let row = 0; row < 7; row++) for (let col = 0; col < 5; col++) {
-      if (bits[row * 5 + col] !== "1") continue;
-      for (let sy = 0; sy < scale; sy++) for (let sx = 0; sx < scale; sx++) {
-        const x = ox + k * 6 * scale + col * scale + sx, y = oy + row * scale + sy, i = (y * size + x) * 4;
-        px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = 255;
-      }
-    }
-  });
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) { raw[y * (size * 4 + 1)] = 0; px.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4); }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-}
-
-const pngCache = new Map();
-/** The escape that draws the badge in two cells of one row, or "" without an image protocol. */
-export function badgeImage(id, proto) {
-  if (!proto) return "";
-  const key = `${proto}:${id}`;
-  if (!pngCache.has(key)) {
-    const b64 = badgePng(id).toString("base64");
-    pngCache.set(key, proto === "kitty" ? `\x1b_Ga=T,f=100,c=2,r=1,q=2;${b64}\x1b\\` : `\x1b]1337;File=inline=1;width=2;height=1;preserveAspectRatio=1:${b64}\x07`);
-  }
-  return pngCache.get(key);
+/**
+ * A pool's or provider's mark: the real logo as an image two cells wide, a one-colour "◆" in the brand
+ * colour without images, nothing with NO_COLOR, ASCII or logos "off".
+ */
+export function logoMark(id, st, { proto = null, logos = "auto" } = {}) {
+  if (logos === "off" || st.ascii || !st.color) return { width: 0, paint: () => "" };
+  const img = logos === "auto" ? logoImage(id, proto) : "";
+  return img ? { width: 2, paint: () => img } : { width: 1, paint: () => st.fg(glyphColor(id), "◆") };
 }
 
 // ---- rendering ------------------------------------------------------------------------------------
 
-/**
- * Chips for a line: [{ text (plain, for width), width, paint() → the coloured string }]. st: the pane's
- * style (fg, muted, state, ascii, color). proto: image protocol or null; logos: "auto" | "glyph" | "off".
- */
-export function chips(view, st, { proto = null, logos = "auto", at = Date.now(), providers = true } = {}) {
-  const icon = (id) => {
-    if (logos === "off" || st.ascii || !st.color) return { text: "", width: 0, paint: () => "" };
-    const [letters, color] = monogram(id);
-    const img = logos === "auto" ? badgeImage(id, proto) : "";
-    return { text: letters, width: 2, paint: () => (img || st.bold(st.fg(color, letters))) };
-  };
-  const dot = (state) => (st.ascii ? { running: "*", ready: "o", limited: "#", resting: "~", error: "x" }[state] : { running: "●", ready: "●", limited: "■", resting: "◐", error: "✗" }[state]);
-  const tone = (state) => ({ running: (s) => st.fg("team", s), ready: (s) => st.fg("done", s), limited: (s) => st.fg("blocked", s), resting: (s) => st.fg("blocked", s), error: (s) => st.fg("failed", s) }[state]);
-  const one = (id, name, state, words) => {
-    const ic = icon(id);
-    const label = `${dot(state)} ${name}${words ? ` ${words}` : ""}`;
-    const sep = ic.width ? 1 : 0;
-    const make = (w) => ({ text: `${ic.text}${sep ? " " : ""}${dot(state)} ${name}${w ? ` ${w}` : ""}`, width: ic.width + sep + [...`${dot(state)} ${name}${w ? ` ${w}` : ""}`].length, paint: () => `${ic.paint()}${sep ? " " : ""}${tone(state)(dot(state))} ${name}${w ? ` ${state === "ready" ? st.muted(w) : tone(state)(w)}` : ""}` });
-    // a chip too wide for a narrow pane drops its words (the dot's colour still says the state)
-    return { ...make(words), bare: words ? make("") : null, label };
-  };
-  const out = [];
-  for (const p of view.pools) {
-    out.push(one(p.name, p.name, p.state, stateText(p, at)));
-    // the providers behind the free pool follow it: "● free › nv ● NVIDIA  gq ◐ Groq dinleniyor ~12 dk"
-    if (p.name === "free" && providers) (p.providers ?? []).forEach((x, i) => {
-      const c = one(x.id, x.name, x.state, providerText(x));
-      const arrow = (x) => (x ? { ...x, text: `› ${x.text}`, width: x.width + 2, paint: () => `${st.muted("›")} ${x.paint()}` } : null);
-      out.push(i ? { ...c, sub: true } : { ...arrow(c), bare: arrow(c.bare), sub: true });
-    });
-  }
-  if (view.hidden) out.push({ text: t("+{n} kapalı", { n: view.hidden }), width: [...t("+{n} kapalı", { n: view.hidden })].length, paint: () => st.muted(t("+{n} kapalı", { n: view.hidden })) });
-  return out;
+const GAP = 3;
+const len = (s) => [...String(s)].length;
+
+/** The label column shared by the pane's footer lines (background, pools, providers); 1 when narrow. */
+export function gutterWidth(labels, width) {
+  return width < 60 ? 1 : 1 + Math.max(0, ...labels.filter(Boolean).map(len)) + 3;
 }
 
-/** The pools wrapped over lines of at most `width` columns, after a muted label ("havuzlar"). */
-export function chipLines(view, width, st, opts = {}) {
-  const items = chips(view, st, opts);
-  if (!items.length) return [];
-  const label = opts.label ?? t("havuzlar");
-  const out = [];
-  let line = ` ${st.muted(label)}`, used = 1 + [...label].length;
-  const indent = width < 60 ? 1 : used;
-  for (let it of items) {
-    let gap = it.sub ? 2 : 3;
-    if (used + gap + it.width > width - 1 && used > indent) { out.push(line); line = " ".repeat(indent); used = indent; gap = indent > 1 ? 3 : 0; }
-    if (used + gap + it.width > width - 1 && it.bare) it = it.bare;
-    if (used + gap + it.width > width - 1) continue; // even its name does not fit this pane
-    line += `${" ".repeat(gap)}${it.paint()}`;
-    used += gap + it.width;
+// A state as a coloured symbol and words, with a shorter form for narrow panes:
+// hazır ●, çalışıyor n, n/n dolu, limitte · saat, dinleniyor ~dk, hata.
+function status(state, full, bare, st, tone) {
+  const sym = st.ascii ? { running: "*", ready: "o", full: "#", limited: "#", resting: "~", error: "x" }[state] : { running: "●", ready: "●", full: "●", limited: "■", resting: "◐", error: "✗" }[state];
+  const paintWords = (w) => (state === "ready" ? st.muted(w) : tone(w));
+  const make = (w) => ({ text: w ? `${sym} ${w}` : sym, paint: () => `${tone(sym)}${w ? ` ${paintWords(w)}` : ""}` });
+  return { full: make(full), bare: make(bare) };
+}
+
+/**
+ * The footer's groups: [{ label, items: [{ id, name, full, bare }], tail }]: the pools (running first,
+ * "+3 kapalı" after them) and the providers behind the free pool.
+ */
+export function chips(view, st, { at = Date.now(), providers = true, label = t("havuzlar") } = {}) {
+  const tone = (state) => ({ running: (s) => st.fg("team", s), ready: (s) => st.fg("done", s), full: (s) => st.fg("blocked", s), limited: (s) => st.fg("blocked", s), resting: (s) => st.fg("blocked", s), error: (s) => st.fg("failed", s) }[state]);
+  const pool = (p) => {
+    const state = p.state === "running" && p.full ? "full" : p.state;
+    const words = { ready: [t("hazır"), ""], running: [t("{n} çalışıyor", { n: p.running }), String(p.running)], full: [stateText(p, at), `${p.running}/${p.capacity}`], limited: [stateText(p, at), t("limitte")] }[state];
+    return { id: p.name, name: p.name, state, ...status(state, words[0], words[1], st, tone(state)) };
+  };
+  const provider = (x) => {
+    const words = { ready: [t("hazır"), ""], resting: [providerText(x), x.minutes ? `~${t("{n} dk", { n: x.minutes })}` : t("dinleniyor")], error: [t("hata"), t("hata")] }[x.state];
+    return { id: x.id, name: x.name, state: x.state, ...status(x.state, words[0], words[1], st, tone(x.state)) };
+  };
+  const groups = [];
+  if (view.pools.length || view.hidden) {
+    const tail = view.hidden ? t("+{n} kapalı", { n: view.hidden }) : "";
+    groups.push({ label, items: view.pools.map(pool), tail });
   }
-  out.push(line);
+  const free = view.pools.find((p) => p.name === "free");
+  if (providers && free?.providers?.length) groups.push({ label: t("sağlayıcılar"), items: free.providers.map(provider), tail: "", providers: true });
+  return groups;
+}
+
+// The items of one group in aligned columns (mark, name, state), as many columns as fit `room`, row by
+// row; the full words when they fit, else the short ones, else names shortened in the middle.
+// A wide pane keeps the words over a row more; a narrow one (fewer: true) takes the fewer rows.
+function table(items, room, mark, fewer = false) {
+  const cell = (cols) => cols.reduce((a, c) => a + c.w, 0) + GAP * (cols.length - 1);
+  const tries = ["full", "bare"].flatMap((form) => items.map((_, i) => [form, items.length - i]));
+  if (fewer) tries.sort((a, b) => b[1] - a[1]);
+  for (const [form, k] of tries) {
+    const cols = Array.from({ length: k }, (_, j) => {
+      const mine = items.filter((_, i) => i % k === j);
+      const name = Math.max(...mine.map((x) => len(x.name))), state = Math.max(...mine.map((x) => len(x[form].text)));
+      return { name, state, w: (mark ? mark + 1 : 0) + name + 2 + state };
+    });
+    if (cell(cols) <= room) return { form, cols, k };
+  }
+  // one column, still too wide: shorten the names (the state stays whole)
+  const state = Math.max(...items.map((x) => len(x.bare.text)));
+  const name = Math.max(1, room - (mark ? mark + 1 : 0) - 2 - state);
+  return { form: "bare", cols: [{ name, state, w: room }], k: 1, clipName: name };
+}
+
+const middleClip = (s, n) => (len(s) <= n ? s : n <= 1 ? "…" : `${[...s].slice(0, Math.ceil((n - 1) / 2)).join("")}…${[...s].slice(len(s) - Math.floor((n - 1) / 2)).join("")}`);
+
+/**
+ * The footer lines: each group's label in a shared gutter, its items in aligned columns, wrapped by
+ * whole items within `width` (a chip is never split); a narrow pane (< 60) drops the labels and the
+ * ready providers. opts: proto, logos, label, gutter, at, providers.
+ */
+export function chipLines(view, width, st, opts = {}) {
+  const groups = chips(view, st, opts);
+  if (!groups.length) return [];
+  const narrow = width < 60;
+  const gutter = opts.gutter ?? gutterWidth(groups.map((g) => g.label), width);
+  const room = width - gutter - 1;
+  const out = [];
+  for (const group of groups) {
+    // a narrow pane keeps only the providers that need a look (resting, failing)
+    const g = narrow && group.providers ? { ...group, items: group.items.filter((x) => x.state !== "ready") } : group;
+    if (!g.items.length && !g.tail) continue;
+    const marks = g.items.map((x) => logoMark(x.id, st, opts));
+    const mark = Math.max(0, ...marks.map((m) => m.width));
+    const lines = [];
+    if (g.items.length) {
+      const { form, cols, k, clipName } = table(g.items, room, mark, narrow);
+      for (let r = 0; r * k < g.items.length; r++) {
+        const row = g.items.slice(r * k, r * k + k).map((x, j) => {
+          const name = clipName ? middleClip(x.name, clipName) : x.name, s = x[form], c = cols[j], last = j === k - 1 || r * k + j === g.items.length - 1;
+          const m = mark ? `${marks[r * k + j].paint() || " ".repeat(mark)} ` : "";
+          return `${m}${name}${" ".repeat(c.name - len(name) + 2)}${s.paint()}${last ? "" : " ".repeat(c.state - len(s.text))}`;
+        });
+        const used = row.length ? cols.slice(0, row.length).reduce((a, c) => a + c.w, 0) + GAP * (row.length - 1) : 0;
+        lines.push({ text: row.join(" ".repeat(GAP)), used: used - (cols[row.length - 1].state - len(g.items[r * k + row.length - 1][form].text)) });
+      }
+    }
+    // "+3 kapalı" after the last row when it fits, on its own row otherwise
+    if (g.tail) {
+      const last = lines.at(-1);
+      if (last && last.used + GAP + len(g.tail) <= room) last.text += `${" ".repeat(GAP)}${st.muted(g.tail)}`;
+      else lines.push({ text: st.muted(g.tail) });
+    }
+    lines.forEach((l, i) => {
+      const head = !narrow && i === 0 && g.label ? ` ${st.muted(g.label)}${" ".repeat(Math.max(1, gutter - 1 - len(g.label)))}` : " ".repeat(gutter);
+      out.push(`${head}${l.text}`);
+    });
+  }
   return out;
 }

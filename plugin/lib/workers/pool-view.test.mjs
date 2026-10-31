@@ -1,5 +1,6 @@
 // The pools as the user sees them: only connected ones, a state instead of "0/2", running first, the
-// providers behind the free pool, icons that fit their two cells, and the background-work line.
+// providers behind the free pool, the real logos (two cells) or a brand-coloured glyph, aligned
+// columns under one label gutter, and the background-work line in the same style.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -44,35 +45,63 @@ assert.equal(pv.freeServing(rs, at + 3600_000), null, "an old request is not wha
 // no free keys: the free pool is hidden too
 assert.equal(pv.poolView({ workers: [], free: { keys: false } }).hidden, 1);
 
-// the line: every chip whole, "+3 off" at the end, within the width at any size, plain without colour
+// the lines: every chip whole, "+3 off" after the pools, within the width at any size, plain without colour
 const plain = styleFor({ isTTY: false }, {});
-for (const w of [30, 44, 60, 80, 120]) {
-  const lines = pv.chipLines(view, w, plain);
+for (const w of [30, 44, 60, 80, 120, 160]) {
+  const lines = pv.chipLines(view, w, plain, { at });
   for (const l of lines) assert.ok(cols(l) <= w, `${w}: ${l}`);
-  const text = lines.map((l) => l.trim()).join("   ");
-  for (const s of ["copilot 2/2 full", "free 1", "NVIDIA", "OpenRouter resting ~12 min", "Z.ai failed", "+3 off"]) assert.ok(text.includes(s), `${w}: ${s} in ${text}`);
+  const text = lines.map((l) => l.replace(/\s+/g, " ").trim()).join(" | ");
+  assert.ok(!/\x1b/.test(lines.join("")), "plain: no escape codes");
+  const expect = w < 60 ? ["copilot ● 2/2", "free ● 1", "agy ●", "codex ■ limited", "+3 off", "OpenRouter ◐ ~12 min", "Z.ai ✗ failed"]
+    : ["copilot ● 2/2 full", "free ● 1 running", "agy ● ready", "codex ■ limited ·", "+3 off", "NVIDIA ● ready", "OpenRouter ◐ resting ~12 min", "Z.ai ✗ failed"];
+  for (const s of expect) assert.ok(text.includes(s), `${w}: ${s} in ${text}`);
+  if (w < 60) assert.ok(!text.includes("NVIDIA") && !text.includes("pools"), `${w}: narrow drops the labels and the ready providers: ${text}`);
+  else assert.ok(lines[0].startsWith(" pools ") && lines.some((l) => l.startsWith(" providers ")), `${w}: labels in the gutter`);
 }
-// colour: monograms in front of the names; with an image protocol a PNG badge per pool, counted as two cells
+// aligned columns: on a pane that needs two rows the names and states start at the same columns
+const two = pv.chipLines(view, 100, plain, { at }).filter((l) => !l.startsWith(" providers"));
+assert.ok(two.length >= 2);
+const starts = (l) => [...l.matchAll(/ {2,}(?=\S)/g)].map((m) => m.index + m[0].length);
+assert.deepEqual(starts(two[1]).slice(0, 2), starts(two[0]).slice(0, 2), `columns line up:\n${two.join("\n")}`);
+// a wide pane fits the pools on one row
+assert.equal(pv.chipLines(view, 160, plain, { at }).filter((l) => !l.startsWith(" providers") && !l.startsWith("  ")).length, 1);
+
+// colour without images: a one-colour "◆" in the brand colour, no letter monograms; images: the real logos
 const color = styleFor({ isTTY: true }, { TERM: "xterm-256color", COLORTERM: "truecolor" });
-assert.match(strip(pv.chipLines(view, 120, color).join("")), /cp ● copilot/);
-const img = pv.chipLines(view, 120, color, { proto: "iterm" });
-assert.ok(img.join("").includes("\x1b]1337;File=inline=1;width=2;height=1"));
+const glyphs = pv.chipLines(view, 120, color, { at }).join("\n");
+assert.match(strip(glyphs), /◆ copilot {2}● 2\/2 full/);
+assert.ok(!/\b(cp|cx|or|zh|nv)\b ●/.test(strip(glyphs)), "no two-letter monograms");
+assert.ok(glyphs.includes("\x1b[38;2;118;185;0m◆"), "NVIDIA's mark in NVIDIA green");
+const img = pv.chipLines(view, 120, color, { proto: "iterm", at });
+assert.ok(img.join("").includes("\x1b]1337;File=inline=1;size="), "OSC 1337 inline images");
+assert.ok(img.join("").includes(";width=2;height=1;preserveAspectRatio=1:iVBORw0KGgo"), "two cells, one row, a PNG");
+assert.ok(!img.join("").includes("◆"), "images replace the glyphs");
 for (const l of img) assert.ok(cols(l) <= 120);
-assert.ok(pv.chipLines(view, 120, color, { proto: "kitty" }).join("").includes("\x1b_Ga=T,f=100,c=2,r=1"));
-assert.ok(!pv.chipLines(view, 120, color, { proto: "iterm", logos: "glyph" }).join("").includes("1337"), "glyph: letters only");
-assert.ok(!strip(pv.chipLines(view, 120, color, { logos: "off" }).join("")).includes("cp ●"), "off: no icons");
-const png = pv.badgePng("codex");
-assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-assert.equal(png.readUInt32BE(16), 32);
+// the columns are the same with images (two cells) as the plain lines say
+assert.deepEqual(img.map((l) => cols(l)), pv.chipLines(view, 120, styleFor({ isTTY: true }, { TERM: "xterm-256color", COLORTERM: "truecolor" }), { proto: "iterm", at }).map((l) => cols(l)));
+assert.ok(pv.chipLines(view, 120, color, { proto: "kitty", at }).join("").includes("\x1b_Ga=p,i="), "kitty: placements");
+assert.ok(!pv.chipLines(view, 120, color, { proto: "iterm", logos: "glyph", at }).join("").includes("1337"), "glyph: no images");
+assert.ok(!strip(pv.chipLines(view, 120, color, { logos: "off", at }).join("")).includes("◆"), "off: no marks");
+// NO_COLOR: no marks at all, the states still in words
+const noColor = styleFor({ isTTY: true }, { NO_COLOR: "1", TERM: "xterm-256color" });
+const nc = pv.chipLines(view, 120, noColor, { proto: pv.imageProtocol({ isTTY: true }, { NO_COLOR: "1", TERM_PROGRAM: "WezTerm" }), at }).join("\n");
+assert.ok(!/\x1b|◆/.test(nc), "NO_COLOR: no escapes, no marks");
+assert.match(nc, /copilot {2}● 2\/2 full/);
 // which terminals get images
 assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm" }), "iterm");
+assert.equal(pv.imageProtocol({ isTTY: true }, { WEZTERM_PANE: "3" }), "iterm");
+assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "iTerm.app" }), "iterm");
 assert.equal(pv.imageProtocol({ isTTY: true }, { KITTY_WINDOW_ID: "1" }), "kitty");
+assert.equal(pv.imageProtocol({ isTTY: true }, { TERM: "xterm-kitty" }), "kitty");
 assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "Apple_Terminal" }), null);
+assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "vscode" }), null);
+assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm", NO_COLOR: "1" }), null);
+assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm", TMUX: "/tmp/t" }), null);
 assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm" }, "glyph"), null);
 assert.equal(pv.imageProtocol({ isTTY: false }, { TERM_PROGRAM: "WezTerm" }), null);
 // the pane takes the view as its footer
 const pane = renderPane({ clock: "10:00", counts: {}, cards: [], pools: view }, { width: 70, height: 16, stream: { isTTY: false }, env: {} });
-assert.match(pane.join("\n"), /pools {3}● copilot 2\/2 full/);
+assert.match(pane.join("\n"), /^ pools {7,}copilot {2}● 2\/2 full/m);
 
 // background work: embeddings with their provider and queue, a stopped backfill, the import, reindexing
 const jobs = bg.backgroundJobs({
