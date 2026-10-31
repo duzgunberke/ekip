@@ -20,6 +20,7 @@ import { AGENTS, QUOTA, autoOrder, clearLimit, isStrong, main as agentsMain, onF
 import { killCause } from "../lib/workers/slots.js";
 import { banner, c, dot, mark, rows, say, title, warn, fit, welcome } from "../lib/core/ui.js";
 import { lang, t } from "../lib/core/i18n.js";
+const tr = t; // for the dispatch, where `t` names the tasks module
 import { main as vpsMain } from "../lib/hub/vps.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -238,6 +239,8 @@ const WORKER_BRIEF = [
   // a worker stopped its own render with pkill -f and killed the renders of two other workers
   "Other workers run on this machine at the same time: stop only processes you started yourself, by their PID (kill <pid>). Never use pkill, killall or kill by name or pattern.",
   "A long job you start and must leave running after you finish (a render, an upload, a queue) is started with `ekip track --label \"<what>\" -- <command>`: it runs detached with its log, progress and stall checks, survives when you stop, and `ekip track ls` shows it. Never sit polling a long job yourself for many minutes.",
+  // the user's language (ekip lang): the report they read is in it; repository rules (commit messages, code) still apply
+  `Write the final report in ${lang === "en" ? "English" : "Turkish"}; code, comments and commit messages follow the repository's own rules.`,
   "",
   "TASK:",
 ].join("\n");
@@ -961,17 +964,17 @@ async function watch([file]) {
     }
     if (done) break;
     // A worker that was killed never writes [exit]; without this its pane stayed open forever.
-    if (!alive()) { ended = "durduruldu"; console.log(`\n${c.yellow("■ işçi durduruldu (çıkış kaydı yok)")}`); break; }
+    if (!alive()) { ended = t("durduruldu"); console.log(`\n${c.yellow(t("■ işçi durduruldu (çıkış kaydı yok)"))}`); break; }
     // While a worker thinks there is no output; a quiet line says it is still alive and for how long.
     if (Date.now() - lastOut > 60_000 && Date.now() - lastNote > 60_000) {
       lastNote = Date.now();
-      console.log(c.gray(`· çalışıyor · ${mins(Date.now() - started)} · ${mins(Date.now() - lastOut)}dır sessiz`));
+      console.log(c.gray(`· ${t("çalışıyor")} · ${mins(Date.now() - started)} · ${t("{d} sessiz", { d: mins(Date.now() - lastOut) })}`));
     }
     await sleep(400);
   }
   process.stdout.write(`\x1b]0;✓ ${label ?? project ?? "ekip"} · ${via}\x07`);
   // A finished worker's pane closes by itself after a while (Enter closes it now).
-  console.log(`\n${c.gray(`${ended} · ${mins(Date.now() - started)} · bu bölme 90 sn sonra kapanır (Enter: hemen kapat)`)}`);
+  console.log(`\n${c.gray(`${ended} · ${mins(Date.now() - started)} · ${t("bu bölme 90 sn sonra kapanır (Enter: hemen kapat)")}`)}`);
   if (process.stdin.isTTY) {
     process.stdin.setRawMode?.(true);
     await Promise.race([new Promise((r) => process.stdin.once("data", r)), sleep(90_000)]);
@@ -1132,7 +1135,12 @@ function markRunSynced(id) {
 
 // ---- the lead session -------------------------------------------------------------------------
 
+// The user's ekip language (ekip lang tr|en): task titles, steps and notes on the panel are in it.
+const LANG_NAME = lang === "en" ? "English" : "Turkish";
+const STEP_EXAMPLE = lang === "en" ? "Research; Script; Voice-over; Render; Check" : "Araştırma; Senaryo; Seslendirme; Render; Kontrol";
+
 const LEAD_PROMPT = `# ekip: you lead a team on other quotas
+Always answer the user in the language they write in. Task titles, steps and notes you put on the panel are in ${LANG_NAME} (the user's ekip language setting, \`ekip lang\`).
 When SessionStart provides setup gaps, offer the most useful one once at a natural moment; if accepted, run it as a tracked task. Respect a declined offer for this session and never block the user's request.
 
 ## Public repository rules
@@ -1150,8 +1158,8 @@ skills. Other subagents run on Sonnet by default. Keep your own context for deci
 
 ## Progress the user can see (mandatory)
 For EVERY user request that takes more than a minute, before doing anything else:
-  id=$(ekip task new "<short Turkish title>" --project <name if any> --steps "<step 1>; <step 2>; ...")
-Use 3-8 concrete steps in Turkish (e.g. "Araştırma; Senaryo; Seslendirme; Render; Kontrol"). Then keep it true:
+  id=$(ekip task new "<short ${LANG_NAME} title>" --project <name if any> --steps "<step 1>; <step 2>; ...")
+Use 3-8 concrete steps in ${LANG_NAME} (e.g. "${STEP_EXAMPLE}"). Then keep it true:
 - \`ekip task step $id N running\` when you start step N (\`--pct 40\` for partial progress inside a long step;
   starting a step marks the previous running one done, add \`--parallel\` when steps overlap),
   \`ekip task step $id N done\` when it is done, \`failed\` / \`skipped\` when that happens; \`ekip task add $id "new step"\`
@@ -1312,9 +1320,9 @@ async function lead(args) {
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
-    console.log(`\n${mark()}  ${c.gray("proje")} ${here ? c.bold(here.name) : c.gray("kayıtlı değil (ekip project add .)")}   ${c.gray("havuzlar")} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow("ücretsiz modeller") : c.green("Claude")}`);
+    console.log(`\n${mark()}  ${c.gray(t("proje"))} ${here ? c.bold(here.name) : c.gray(t("kayıtlı değil (ekip project add .)"))}   ${c.gray(t("havuzlar"))} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}   ${c.gray("lead")} ${free ? c.yellow(t("ücretsiz modeller")) : c.green("Claude")}`);
     if (SETTINGS.hubUrl) console.log(`        ${c.gray("panel")} ${c.under(SETTINGS.hubUrl)}`);
-    try { const up = (await import("../lib/ops/update.js")).autoUpdate(); if (up.updated) console.log(`        ${c.green(`ekip ${up.from} → ${up.to} güncellendi`)} ${c.gray("(yeni hook'lar bir sonraki açılışta)")}`); } catch { /* offline */ }
+    try { const up = (await import("../lib/ops/update.js")).autoUpdate(); if (up.updated) console.log(`        ${c.green(t("ekip {from} → {to} güncellendi", { from: up.from, to: up.to }))} ${c.gray(t("(yeni hook'lar bir sonraki açılışta)"))}`); } catch { /* offline */ }
     const onboarding = await import("../lib/projects/onboarding.js");
     const gaps = await onboarding.setupGaps({ cwd: process.cwd() });
     onboarding.printGaps(gaps, { limit: 3 });
@@ -1593,7 +1601,7 @@ async function importHistory(args = []) {
   // Sessions above 20 MB are mostly tool output and take hours each through the memory server
   // (one took 3+ hours on 29 Oct); they are skipped unless --max-mb or --all asks for them.
   const maxMb = all ? "0" : opt("--max-mb") ?? "20";
-  console.log(all ? "geçmişin tamamı içe aktarılıyor" : `son ${days} günün oturumları, en fazla ${maxMb} MB (hepsi için: --all)`);
+  console.log(all ? t("geçmişin tamamı içe aktarılıyor") : t("son {days} günün oturumları, en fazla {mb} MB (hepsi için: --all)", { days, mb: maxMb }));
   // one import at a time: two would read the same sessions and double the memory writes
   const lock = path.join(path.dirname(RUNS), "import-history.lock");
   let held = 0; try { held = Number(fs.readFileSync(lock, "utf8")); process.kill(held, 0); } catch { held = 0; }
@@ -1931,7 +1939,7 @@ if (cmd?.startsWith("-") && !["--free", "--safe", "--member", "--here", "-h", "-
   // Claude's long flags always take two dashes, so `-status` / `-help` can only mean ekip.
   const ours = !cmd.startsWith("--") && word.length > 1;
   if (COMMANDS.includes(word) && (ours || !flags.has(word))) cmd = word;
-  else if ((ours || !flags.has(word)) && nearest(word)) die(`${cmd} tanınmadı. Bunu mu demek istedin: ekip ${nearest(word)}  (tüm komutlar: ekip help)`);
+  else if ((ours || !flags.has(word)) && nearest(word)) die(t("{cmd} tanınmadı. Bunu mu demek istedin: ekip {near}  (tüm komutlar: ekip help)", { cmd, near: nearest(word) }));
 }
 let code = 0;
 switch (cmd) {
@@ -1942,7 +1950,7 @@ switch (cmd) {
   case "mesai": code = await mesai(rest); if (rest[0] === "all") await (await import("../lib/workers/limits.js")).push().catch(() => {}); break;
   case "watch": await watch(rest); break;
   case "update": code = (await import("../lib/ops/update.js")).update(); break;
-  case "version": { const u = (await import("../lib/ops/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (yeni sürüm ${u.latest}: ekip update)` : u.latest ? "  (güncel)" : ""}`); break; }
+  case "version": { const u = (await import("../lib/ops/update.js")).checkUpdate({ maxAgeH: 0 }); console.log(`ekip ${u.local}${u.behind ? `  (${t("yeni sürüm {v}: ekip update", { v: u.latest })})` : u.latest ? `  (${t("güncel")})` : ""}`); break; }
   // ekip show LOG...: a long job started outside `ekip run` (an import, a render, a script) gets the
   // same live pane next to the lead, so nothing runs out of sight.
   case "show": {
@@ -1998,11 +2006,11 @@ switch (cmd) {
   case "statusline": code = await (await import("../lib/ops/statusline.js")).main(rest); break;
   case "terminal": code = (await (await import("../lib/ops/terminal.js")).main(rest)) ?? 0; break;
   case "stats": code = await (await import("../lib/memory/usage.js")).main(rest); break;
-  case "reconcile": console.log(`${await reconcileRuns()} kayıp çalıştırma kapatıldı`); break;
+  case "reconcile": console.log(`${await reconcileRuns()} ${t("kayıp çalıştırma kapatıldı")}`); break;
   case "task": case "tasks": {
     const t = await import("../lib/tasks/tasks.js");
     try { t.reapDead(); t.reapStale(); } catch { /* never block a task command */ }
-    if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} görev panele gönderildi`); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break; }
+    if (cmd === "tasks" && rest[0] === "sync") { await reconcileRuns().catch(() => {}); console.log(`${await t.syncHub()} ${tr("görev panele gönderildi")}`); await (await import("../lib/workers/limits.js")).push().catch(() => {}); break; }
     if (cmd === "task" && rest[0] === "new") {
       // A new task reopens the live task pane if the user closed it (iTerm2).
       await t.main(rest);
@@ -2038,9 +2046,11 @@ switch (cmd) {
   case "down": await down(); console.error("ekip: freellmapi stopped"); break;
   case "logs": spawnSync("tail", ["-n", "60", LOG], { stdio: "inherit" }); break;
   case "help": case "-h": case "--help": process.stdout.write(HELP()); break;
+  // the lead's system text as this language setting makes it (tests, docs)
+  case "lead-prompt": process.stdout.write(LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : "")); break;
   default:
     // Only flags (or nothing) start the lead session; an unknown word is a typo, not a prompt.
-    if (cmd && !cmd.startsWith("-")) die(nearest(cmd) ? `bilinmeyen komut: ${cmd}. Bunu mu demek istedin: ekip ${nearest(cmd)}  (tüm komutlar: ekip help)` : `bilinmeyen komut: ${cmd}  (tüm komutlar: ekip help)`);
+    if (cmd && !cmd.startsWith("-")) die(nearest(cmd) ? t("bilinmeyen komut: {cmd}. Bunu mu demek istedin: ekip {near}  (tüm komutlar: ekip help)", { cmd, near: nearest(cmd) }) : t("bilinmeyen komut: {cmd}  (tüm komutlar: ekip help)", { cmd }));
     code = await lead(cmd ? [cmd, ...rest] : []);
 }
 // Let hub pushes started by this command finish (task updates, run reports) before exiting.

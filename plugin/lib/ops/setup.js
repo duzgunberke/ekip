@@ -51,6 +51,8 @@ export async function facts({ cwd = process.cwd() } = {}) {
 
 // ---- the steps ------------------------------------------------------------------------------------
 
+// command placeholders in the user's language
+const PH = lang === "en" ? { key: "<key>", folder: "<folder>", project: "<project>" } : { key: "<anahtar>", folder: "<klasör>", project: "<proje>" };
 const projectCmd = (f) => (fs.existsSync(path.join(f.cwd, ".git")) ? "ekip project add ." : `ekip project scan ${SETTINGS.projectsRoot ?? "~/Projects"}`);
 
 /**
@@ -72,13 +74,13 @@ export const STEPS = [
     } },
   { id: "keys", level: "required", title: "Ücretsiz model anahtarları", short: "model anahtarları", why: "ücretsiz model havuzu küçük işleri, hafıza çıkarımını ve wiki'yi Claude kotan dışında yapar", command: "ekip keys",
     check: (f) => ({ done: f.keys.length > 0, detail: f.keys.length ? t("{n} sağlayıcı: {list}", { n: f.keys.length, list: f.keys.map(([p]) => p).join(", ") }) : t("anahtar yok") }) },
-  { id: "embeddings", level: "required", title: "Vektör sağlayıcı (embedding)", short: "vektör sağlayıcı", why: "vektör yoksa hafıza ve wiki araması anahtar kelimeye düşer, anlamca yakın kayıtlar bulunmaz", command: "ekip key add nvidia <anahtar>",
+  { id: "embeddings", level: "required", title: "Vektör sağlayıcı (embedding)", short: "vektör sağlayıcı", why: "vektör yoksa hafıza ve wiki araması anahtar kelimeye düşer, anlamca yakın kayıtlar bulunmaz", command: `ekip key add nvidia ${PH.key}`,
     check: (f) => ({ done: f.embeddings, detail: f.embeddings ? (process.env.MEMORY_EMBEDDING_BASE_URL ? "MEMORY_EMBEDDING_BASE_URL" : f.keys.filter(([p]) => ["nvidia", "openrouter"].includes(p)).map(([p]) => p).join(", ")) : t("NVIDIA ya da OpenRouter anahtarı yok (build.nvidia.com, ücretsiz)") }) },
   { id: "agents", level: "required", title: "İşçi CLI girişleri", short: "işçi girişleri", why: "iş, Claude kotan dışındaki en az iki havuza dağıtılabilsin", command: "ekip agents login",
     check: (f) => { const n = f.logged.length + (f.keys.length ? 1 : 0); return { done: n >= 2, detail: t("{n} havuz hazır{list}", { n, list: n ? `: ${[...f.logged, ...(f.keys.length ? ["free"] : [])].join(", ")}` : "" }) }; } },
-  { id: "project", level: "required", title: "En az bir proje kaydı", short: "proje kaydı", why: "projenin kartı, hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", command: "ekip project add <klasör>",
+  { id: "project", level: "required", title: "En az bir proje kaydı", short: "proje kaydı", why: "projenin kartı, hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", command: `ekip project add ${PH.folder}`,
     check: (f) => ({ done: f.projects.length > 0, detail: f.projects.length ? t("{n} proje kayıtlı", { n: f.projects.length }) : null, command: f.projects.length ? null : projectCmd(f) }) },
-  { id: "index", level: "required", title: "Proje hafızası, wiki, kod grafiği ve vektör indeksi", short: "hafıza indeksi", why: "eksik ya da bayat indeksle işçiler kodu, belgeleri ve eski kararları bulamaz", command: "ekip project sync <proje>",
+  { id: "index", level: "required", title: "Proje hafızası, wiki, kod grafiği ve vektör indeksi", short: "hafıza indeksi", why: "eksik ya da bayat indeksle işçiler kodu, belgeleri ve eski kararları bulamaz", command: `ekip project sync ${PH.project}`,
     check: (f) => {
       if (!f.projects.length) return { done: false, detail: t("önce bir proje kaydedin"), command: projectCmd(f) };
       const open = f.projectGaps.filter((x) => x.gaps.length);
@@ -269,7 +271,8 @@ export async function wizard({ io = {}, cwd = process.cwd(), env = process.env, 
     const chosen = await chooseLanguage({ prompt });
     if (chosen !== lang && !io.exec) return spawnSync(process.execPath, [EKIP, "setup", "--no-lang"], { stdio: "inherit", env: { ...env, EKIP_LANG: chosen } }).status ?? 0;
   }
-  let f = await facts({ cwd });
+  const gather = io.facts ?? (() => facts({ cwd }));
+  let f = await gather();
   let steps = evaluate(f, { env });
   const order = { required: 0, recommended: 1, optional: 2 };
   const todo = steps.filter((s) => !s.done).sort((a, b) => order[a.level] - order[b.level]);
@@ -280,14 +283,15 @@ export async function wizard({ io = {}, cwd = process.cwd(), env = process.env, 
     console.log(`\n${c.bold(`${t("Kurulum")} ${sum.done}/${sum.total}`)}  ${progress(sum)}`);
     console.log(`  ${c.yellow("●")} ${c.bold(s.title)} ${c.gray(`· ${levelLabel(s.level)}`)}${s.detail ? c.gray(` · ${s.detail}`) : ""}\n    ${s.why}\n    ${c.cyan(s.command)}`);
     const a = (await prompt(`  ${t("[Ş]imdi yap / [s]onra / [a]tla")} `)).trim().toLowerCase();
-    if (/^(a|atla|skip|k)$/.test(a)) { snooze(s.id, SKIP_DAYS); console.log(c.gray(`  ${t("atlandı; geri getirmek için: ekip setup unsnooze {id}", { id: s.id })}`)); continue; }
-    if (/^(s|sonra|l|later|n|no|h|hayır)$/.test(a)) { console.log(c.gray(`  ${t("sonra: {cmd}", { cmd: s.command })}`)); continue; }
+    // Enter is "now"; tr: [a]tla / [s]onra, en: s[k]ip / [l]ater
+    if ((lang === "en" ? /^(k|skip)$/ : /^(a|atla|skip)$/).test(a)) { snooze(s.id, SKIP_DAYS); console.log(c.gray(`  ${t("atlandı; geri getirmek için: ekip setup unsnooze {id}", { id: s.id })}`)); continue; }
+    if ((lang === "en" ? /^(l|later|no)$/ : /^(s|sonra|h|hayır|later)$/).test(a)) { console.log(c.gray(`  ${t("sonra: {cmd}", { cmd: s.command })}`)); continue; }
     let cmds = actions(s, f, io);
     if (typeof cmds === "function") cmds = await cmds();
     if (!cmds.length) console.log(`  ${t("bu adımı siz tamamlayın: {cmd}", { cmd: s.command })}`);
     for (const x of cmds) exec(x);
     // check again: the step, and every later one it may have finished too
-    f = await facts({ cwd });
+    f = await gather();
     steps = evaluate(f, { env });
     const now = steps.find((x) => x.id === s.id);
     console.log(now.done ? `  ${c.green("✓")} ${now.title}` : `  ${c.yellow("●")} ${t("hâlâ eksik")}${now.detail ? `: ${now.detail}` : ""}`);
