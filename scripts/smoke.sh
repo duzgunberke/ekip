@@ -22,6 +22,7 @@ echo '== task pane =='; node plugin/lib/tasks/pane.test.mjs
 echo '== WezTerm as the default terminal =='; node plugin/lib/ops/terminal.test.mjs
 echo '== guided setup =='; node plugin/lib/ops/setup.test.mjs
 echo '== pools and background work =='; node plugin/lib/workers/pool-view.test.mjs
+echo '== pool logos: the panel list, PNGs, image protocols =='; node plugin/lib/workers/logos.test.mjs
 echo '== every t() key has an English entry =='; node plugin/lib/core/i18n.test.mjs
 # both languages: the setup list, the digest, the lead's system text and the session-start hook
 for L in tr en; do

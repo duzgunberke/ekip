@@ -31,7 +31,7 @@ export function backgroundJobs({ routing = readJson("freellmapi-routing-last.jso
     const running = recent && at - Date.parse(recent) < 5 * 60_000;
     const name = PROVIDER_NAMES[id] ?? id;
     const parts = [name, ...(vectors?.queue > 0 ? [t("kuyrukta {n}", { n: vectors.queue })] : []), ...(best.lastOkAt ? [`${t("son başarı")} ${agoText(best.lastOkAt, at)}`] : []), ...(failing && best.lastError ? [String(best.lastError).slice(0, 80)] : [])];
-    out.push({ id: "embeddings", label: t("vektörleme"), state: failing ? "error" : running ? "running" : "ok", detail: parts.join(" · ") });
+    out.push({ id: "embeddings", label: t("vektörleme"), state: failing ? "error" : running ? "running" : "ok", detail: parts.join(" · "), provider: id });
   }
   // the backfill the doctor measured (layer done/total, running or stopped)
   if (vectors?.layer && vectors.layer !== "done") {
@@ -52,20 +52,28 @@ export function backgroundJobs({ routing = readJson("freellmapi-routing-last.jso
 /** Only what is worth a glance: running or failed. */
 export const notable = (jobs) => jobs.filter((j) => j.state !== "ok");
 
-/** The pane's single line: "arka plan  ● vektörleme NVIDIA · kuyrukta 120  ● içe aktarma"; [] when quiet. */
-export function backgroundLine(jobs, width, st) {
+/**
+ * The pane's single line, in the pools' style (workers/pool-view.js): the label in the shared gutter,
+ * then "● vektörleme  [logo] NVIDIA · kuyrukta 120   ● içe aktarma …"; [] when quiet. opts: gutter
+ * (columns before the first item; 1 drops the label, as a narrow pane does), mark(id) → { width,
+ * paint } for the provider's logo.
+ */
+export function backgroundLine(jobs, width, st, { gutter = null, mark = null } = {}) {
   const list = notable(jobs);
   if (!list.length) return [];
   const label = t("arka plan");
-  let line = ` ${st.muted(label)}`, used = 1 + [...label].length;
-  for (const j of list) {
+  const g = gutter ?? (width < 60 ? 1 : 1 + [...label].length + 3);
+  let line = g > 1 ? ` ${st.muted(label)}${" ".repeat(Math.max(1, g - 1 - [...label].length))}` : " ".repeat(g), used = g;
+  for (const [i, j] of list.entries()) {
     const state = j.state === "error" ? "failed" : "running";
     const sym = st.ascii ? (j.state === "error" ? "x" : "*") : j.state === "error" ? "✗" : "●";
-    const room = width - 1 - used - 3 - 2 - [...j.label].length - 1;
+    const m = j.provider && mark ? mark(j.provider) : { width: 0, paint: () => "" };
+    const gap = i ? 3 : 0, head = 2 + [...j.label].length + 2 + (m.width ? m.width + 1 : 0);
+    const room = width - 1 - used - gap - head;
     if (room < 4) break;
     const detail = j.detail ? clipWords(j.detail, room) : "";
-    line += `   ${st.state(state, sym)} ${j.label}${detail ? ` ${st.muted(detail)}` : ""}`;
-    used += 3 + 2 + [...j.label].length + (detail ? 1 + [...detail].length : 0);
+    line += `${" ".repeat(gap)}${st.state(state, sym)} ${j.label}${detail ? `  ${m.width ? `${m.paint()} ` : ""}${st.muted(detail)}` : ""}`;
+    used += gap + 2 + [...j.label].length + (detail ? head - 2 - [...j.label].length + [...detail].length : 0);
   }
   return [line];
 }

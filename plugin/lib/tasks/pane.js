@@ -9,7 +9,8 @@ import { asciiOnly, bar as stateBar, colorMode, glyph, paint } from "../core/sta
 import { CHEVRON, FAN } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
 import { stripText } from "../ops/setup.js";
-import { chipLines, imageProtocol } from "../workers/pool-view.js";
+import { chipLines, gutterWidth, imageProtocol, logoMark } from "../workers/pool-view.js";
+import { kittyUpload } from "../workers/logos.js";
 import { backgroundLine } from "../ops/background.js";
 
 export const NARROW = 60;
@@ -223,11 +224,11 @@ export function card(x, width, st, { compact = false } = {}) {
 // ---- footer: pools -------------------------------------------------------------------------------
 
 /** Pools as small dots (teal: work running, amber: full, grey: idle), wrapped over as many lines as needed. */
-export function poolLines(pools = [], width, st, { mesai = false, proto = null, logos = "auto" } = {}) {
-  // the pools as the user connected them, with their state and icon (workers/pool-view.js)
-  if (!Array.isArray(pools)) return chipLines(pools, width, st, { proto, logos, label: `${t("havuzlar")}${mesai ? ` (${t("mesai")})` : ""}` });
+export function poolLines(pools = [], width, st, { mesai = false, proto = null, logos = "auto", gutter } = {}) {
+  // the pools as the user connected them, with their state and logo (workers/pool-view.js)
+  if (!Array.isArray(pools)) return chipLines(pools, width, st, { proto, logos, gutter, label: poolLabel(mesai) });
   if (!pools.length) return [];
-  const label = `${t("havuzlar")}${mesai ? ` (${t("mesai")})` : ""}`;
+  const label = poolLabel(mesai);
   const items = pools.map((p) => {
     const full = p.capacity > 0 && p.running >= p.capacity, busy = p.running > 0;
     const dot = st.ascii ? (full ? "#" : busy ? "*" : "o") : full ? "●" : busy ? "●" : "○";
@@ -245,6 +246,8 @@ export function poolLines(pools = [], width, st, { mesai = false, proto = null, 
   out.push(line);
   return out;
 }
+
+const poolLabel = (mesai) => `${t("havuzlar")}${mesai ? ` (${t("mesai")})` : ""}`;
 
 // ---- empty state ---------------------------------------------------------------------------------
 
@@ -291,9 +294,12 @@ export function renderPane(m, { width = 100, height = 30, stream = process.stdou
   const st = styleFor(stream, env);
   width = Math.max(20, width);
   const top = [header(m, width, st), ...setupLine(m.setup, width, st), ""];
-  // background work (embeddings, imports, reindexing) on one line over the pools, only when there is some
-  const bg = m.background ? backgroundLine(m.background, width, st) : [];
-  const foot = [...bg, ...poolLines(m.pools, width, st, { mesai: m.mesai, proto: imageProtocol(stream, env, m.logos), logos: m.logos ?? "auto" })];
+  // background work (embeddings, imports, reindexing) on one line over the pools, only when there is
+  // some; one label gutter for it, the pools and the free pool's providers, so the columns line up
+  const logos = { proto: imageProtocol(stream, env, m.logos), logos: m.logos ?? "auto" };
+  const gutter = gutterWidth([t("arka plan"), poolLabel(m.mesai), t("sağlayıcılar")], width);
+  const bg = m.background ? backgroundLine(m.background, width, st, { gutter, mark: (id) => logoMark(id, st, logos) }) : [];
+  const foot = [...bg, ...poolLines(m.pools, width, st, { mesai: m.mesai, gutter, ...logos })];
   const loose = (m.loose ?? []).map((r) => {
     const parts = fitParts([{ text: r.via, paint: st.bold }, { text: r.label, shrink: true }, ...(r.note ? [{ text: r.note, paint: st.muted }] : [])], width - 5, "  ");
     return ` ${st.state(r.state, st.glyph(r.state))} ${parts.text}`;
@@ -341,19 +347,50 @@ function fitLine(s, n) {
   return out;
 }
 
+// A line cut at its images: { images: "col:escape…" (where each image sits), runs: [{ col, sgr, text }]
+// (the text between them, with the colours in force where each run starts) }.
+const IMAGE_PART = /(\x1b\]1337;File=[^\x07]*\x07|\x1b_G[^\x1b]*\x1b\\)/;
+function pieces(line) {
+  const runs = [], images = [];
+  let col = 0, sgr = "", run = { col: 0, sgr: "", text: "" };
+  for (const part of String(line).split(IMAGE_PART)) {
+    if (!part) continue;
+    if (IMAGE_PART.test(part)) { runs.push(run); images.push(`${col}:${part}`); col += 2; run = { col, sgr, text: "" }; continue; }
+    run.text += part;
+    col += cols(part);
+    for (const m of part.match(/\x1b\[[0-9;]*m/g) ?? []) sgr += m;
+  }
+  runs.push(run);
+  return { images: images.join("\n"), runs };
+}
+
 /**
  * Draws frames without flicker: only the lines that changed are rewritten, inside a synchronized
- * update, with the cursor hidden. A resize (or the first frame) redraws everything.
+ * update, with the cursor hidden. A resize (or the first frame) redraws everything. A changed line
+ * whose logos stay where they were keeps them: only the text around them is rewritten, so an image
+ * goes out once and does not blink when a count next to it changes. kitty gets each PNG once and
+ * then only placements; a line rewritten whole first drops its old placements.
  */
 export function painter(out = process.stdout) {
   let prev = [], size = "";
+  const sent = new Set();
   return (lines) => {
     const now = `${out.columns}x${out.rows}`;
     const full = now !== size;
     size = now;
     let buf = "\x1b[?2026h\x1b[?25l";
-    if (full) buf += "\x1b[H\x1b[2J";
-    lines.forEach((l, i) => { if (full || prev[i] !== l) buf += `\x1b[${i + 1};1H\x1b[0m${l}\x1b[0m\x1b[K`; });
+    if (full) buf += `\x1b[H\x1b[2J${sent.size ? "\x1b_Ga=d,d=a,q=2\x1b\\" : ""}`;
+    lines.forEach((l, i) => {
+      if (!full && prev[i] === l) return;
+      const was = full || prev[i] == null ? null : pieces(prev[i]), is = pieces(l);
+      if (was && is.images && was.images === is.images) {
+        for (const r of is.runs) buf += `\x1b[${i + 1};${r.col + 1}H\x1b[0m${r.sgr}${r.text}`;
+        buf += "\x1b[0m\x1b[K";
+        return;
+      }
+      if (!full && String(prev[i] ?? "").includes("\x1b_G")) buf += `\x1b_Ga=d,d=y,y=${i + 1},q=2\x1b\\`;
+      buf += `\x1b[${i + 1};1H\x1b[0m${l.includes("\x1b_G") ? kittyUpload(l, sent) : l}\x1b[0m\x1b[K`;
+    });
     if (lines.length < prev.length) buf += `\x1b[${lines.length + 1};1H\x1b[0m\x1b[J`;
     buf += "\x1b[?2026l";
     prev = lines;
