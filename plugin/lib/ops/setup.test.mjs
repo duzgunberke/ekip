@@ -65,10 +65,10 @@ assert.ok(!snoozed("keys"));
 // non-interactive: `ekip setup` without a terminal prints the list and exits 0; --json counts
 const list = spawnSync(process.execPath, [path.resolve("plugin/bin/ekip.js"), "setup"], { encoding: "utf8", env: { ...process.env, EKIP_SETUP_FAKE: "keys=done" }, timeout: 20000 });
 assert.equal(list.status, 0, list.stderr);
-assert.match(list.stdout, /Setup \d\/9/);
+assert.match(list.stdout, /Setup \d+\/\d+/); // 9 steps on macOS, fewer elsewhere (no terminal/notifier steps)
 assert.match(list.stdout, /ekip agents login/);
 const json = JSON.parse(spawnSync(process.execPath, [path.resolve("plugin/bin/ekip.js"), "setup", "--json"], { encoding: "utf8", env: { ...process.env, EKIP_SETUP_FAKE: "keys=done,agents=done" }, timeout: 20000 }).stdout);
-assert.equal(json.total, 9);
+assert.equal(json.total, process.platform === "darwin" ? 9 : 7); // the terminal and notifier steps are macOS-only
 assert.ok(json.steps.find((x) => x.id === "keys").done && json.steps.find((x) => x.id === "agents").done);
 assert.ok(fs.existsSync(path.join(tmp, "setup-state.json")));
 
