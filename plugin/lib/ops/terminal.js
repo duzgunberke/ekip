@@ -254,10 +254,13 @@ function M.apply(config)
     -- A selection is copied when the mouse comes up (WezTerm's own default); a plain click no longer
     -- opens a link, Cmd+click does, as in iTerm2. Other mouse defaults stay: only these are replaced.
     local mouse = config.mouse_bindings or {}
-    local function click(dir, streak, m, action) table.insert(mouse, { event = { [dir] = { streak = streak, button = "Left" } }, mods = m, action = action }) end
+    local function click(dir, streak, m, action, reporting) table.insert(mouse, { event = { [dir] = { streak = streak, button = "Left" } }, mods = m, action = action, mouse_reporting = reporting or false }) end
     for streak = 1, 3 do click("Up", streak, "NONE", act.CompleteSelection("ClipboardAndPrimarySelection")) end
-    click("Up", 1, "CMD", act.OpenLinkAtMouseCursor)
-    click("Down", 1, "CMD", act.Nop)
+    -- Cmd+click opens a link even when the program asked for the mouse (Claude Code, vim, less)
+    for _, reporting in ipairs({ false, true }) do
+      click("Up", 1, "CMD", act.OpenLinkAtMouseCursor, reporting)
+      click("Down", 1, "CMD", act.Nop, reporting)
+    end
     config.mouse_bindings = mouse
   end
   config.keys = keys

@@ -196,7 +196,7 @@ assert.equal(core.SETTINGS.terminal, undefined);
     'bind("d", "CMD", act.SplitPane({ direction = "Right" }))', 'bind("d", "CMD|SHIFT", act.SplitPane({ direction = "Down" }))',
     'act.ActivatePaneDirection("Prev")', 'act.ActivatePaneDirection("Next")', 'bind("w", "CMD", act.CloseCurrentPane({ confirm = true }))',
     'bind("Enter", "CMD", act.ToggleFullScreen)', "native_macos_fullscreen_mode = true", 'bind("Enter", "CMD|SHIFT", act.TogglePaneZoomState)',
-    'act.CompleteSelection("ClipboardAndPrimarySelection")', 'click("Up", 1, "CMD", act.OpenLinkAtMouseCursor)', "config.mouse_bindings or {}",
+    'act.CompleteSelection("ClipboardAndPrimarySelection")', 'click("Up", 1, "CMD", act.OpenLinkAtMouseCursor, reporting)', 'mouse_reporting = reporting or false', "config.mouse_bindings or {}",
     "wezterm.default_hyperlink_rules()", 'format = "file://$1"',
     'quote_dropped_files = "Posix"', 'audible_bell = "Disabled"', "config.visual_bell", 'notification_handling = "AlwaysShow"',
   ]) assert.ok(luaText.includes(part), part);
