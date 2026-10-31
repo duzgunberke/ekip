@@ -659,7 +659,8 @@ export class Telegram {
     if (name) return this.queue(chat, name, text, why);
     if (!names.length) return this.send(chat, esc(t("Hub'da kayıtlı proje yok (ekip project sync).")));
     const key = this.cbKey({ kind: "job", text: String(text).slice(0, 8000), projects: names.slice(0, 24), why });
-    return this.send(chat, esc(t("Mac çevrimdışı. Bu iş hangi projede çalışsın?")), { keyboard: this.grid(names.slice(0, 24), key) });
+    // "offline" only when the Mac really is; with the Mac on and no lead open it says so (31 Oct: it said offline)
+    return this.send(chat, esc(t(why === "nolead" ? "Mac açık ama açık bir lead oturumu yok. Bu iş VPS kuyruğunda hangi projede çalışsın?" : "Mac çevrimdışı. Bu iş hangi projede çalışsın?")), { keyboard: this.grid(names.slice(0, 24), key) });
   }
   async queue(chat, project, text, why = "offline") {
     if (!this.queueJob) return null;

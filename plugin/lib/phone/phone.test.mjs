@@ -225,3 +225,11 @@ test("the lead prompt mentions the phone only while one is linked", () => {
   assert.doesNotMatch(phone.leadPrompt(env), /phone listen/, "WezTerm can be typed into: no listener");
   assert.match(phone.leadPrompt({ ...env, WEZTERM_PANE: "", TERM_PROGRAM: "Apple_Terminal" }), /ekip phone listen/);
 });
+
+// the watcher: a launchd agent that keeps `ekip phone watch` running
+{
+  const { watcherPlist } = await import("./phone.js");
+  const x = watcherPlist({ node: "/n", bin: "/b/ekip.js", log: "/l.log" });
+  for (const s of ["<string>io.ekip.phone</string>", "<string>phone</string><string>watch</string>", "<key>KeepAlive</key><true/>", "<key>RunAtLoad</key><true/>"]) assert.ok(x.includes(s), s);
+  console.log("phone watcher plist: ok");
+}

@@ -194,7 +194,7 @@ const en = {
   "hub yanıt vermedi": "the hub did not answer",
   "Telegram'da botuna şunu gönder: /link {code}": "In Telegram, send this to your bot: /link {code}",
   "Kod 10 dakika geçerli ve tek kullanımlık. Sonra: ekip phone status": "The code works once, for 10 minutes. Then: ekip phone status",
-  "Telegram'da @{bot} sohbetini aç (BotFather değil)": "In Telegram, open the @{bot} chat (not BotFather)", "ve yalnız şunu gönder: /link {code}": "and send only this: /link {code}", "Telefon bağlantısı kaldırıldı.": "Phone unlinked.",
+  "Telegram'da @{bot} sohbetini aç (BotFather değil)": "In Telegram, open the @{bot} chat (not BotFather)", "ve yalnız şunu gönder: /link {code}": "and send only this: /link {code}", "eşitleyici": "sync", "kapalı (ekip phone link ile kurulur)": "off (ekip phone link installs it)", "Telefon bağlantısı kaldırıldı.": "Phone unlinked.",
   "Sessiz saatler: {from}-{to} (mesajlar bildirimsiz gelir)": "Quiet hours: {from}-{to} (messages arrive without a notification)",
   "Sessiz saatler kapalı.": "Quiet hours off.",
   "Ayrıntılı mod açık: çalışan turun araç çağrıları telefonda görünür.": "Verbose on: the running turn's tool calls show on the phone.",

@@ -46,6 +46,7 @@ const en = {
   "Lead açık değil; iş VPS kuyruğuna gitti: {project} · {id}": "No lead is open; the job went to the VPS queue: {project} · {id}",
   "İş kuyruğa alınamadı: {error}": "Could not queue the job: {error}",
   "Mac çevrimdışı. Bu iş hangi projede çalışsın?": "The Mac is offline. Which project should this job run in?",
+  "Mac açık ama açık bir lead oturumu yok. Bu iş VPS kuyruğunda hangi projede çalışsın?": "The Mac is on but no lead session is open. Which project should this job run in on the VPS queue?",
   "Diğer…": "Other…",
   "Cevabını yaz:": "Type your answer:",
   "Cevap Mac'e iletildi: {choice}": "Answer sent to the Mac: {choice}",

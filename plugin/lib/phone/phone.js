@@ -405,16 +405,59 @@ export async function hook(event, input = {}, { env = process.env, run, fetchFn 
 
 // ---- CLI ------------------------------------------------------------------------------------------
 
-const USAGE = "usage: ekip phone setup [--token-stdin] [--remove] | link | unlink | status | on | off | verbose on|off | quiet HH:MM-HH:MM|off | listen [--timeout MIN] | sync";
+// The watcher: launchd keeps `ekip phone watch` running, one inbox round every few seconds, so the hub
+// sees the Mac online and a message typed on the phone reaches the lead at once. Before it, the inbox
+// was synced only at lead start and by the 30-minute doctor, and the hub took the Mac for offline (31 Oct).
+const WATCH_LABEL = "io.ekip.phone";
+const WATCH_EVERY_MS = 4000;
+const watchPlist = () => path.join(os.homedir(), "Library/LaunchAgents", `${WATCH_LABEL}.plist`);
+export function watcherPlist({ node = process.execPath, bin = path.join(ROOT, "plugin/bin/ekip.js"), log = path.join(os.homedir(), "Library/Logs/ekip-phone.log") } = {}) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>${WATCH_LABEL}</string>
+  <key>ProgramArguments</key><array><string>${node}</string><string>${bin}</string><string>phone</string><string>watch</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>EnvironmentVariables</key><dict><key>NO_COLOR</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+</dict></plist>
+`;
+}
+export function installWatcher({ run = spawnSync, platform = process.platform } = {}) {
+  if (platform !== "darwin" || testHome()) return false;
+  fs.mkdirSync(path.dirname(watchPlist()), { recursive: true });
+  fs.writeFileSync(watchPlist(), watcherPlist());
+  run("launchctl", ["bootout", `gui/${process.getuid()}/${WATCH_LABEL}`], { stdio: "ignore" });
+  return run("launchctl", ["bootstrap", `gui/${process.getuid()}`, watchPlist()], { stdio: "ignore" }).status === 0;
+}
+export function removeWatcher({ run = spawnSync, platform = process.platform } = {}) {
+  if (platform !== "darwin" || testHome()) return;
+  run("launchctl", ["bootout", `gui/${process.getuid()}/${WATCH_LABEL}`], { stdio: "ignore" });
+  fs.rmSync(watchPlist(), { force: true });
+}
+export const watcherRunning = ({ run = spawnSync } = {}) => run("launchctl", ["print", `gui/${process.getuid()}/${WATCH_LABEL}`], { encoding: "utf8" }).stdout?.includes("state = running") ?? false;
+async function watch({ fetchFn } = {}) {
+  for (;;) {
+    try { await sync({ force: true, fetchFn }); } catch { /* the next round */ }
+    await new Promise((r) => setTimeout(r, linked() ? WATCH_EVERY_MS : 30_000));
+  }
+}
+
+const USAGE = "usage: ekip phone setup [--token-stdin] [--remove] | link | unlink | status | on | off | verbose on|off | quiet HH:MM-HH:MM|off | listen [--timeout MIN] | sync | watch";
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } };
 
 export async function main([sub = "status", ...args] = [], { out = console.log, fetchFn, ...io } = {}) {
   const need = () => { if (!hubOk()) { out(t("Önce bir hub bağla: ekip hub link <url> <token> (ya da ekip hub local)")); return false; } return true; };
   if (sub === "setup") return need() ? setup(args, { out, fetchFn, ...io }) : 1;
-  if (sub === "link") return need() ? ((await linkCode({ out, fetchFn })) ? 0 : 1) : 1;
+  if (sub === "link") { if (!need()) return 1; installWatcher(); return (await linkCode({ out, fetchFn })) ? 0 : 1; }
+  if (sub === "watch") return watch({ fetchFn });
   if (sub === "unlink") {
     if (hubOk()) await hubCall("/api/phone/link", { method: "DELETE", fetchFn }).catch(() => {});
     writeState({ linked: false, target: null });
+    removeWatcher();
     out(t("Telefon bağlantısı kaldırıldı."));
     return 0;
   }
@@ -445,6 +488,7 @@ export async function main([sub = "status", ...args] = [], { out = console.log, 
     const target = pickLead(open, st.target);
     out(`  ${t("açık lead")}: ${open.length ? open.map((l) => `${l.id === target?.id ? "● " : ""}${l.project ?? path.basename(l.cwd ?? "")} (${l.state === "busy" ? t("çalışıyor") : t("boşta")})`).join(", ") : "-"}`);
     if (st.syncedAt) out(`  ${t("son eşitleme")}: ${new Date(st.syncedAt).toLocaleString(lang === "tr" ? "tr-TR" : "en-GB")}`);
+    if (process.platform === "darwin") out(`  ${t("eşitleyici")}: ${watcherRunning() ? t("çalışıyor") : t("kapalı (ekip phone link ile kurulur)")}`);
     return 0;
   }
   if (sub === "sync") { const r = await sync({ force: true, fetchFn }); out(r ? t("{n} mesaj işlendi", { n: r.items }) : t("eşitlenmedi (telefon bağlı değil ya da hub yanıt vermedi)")); return r ? 0 : 1; }
@@ -562,7 +606,8 @@ export async function setup(args = [], { out = console.log, fetchFn, tgFetch = f
   }
   writeState({ hubEnabled: true });
   out(t("hub botu başlattı (@{bot}); yeniden başlatma gerekmedi", { bot: r.bot ?? me.bot }));
-  if (r.chats > 0) { writeState({ linked: true, hubLinked: true }); out(`${t("eşleşti")}: @${r.bot ?? me.bot}`); return 0; }
+  if (r.chats > 0) { writeState({ linked: true, hubLinked: true }); installWatcher(); out(`${t("eşleşti")}: @${r.bot ?? me.bot}`); return 0; }
+  installWatcher();
   if (!(await linkCode({ out, fetchFn }))) return 1;
   out(t("eşleşme bekleniyor (en çok 10 dakika; Ctrl-C: sonra ekip phone status)…"));
   const end = Date.now() + waitMs;
