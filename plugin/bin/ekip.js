@@ -1858,6 +1858,9 @@ ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
 
 ${c.bold("Setup")}
   ${c.cyan("ekip init")}                     one-time setup (--yes, --no-terminal, --no-keys)
+  ${c.cyan("ekip setup")} ${c.gray("[--list|--json]")}      guided setup, step by step (ekip kurulum)
+  ${c.cyan("ekip setup snooze")} ${c.gray("ID [days]")}     silence a reminder | unsnooze ID
+  ${c.cyan("ekip lang")} ${c.gray("[tr|en]")}               ekip's language (ekip dil)
   ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         free provider API keys (opens provider pages)
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `.split("\n").map((line) => fit(line)).join("\n") : `${banner()}
@@ -1904,6 +1907,9 @@ ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
 
 ${c.bold("Kurulum")}
   ${c.cyan("ekip init")}                     tek seferlik kurulum (--yes, --no-terminal, --no-keys)
+  ${c.cyan("ekip kurulum")} ${c.gray("[--list|--json]")}    adım adım kurulum (ekip setup)
+  ${c.cyan("ekip kurulum snooze")} ${c.gray("ID [gün]")}    hatırlatmayı sustur | unsnooze ID
+  ${c.cyan("ekip dil")} ${c.gray("[tr|en]")}                ekip'in dili (ekip lang)
   ${c.cyan("ekip keys")} ${c.gray("[--all|apply]")}         ücretsiz sağlayıcı anahtarları (sayfaları açar)
   ${c.cyan("ekip key")} ${c.gray("add|list")}  ${c.cyan("ekip up|down|logs")}
 `.split("\n").map((line) => fit(line)).join("\n");

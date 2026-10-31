@@ -61,12 +61,29 @@ VPS hub
 
 Setup
   ekip init
+  ekip setup [--list|--json]      guided setup, step by step (ekip kurulum)
+  ekip setup snooze ID [days]     silence a reminder | unsnooze ID
+  ekip lang [tr|en]               ekip's language (ekip dil)
   ekip keys [--all|apply]
   ekip key add|list
   ekip up|down|logs
 ```
 
 On first lead start, ekip greets you and suggests missing setup steps. `ekip doctor` lists the same gaps under Kurulum.
+
+### Setup and language
+
+`ekip setup` (`ekip kurulum`) checks every step ekip needs (prerequisites, services, free keys, an embedding provider, worker logins, a project, the project index, ekip's terminal, notifications, the hub) and walks the missing ones: now / later / skip. `--list` prints the list (also what runs without a terminal), `--json` the counts and steps, `--refresh` only re-checks. `ekip setup snooze <id> [days]` silences one reminder (default seven days), `ekip setup unsnooze <id>` brings it back. Step ids: `prereqs services keys embeddings agents project index terminal notify hub`. The full table is in [Install](install.md#guided-setup). `ekip status` ends with the missing steps, the task pane shows one amber line while a required step is missing, WezTerm shows `setup 5/9`.
+
+`ekip lang [tr|en]` (`ekip dil`) shows or sets the language; see [Install](install.md#language). `ekip lead-prompt` prints the lead's system text as the current language makes it.
+
+### Pools and background work
+
+The task pane, `ekip status`, the end of `ekip agents` and the panel show the pools the same way: only those you connected (signed in and tested, or with a successful run); pools that are not installed, never signed in or switched off (`"disabledPools"` or a capacity of 0 in `data/config.json`) are counted as `+3 off`, and `ekip agents` still lists them all. Each pool shows its state instead of a bare count: ready (green dot), running n (teal, only above zero; `2/2 full` once full), limited with the reset time (orange, `limited · Wed 01:00`). Running pools come first, then ready ones, then limited ones. After the free pool come the providers behind it that have a key: ready, `resting ~12 min` after rate limits (every model cooling), or failing. A running free-pool worker names the provider and model that answer it (`free · NVIDIA nemotron-…`), from the newest request in freellmapi's routing snapshot, which the pane refreshes every two minutes while such a worker runs (`ekip limits --refresh`).
+
+Each pool has a small icon: ekip's own two-letter badge (no vendor logos) drawn as a one-row inline image in WezTerm and iTerm2 (OSC 1337) and kitty (graphics protocol), coloured letters elsewhere, nothing with `NO_COLOR` or ASCII. `"poolLogos": "glyph"` keeps the letters only, `"off"` drops the icons.
+
+One `background` line over the pools appears while work runs behind your tasks or fails: memory embeddings (the provider that serves them, how many records wait, the last success, the last error), the vector backfill, the Claude history import, and wiki or code graph indexing. `ekip status` lists the same under Background, and the panel's pools page shows it. The data comes from freellmapi's routing snapshot (`embeddings`, `recent`, cooldown ends; `hub/tools/freellmapi-limits.cjs`), the doctor's readings (`data/vectors-status.json`, `data/index-status.json`) and the import lock.
 
 ### Worker runs and review
 
