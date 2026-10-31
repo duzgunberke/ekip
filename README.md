@@ -166,6 +166,9 @@ Claude on a normal day of the author's, 58% during the cold setup ([the numbers]
   [How it works](docs/architecture.md#agents-that-talk-to-each-other)
 - **A VPS hub** keeps memory, the free pool and a job queue running while the Mac is off, and serves
   the web panel. [Install](docs/install.md#optional-vps-hub)
+- **Your phone** (a Telegram bot on the hub) follows every task live, answers the lead's questions
+  with buttons and types new work into the live lead; with the Mac off, work goes to the hub's queue.
+  [Phone](docs/install.md#optional-your-phone-telegram)
 
 </details>
 

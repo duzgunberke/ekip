@@ -9,6 +9,7 @@ import { CodeMap } from "./codemap.js";
 import { releaseInfo } from "./release.js";
 import { hubSetup } from "./setup.js";
 import { openStore, trim } from "./store.js";
+import { Telegram } from "./telegram.js";
 import { WebAuthnError, creationOptions, newChallenge, requestOptions, verifyAuthentication, verifyRegistration } from "./webauthn.js";
 import { Worker } from "./worker.js";
 
@@ -53,6 +54,9 @@ const cfg = {
   commit: env.EKIP_HUB_COMMIT || env.SOURCE_COMMIT || null,
   // TencentDB knowledge service (code graphs) for the panel's code map.
   knowledgeUrl: stripSlash(env.KNOWLEDGE_URL ?? "http://tdai-memory-hub:8424"),
+  // the phone: a Telegram bot token from BotFather (long polling; the hub needs no public URL)
+  telegramToken: env.EKIP_TELEGRAM_TOKEN ?? "",
+  telegramApi: stripSlash(env.EKIP_TELEGRAM_API) || "https://api.telegram.org",
 };
 
 if (cfg.hubToken.length < 16) { console.error("EKIP_HUB_TOKEN must be set (at least 16 characters)"); process.exit(1); }
@@ -74,6 +78,11 @@ const store = openStore(DATA);
 const auth = new Auth({ token: cfg.hubToken, password: cfg.hubPassword, secret: serverSecret(), sessionHours: cfg.sessionHours, passkeys: store.passkeys, requirePasskey: cfg.requirePasskey });
 const worker = new Worker({ cfg, store });
 const codemap = new CodeMap({ githubToken: cfg.githubToken, knowledgeUrl: cfg.knowledgeUrl });
+const phone = new Telegram({
+  token: cfg.telegramToken, store, apiBase: cfg.telegramApi, filesDir: path.join(DATA, "phone-files"),
+  secrets: [cfg.hubToken, cfg.hubPassword, cfg.githubToken, cfg.freellmapiKey, cfg.tdaiUserKey, cfg.copilotToken],
+  queueJob: (b) => queueJob(b), release: () => releaseInfo(cfg.ciDir, { commit: cfg.commit, startedAt: STARTED }),
+});
 
 // ---- http helpers --------------------------------------------------------------------------------
 
@@ -330,7 +339,32 @@ function cleanTask(b) {
     pct: pctOf(b.pct, "pct") ?? 0,
     eta: ts(b.eta, "eta"),
     host: str(b.host, 200, "host") ?? null,
+    // the lead session that owns the task, and its automatic review (the phone notifies a failed one)
+    lead: str(b.lead, 128, "lead") ?? null,
+    review: b.review && typeof b.review === "object" ? { state: str(b.review.state, 20, "review.state") ?? null, findings: typeof b.review.findings === "number" ? b.review.findings : null,
+      met: typeof b.review.met === "number" ? b.review.met : null, total: typeof b.review.total === "number" ? b.review.total : null, reviewer: str(b.review.reviewer, 40, "review.reviewer") ?? null } : null,
   };
+}
+
+// A job for the hub's queue: POST /api/jobs (ekip job) and the phone when the Mac is off.
+function queueJob(b) {
+  const project = str(b.project, 64, "project", { required: true });
+  if (!store.projects.data.some((x) => x.name === project)) bad(`unknown project "${project}"`);
+  const task = str(b.task, 50_000, "task", { required: true });
+  if (!task.trim()) bad("task is empty");
+  const via = b.via ?? "auto";
+  if (!["auto", "free", "copilot"].includes(via)) bad('via must be "auto", "free" or "copilot"');
+  if (via === "copilot" && !cfg.copilotToken) bad("copilot needs COPILOT_GITHUB_TOKEN on the hub");
+  const model = str(b.model, 100, "model");
+  if (model && !/^[\w.:/@-]+$/.test(model)) bad("invalid model id");
+  if (b.push != null && typeof b.push !== "boolean") bad("push must be a boolean");
+  const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
+  const job = { id, project, task, via, model: model ?? null, push: b.push ?? true, status: "queued", createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, branch: null, report: null, diffstat: null, error: null };
+  store.jobs.data.push(job);
+  trim(store.jobs.data, jobsCap, (j) => j.status === "queued" || j.status === "running");
+  store.jobs.save();
+  setImmediate(() => worker.tick());
+  return job;
 }
 
 // ---- status --------------------------------------------------------------------------------------
@@ -534,26 +568,7 @@ async function api(req, res, url, who) {
     return send(res, before === store.projects.data.length ? 404 : 200, { ok: before !== store.projects.data.length });
   }
 
-  if (p === "/api/jobs" && m === "POST") {
-    const b = await readJson(req);
-    const project = str(b.project, 64, "project", { required: true });
-    if (!store.projects.data.some((x) => x.name === project)) bad(`unknown project "${project}"`);
-    const task = str(b.task, 50_000, "task", { required: true });
-    if (!task.trim()) bad("task is empty");
-    const via = b.via ?? "auto";
-    if (!["auto", "free", "copilot"].includes(via)) bad('via must be "auto", "free" or "copilot"');
-    if (via === "copilot" && !cfg.copilotToken) bad("copilot needs COPILOT_GITHUB_TOKEN on the hub");
-    const model = str(b.model, 100, "model");
-    if (model && !/^[\w.:/@-]+$/.test(model)) bad("invalid model id");
-    if (b.push != null && typeof b.push !== "boolean") bad("push must be a boolean");
-    const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
-    const job = { id, project, task, via, model: model ?? null, push: b.push ?? true, status: "queued", createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, branch: null, report: null, diffstat: null, error: null };
-    store.jobs.data.push(job);
-    trim(store.jobs.data, jobsCap, (j) => j.status === "queued" || j.status === "running");
-    store.jobs.save();
-    setImmediate(() => worker.tick());
-    return send(res, 201, publicJob(job));
-  }
+  if (p === "/api/jobs" && m === "POST") return send(res, 201, publicJob(queueJob(await readJson(req))));
   if (p === "/api/jobs" && m === "GET") {
     const limit = Math.min(num(url.searchParams.get("limit"), 100), 1000);
     const project = url.searchParams.get("project");
@@ -626,9 +641,12 @@ async function api(req, res, url, who) {
   if (p === "/api/tasks" && m === "PUT") {
     const task = { ...cleanTask(await readJson(req, 1_000_000)), receivedAt: new Date().toISOString() };
     const i = store.tasks.data.findIndex((t) => t.id === task.id);
+    const old = i >= 0 ? store.tasks.data[i] : null;
     if (i >= 0) store.tasks.data[i] = task; else store.tasks.data.push(task);
     trim(store.tasks.data, tasksCap, (t) => t.status === "running");
     store.tasks.save();
+    // the phone: live message edits and notifications, from the difference
+    try { phone.onTask(old, task)?.catch?.((e) => console.error(`phone: ${phone.clean(e.message)}`)); } catch (e) { console.error(`phone: ${phone.clean(e.message)}`); }
     return send(res, i >= 0 ? 200 : 201, { ok: true });
   }
   if (p === "/api/tasks" && m === "GET") {
@@ -655,9 +673,68 @@ async function api(req, res, url, who) {
     if (!Array.isArray(agents) || agents.length > 100) bad("agents must be an array (max 100)");
     if (JSON.stringify(agents).length > 50_000) bad("agents too large");
     if (!store.clients.data[client] && Object.keys(store.clients.data).length >= 200) bad("too many clients");
-    store.clients.data[client] = { client, host: str(b.host, 200, "host") ?? null, agents, lastSeen: new Date().toISOString(), ip: clientIp(req) };
+    store.clients.data[client] = { ...(store.clients.data[client] ?? {}), client, host: str(b.host, 200, "host") ?? null, agents, lastSeen: new Date().toISOString(), ip: clientIp(req) };
     store.clients.save();
     return send(res, 200, { ok: true });
+  }
+
+  // ---- the phone (Telegram) and the Mac's inbox ----
+  if (p === "/api/phone" && m === "GET") return send(res, 200, phone.status());
+  if (p.startsWith("/api/phone/") && !who.bearer) return send(res, 403, { error: "the phone is managed with the hub token (ekip phone)" });
+  if (p === "/api/phone/link" && m === "POST") {
+    if (!phone.enabled) return send(res, 409, { error: "telegram not configured: set EKIP_TELEGRAM_TOKEN on the hub and restart it" });
+    const b = await readJson(req, 10_000);
+    return send(res, 201, phone.linkCode({ lang: str(b.lang, 5, "lang"), tz: str(b.tz, 64, "tz") }));
+  }
+  if (p === "/api/phone/link" && m === "DELETE") { phone.unlink(); return send(res, 200, { ok: true }); }
+  if (p === "/api/phone/settings" && m === "PUT") {
+    const b = await readJson(req, 10_000);
+    if (b.mode != null && !["on", "off"].includes(b.mode)) bad('mode must be "on" or "off"');
+    if (b.verbose != null && typeof b.verbose !== "boolean") bad("verbose must be a boolean");
+    return send(res, 200, phone.settings({ mode: b.mode, verbose: b.verbose, quiet: b.quiet === null ? null : b.quiet && typeof b.quiet === "object" ? { from: str(b.quiet.from, 5, "quiet.from"), to: str(b.quiet.to, 5, "quiet.to"), tz: str(b.quiet.tz, 64, "quiet.tz") } : undefined }));
+  }
+  if (p === "/api/phone/reply" && m === "POST") {
+    const b = await readJson(req, 300_000);
+    // answered at once: the Stop hook that posts it must not wait for Telegram's pacing
+    phone.reply({ lead: str(b.lead, 128, "lead") ?? null, project: str(b.project, 64, "project") ?? null, text: str(b.text, 200_000, "text") ?? "", phoneTurn: b.phoneTurn === true })
+      .catch((e) => console.error(`phone reply: ${phone.clean(e.message)}`));
+    return send(res, 202, { ok: true });
+  }
+  if (p === "/api/phone/activity" && m === "POST") {
+    const b = await readJson(req, 50_000);
+    const lines = Array.isArray(b.lines) ? b.lines.slice(-20).map((l, i) => str(String(l), 500, `lines[${i}]`) ?? "") : [];
+    return send(res, 200, phone.activity({ lead: str(b.lead, 128, "lead") ?? null, project: str(b.project, 64, "project") ?? null, lines }));
+  }
+  if (p === "/api/phone/tojob" && m === "POST") {
+    // a request the Mac could not hand to a lead (none open): the hub queue, as when the Mac is off
+    const b = await readJson(req, 100_000);
+    const job = await phone.toJob(b.chat ?? null, str(b.text, 50_000, "text", { required: true }), { project: str(b.project, 64, "project") ?? null, why: "nolead" });
+    return send(res, 200, { ok: true, job: job?.id ? publicJob(job) : null });
+  }
+  if (p === "/api/inbox" && m === "GET") return send(res, 200, { items: phone.inbox(url.searchParams.get("client")) });
+  if (p === "/api/inbox/ack" && m === "POST") {
+    if (!who.bearer) return send(res, 403, { error: "bearer only" });
+    const b = await readJson(req, 100_000);
+    if (!Array.isArray(b.ids)) bad("ids must be an array");
+    phone.ack(b.ids.slice(0, 500).map((x) => String(x)));
+    return send(res, 200, { ok: true });
+  }
+  if (p === "/api/inbox/sync" && m === "POST") {
+    if (!who.bearer) return send(res, 403, { error: "bearer only" });
+    const b = await readJson(req, 200_000);
+    const client = str(b.client, 100, "client") ?? "mac";
+    if (b.ack != null && !Array.isArray(b.ack)) bad("ack must be an array");
+    if (b.leads != null && (!Array.isArray(b.leads) || b.leads.length > 20)) bad("leads must be an array (max 20)");
+    try { return send(res, 200, phone.sync({ client, host: str(b.host, 200, "host") ?? null, ack: (b.ack ?? []).map(String), leads: b.leads ?? null })); }
+    catch (e) { bad(e.message); }
+  }
+  if ((match = p.match(/^\/api\/inbox\/files\/([a-f0-9]{12})$/)) && m === "GET") {
+    if (!who.bearer) return send(res, 403, { error: "bearer only" });
+    const file = phone.filePath(match[1]);
+    let body;
+    try { body = fs.readFileSync(file); } catch { return send(res, 404, { error: "no such file" }); }
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-length": body.length, "cache-control": "no-store" });
+    return res.end(body);
   }
 
   return send(res, 404, { error: "not found" });
@@ -796,13 +873,15 @@ server.requestTimeout = 30_000;
 server.headersTimeout = 15_000;
 
 if (!DEMO) worker.start();
+if (!DEMO) phone.start();
 server.listen(cfg.port, cfg.host, () => {
-  console.log(`ekip hub on http://${cfg.host}:${cfg.port}  workers=${cfg.workers}  freellmapi=${cfg.freellmapiUrl || "-"}  tdai=${cfg.tdaiUrl || "-"}  github=${cfg.githubToken ? "token" : "none"}`);
+  console.log(`ekip hub on http://${cfg.host}:${cfg.port}  workers=${cfg.workers}  freellmapi=${cfg.freellmapiUrl || "-"}  tdai=${cfg.tdaiUrl || "-"}  github=${cfg.githubToken ? "token" : "none"}  phone=${phone.enabled ? "telegram" : "off"}`);
 });
 
 function shutdown() {
   console.log("shutting down");
   worker.stopAll();
+  phone.stop();
   store.flushAll();
   server.close();
   process.exit(0);

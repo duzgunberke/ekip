@@ -168,6 +168,8 @@ dışında yürüdü, soğuk kurulum sırasında %58 ([rakamlar](docs/architectu
   (`ekip dev`) çalışabilir. [Nasıl çalışır](docs/architecture.md#agents-that-talk-to-each-other)
 - **Bir VPS hub**, Mac kapalıyken belleği, ücretsiz havuzu ve iş kuyruğunu çalışır tutar ve web panelini
   sunar. [Kurulum](docs/install.md#optional-vps-hub)
+- **Telefonun** (hub'daki bir Telegram botu) her görevi canlı izler, lead'in sorularını düğmeyle cevaplar
+  ve yeni işi açık lead'e yazar; Mac kapalıyken iş hub'ın kuyruğuna gider. [Telefon](docs/install.md#optional-your-phone-telegram)
 
 </details>
 

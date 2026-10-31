@@ -157,8 +157,31 @@ export function wezterm({ run = run0, env = process.env, home = HOME } = {}) {
     // The task pane is found in the pane list by its title / role, not through a flag file: a slow or
     // failed answer means "unknown" and opens nothing.
     findTaskPane() { const lay = self.layout(); return lay ? (lay.task?.id ?? "") : null; },
+    // Typing as the user would (the phone): one line is typed key by key (--no-paste), several lines
+    // go in as one bracketed paste, so a newline does not submit half a message; then Enter.
+    sendText(id, text, { enter = true } = {}) {
+      const body = typingText(text);
+      if (!body) return false;
+      const r = cli(["send-text", "--pane-id", String(id), ...(body.includes("\n") ? [] : ["--no-paste"]), body]);
+      if (r.status !== 0 || r.error) return false;
+      return !enter || cli(["send-text", "--pane-id", String(id), "--no-paste", "\r"]).status === 0;
+    },
+    sendKey(id, key) { return cli(["send-text", "--pane-id", String(id), "--no-paste", KEYS[key] ?? key]).status === 0; },
+    // a new lead: a tab in the window of `near` (a pane of an open lead), running ekip in `cwd`
+    spawnLead(cwd, command, { near = lead } = {}) {
+      const r = cli(["spawn", ...(near != null ? ["--pane-id", String(near)] : []), "--cwd", cwd, "--", ...paneShell(command)]);
+      const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
+      return /^\d+$/.test(id) ? id : null;
+    },
   };
   return self;
+}
+
+// keys the phone can press (/stop is Escape: it interrupts Claude Code's running turn)
+const KEYS = { escape: "\x1b", enter: "\r" };
+/** What may be typed into a terminal: control characters (escape sequences) dropped, CRLF as LF. */
+export function typingText(text) {
+  return String(text ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f\u0080-\u009f]/g, "").trim();
 }
 
 // ---- kitty (second choice; needs allow_remote_control and the splits layout) --------------------
@@ -216,6 +239,19 @@ export function kitty({ run = run0, env = process.env, home = HOME } = {}) {
     focus(id) { return k(["focus-window", `--match=id:${id}`]).status === 0; },
     setTitle(id, title) { return k(["set-tab-title", ...(id ? [`--match=id:${id}`] : []), title]).status === 0; },
     findTaskPane() { const lay = self.layout(); return lay ? (lay.task?.id ?? "") : null; },
+    // --stdin: kitty would otherwise read backslash escapes in the text
+    sendText(id, text, { enter = true } = {}) {
+      const body = typingText(text);
+      if (!body) return false;
+      const send = (input) => run("kitty", ["@", "send-text", `--match=id:${id}`, "--stdin"], { timeout: 5000, env, input }).status === 0;
+      return send(body.includes("\n") ? `\x1b[200~${body}\x1b[201~` : body) && (!enter || send("\r"));
+    },
+    sendKey(id, key) { return run("kitty", ["@", "send-text", `--match=id:${id}`, "--stdin"], { timeout: 5000, env, input: KEYS[key] ?? key }).status === 0; },
+    spawnLead(cwd, command) {
+      const r = k(["launch", "--type=tab", `--cwd=${cwd}`, ...paneShell(command)]);
+      const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
+      return /^\d+$/.test(id) ? id : null;
+    },
   };
   return self;
 }
@@ -314,8 +350,30 @@ end tell`;
     end repeat
   end repeat
 end tell`;
+  // AppleScript string literal (write text sends the line and Enter; newlines become spaces)
+  const asString = (x) => `"${String(x).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   return {
     name: "iterm", openSessions, openPane, paneAlive,
+    sendText(id, text, { enter = true } = {}) {
+      const body = typingText(text).replace(/\s*\n\s*/g, " ");
+      if (!body) return false;
+      return run("osascript", ["-e", sessionScript(id, `tell s to write text ${asString(body)}${enter ? "" : " newline no"}`)], { timeout: 5000 }).status === 0;
+    },
+    sendKey(id, key) {
+      const code = key === "escape" ? 27 : key === "enter" ? 13 : null;
+      if (code == null) return false;
+      return run("osascript", ["-e", sessionScript(id, `tell s to write text (character id ${code}) newline no`)], { timeout: 5000 }).status === 0;
+    },
+    spawnLead(cwd, command) {
+      const shellCmd = `/bin/zsh -lc ${JSON.stringify(`cd ${JSON.stringify(cwd)} && ${command}`)}`;
+      const r = run("osascript", ["-e", `tell application "iTerm2"
+  tell current window
+    set nt to (create tab with default profile command ${JSON.stringify(shellCmd)})
+    return id of current session of nt
+  end tell
+end tell`], { encoding: "utf8", timeout: 10_000 });
+      return r.status === 0 ? (r.stdout ?? "").trim() || null : null;
+    },
     listPanes() { const open = openSessions(); return open ? [...open].map((id) => ({ id, tab: "", window: "", title: "", vars: {} })) : null; },
     focus(id) { return run("osascript", ["-e", sessionScript(id, "tell t to select\n          tell s to select\n          tell w to select")], { timeout: 5000 }).status === 0; },
     setTitle(id, title) { return run("osascript", ["-e", sessionScript(id ?? env.ITERM_SESSION_ID?.split(":")[1], `tell s to set name to ${JSON.stringify(title)}`)], { timeout: 5000 }).status === 0; },
@@ -343,6 +401,9 @@ export function backend(opts) {
   if (current === undefined) current = FACTORY[detect()]?.() ?? null;
   return current;
 }
+
+/** The back end of a given kind ("wezterm", "kitty", "iterm"), for a pane recorded by another process. */
+export function backendOf(kind, opts = {}) { return FACTORY[kind]?.(opts) ?? null; }
 
 export const listPanes = () => backend()?.listPanes() ?? null;
 export const focus = (id) => backend()?.focus(id) ?? false;

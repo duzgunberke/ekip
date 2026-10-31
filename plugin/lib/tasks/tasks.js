@@ -712,6 +712,8 @@ export async function main([sub = "ls", ...args]) {
     let reconciled = 0, version = null;
     do {
       try { reapDead(); } catch { /* the pane never stops for this */ }
+      // the phone's inbox (answers, requests for the lead): a background round every few seconds
+      if (!once) try { (await import("../phone/phone.js")).tick(); } catch { /* the pane never stops for this */ }
       // ghost runs on the hub (a worker killed with no word) are closed from here too, once a minute
       if (!once && Date.now() - reconciled > 60_000) { reconciled = Date.now(); try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "reconcile"], { stdio: "ignore", detached: true }).unref(); } catch { /* best effort */ } }
       if (version == null) try { const dg = await import("./digest.js"); version = dg.cachedRelease(Infinity)?.version ?? (await import("../ops/update.js")).localVersion(); } catch { version = ""; }

@@ -27,6 +27,8 @@ echo '== Claude history gap and catch-up =='; node plugin/lib/memory/history.tes
 echo '== pool logos: the panel list, PNGs, image protocols =='; node plugin/lib/workers/logos.test.mjs
 echo '== automatic review: criteria, reviewer of another family, fix rounds =='; node plugin/lib/review/auto.test.mjs 2>&1 | grep -v '^ekip [›!]'
 echo '== every t() key has an English entry =='; node plugin/lib/core/i18n.test.mjs
+echo '== the phone on the Mac: typing into the lead, idle vs busy, transcript, /stop =='; node --test plugin/lib/phone/phone.test.mjs
+run plugin/bin/ekip.js phone status | grep -q 'Telefon'
 # both languages: the setup list, the digest, the lead's system text and the session-start hook
 for L in tr en; do
   echo "== language $L =="
@@ -62,6 +64,7 @@ run plugin/bin/ekip.js task done "$id" "Özet hazır" --link docs/commands.md --
 EKIP_LANG=tr run plugin/bin/ekip.js status --offline | tee "$tmp/status.out"
 grep -q 'Sonuç: Özet hazır' "$tmp/status.out"; grep -q 'https://example.com/x' "$tmp/status.out"; grep -q 'Senden beklenen (0)' "$tmp/status.out"
 echo '== hub release endpoint, setup and panel sign-in (password + passkey) tests =='; node --test hub/src/release.test.mjs hub/src/setup.test.mjs hub/src/auth.test.mjs
+echo '== the phone bot (fake Telegram API): pairing, live messages, answers, offline jobs, redaction =='; node --test hub/src/telegram.test.mjs
 for args in 'review --project x --dry-run' 'dev ls'; do
   echo "== $args (expected config error) =="
   read -r -a parts <<< "$args"

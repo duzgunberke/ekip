@@ -57,6 +57,7 @@ Projects and memory
 
 VPS hub
   ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
+  ekip phone link|unlink|status|on|off|verbose on|off|quiet HH:MM-HH:MM|off|listen  Telegram: follow tasks, answer, give work
   ekip hub link|push|status|open
   ekip hub passkey add|list|remove ID   panel passkeys: one-time enrolment code, list, remove
   ekip remote <ssh-host>
@@ -142,6 +143,47 @@ Criteria grow from failures: a `NEW-CRITERION` proposal is kept as a candidate (
 `ekip task block ID "reason"` marks the running (or next) step `blocked`, `ekip task wait ID "what the user decides"` marks it `waiting-user` and sends a notification; `--step N` picks the step. Neither shows a stall warning or an estimate, and a held task waits up to 72 hours instead of 6 before it is closed. `ekip task unblock ID` (or marking the step running) ends the hold. `ekip task cancel` and `done` also stop the task's live workers (SIGTERM to their `ekip run`). Every task command, the pane and the hub sync close workers whose process is gone, with the reason from their log; a task with a running step and no live worker for 5 minutes shows as "paused: no live worker" (10 minutes when the task never had a worker). Such an orphaned task is noted once on the task and comes first in the lead's next prompt as a mandatory action (close it or restart it under a live process).
 
 `ekip track` runs a long shell command as a watched job: `ekip track --task ID --step N --label "upload" --total 1.5G --stall 10 --eta-max 60 -- aws s3 cp big.mp4 s3://bucket/`. One argument after `--` is a shell line; several are quoted word by word. The command runs detached in its own process group with its output in `data/runs/<id>-track.log` (the task pane lists it like a worker; `--show` opens a pane on the log, `--wait` stays until it ends and exits with its code). Without `--step` it takes the running step, else the next pending one, else a new step named after the label. Every 30 seconds (`EKIP_TRACK_TICK_S`) it measures progress: a byte pair, a count (`3/12`, `[ 45/120]`), a percent or a byte count in the output, or the first number `--measure "CMD"` prints (a size like `1.2G` counts as bytes) against `--total` (bytes such as `1.5G`, or a count). The step gets the percent, the speed and the finish time in its detail line. With nothing to measure, new output counts as progress. No progress for `--stall` minutes (default 10) blocks the step with the last output line and sends a notification; progress back unblocks it. With `--eta-max MIN`, the speed of the first two minutes (`EKIP_TRACK_PROBE_S`) is checked once: a finish past the limit, or no measurable speed, is noted on the task with a notification. Exit 0 closes the step done; any other exit closes it failed with the last five output lines on the task, and a signal gets the likely cause (load, memory pressure, an outside signal). `ekip track ls` lists running and recent jobs (state in `data/tracks/`); `ekip track stop ID` (any unique part of the id) stops only that job's own process group. A cancelled task stops its tracked jobs too.
+
+### Phone (Telegram)
+
+The hub runs a Telegram bot when `EKIP_TELEGRAM_TOKEN` is set in its `.env` (setup:
+[Install → your phone](install.md#optional-your-phone-telegram)). It uses long polling, so the hub needs no public address.
+
+- `ekip phone link` asks the hub for a one-time code (ten minutes, single use; the hub keeps only
+  its hash) and prints `/link <code>` to send to the bot. Only paired private chats are served; any
+  other chat gets no answer. `ekip phone unlink` removes every paired chat; `ekip phone status`
+  shows the bot, the mode, the messages waiting and the open leads.
+- `ekip phone on|off`: phone mode (on after linking). On, the lead's last message of every turn goes
+  to the phone; off, only turns started from the phone are answered there. `ekip phone verbose
+  on|off`: the running turn's tool calls (`Bash: npm test`, `Edit: app.js`) as one live message,
+  edited at most every few seconds. `ekip phone quiet 23:00-08:00|off`: quiet hours in the Mac's
+  time zone, when messages arrive without a notification (off by default).
+- Bot commands (always English): `/status` (counts and running tasks), `/tasks`, `/task <id>`
+  (steps, workers, last notes, result), `/cancel <id>` (asks to confirm with a button), `/stop`
+  (Escape into the lead: interrupts the running turn), `/new <project>` (a new lead session in that
+  project, which takes the following messages), `/sessions` (the open leads; pick one with a
+  button), `/phone on|off|verbose on|off`, `/help`. They are registered with `setMyCommands`; only
+  their descriptions and the bot's texts follow ekip's language (`EKIP_LANG` on the hub, else the
+  language of the Mac that ran `ekip phone link`).
+- Plain text is a new request. A button, or a reply to a question, is the answer: it is applied to
+  the task (as `ekip task answer`), and the lead that asked is told. Photos and files are kept on the
+  hub until the Mac fetches them into `data/scratch/<project>/inbox/`; the typed message carries the
+  path.
+
+Routing: what the phone asks of the Mac goes to a per-client inbox on the hub (`GET /api/inbox`,
+`POST /api/inbox/sync` and `/api/inbox/ack` with the bearer token). The task pane syncs it every few
+seconds while a lead is open, and `ekip doctor` / a lead start do it too. A Mac that synced in the last
+two minutes counts as online. Online, a request is typed into the lead's terminal pane exactly as you
+would type it, prefixed with "📱 ": WezTerm `wezterm cli send-text --pane-id <lead> --no-paste`
+(several lines go in as one paste) and a carriage return, kitty `kitty @ send-text`, iTerm2 AppleScript
+`write text`. It is typed only when the lead is idle at its prompt (its Stop hook ran after its last
+UserPromptSubmit); while a turn runs it waits and is typed right after the Stop hook. In a terminal
+ekip cannot type into, `ekip phone listen` is the fallback: it blocks until a phone message arrives,
+prints it ("Telefondan: …" / "From phone: …") and exits, and the lead keeps it running in a background
+shell. With no lead open, the request becomes a hub job; offline (no sync for two minutes) a request
+becomes a hub job directly (the project it names, else the bot asks with buttons), and an answer
+waits in the inbox until the Mac is back. The lead's prompt gets the phone rules only while a phone is
+linked.
 
 ### Terminal
 

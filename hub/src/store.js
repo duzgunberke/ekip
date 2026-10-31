@@ -47,6 +47,10 @@ export function openStore(dir) {
     usage: new Collection(dir, "usage", null),
     // panel passkeys (WebAuthn public keys, no secrets): the second login factor
     passkeys: new Collection(dir, "passkeys", []),
+    // the phone (Telegram): paired chats, one-time link codes, live message ids, settings
+    phone: new Collection(dir, "phone", {}),
+    // what the phone asked of a Mac (answers, requests, /stop, /new …), until that Mac acks it
+    inbox: new Collection(dir, "inbox", []),
   };
   s.flushAll = () => { for (const c of Object.values(s)) if (c instanceof Collection) c.flush(); };
   return s;
