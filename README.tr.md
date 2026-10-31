@@ -43,41 +43,59 @@ hatırlar; her açılışta en faydalı sonraki adım bir kez hatırlatılır. D
 <table>
   <tr>
     <td width="50%" valign="top">
-      <b>Başka kotalarda bir ekip.</b> Claude isteği böler ve parçaları Antigravity, Codex, Copilot, Qwen, OpenCode, grok ve yaklaşık 60 ücretsiz modele verir. <code>ekip mesai on</code> bağlı her havuzu aynı anda çalıştırır.<br><br>
-      <img src="docs/screenshots/terminal-wezterm-layout.png" alt="WezTerm'de ekip: lider, sağda iki worker, altta her görev için bir kartla görev paneli">
+      <img src="docs/screenshots/terminal-wezterm-hero.png" alt="WezTerm'de ekip: solda lider, sağda iki worker, altta her görev için bir kartla görev paneli"><br><br>
+      <b>Başka kotalarda bir ekip.</b> Claude her isteği böler ve parçaları Antigravity, Codex, Copilot, Qwen, OpenCode, grok ve yaklaşık 60 ücretsiz modele verir. <code>ekip mesai on</code> her havuzu çalıştırır.
     </td>
     <td width="50%" valign="top">
-      <b>Her şey göz önünde.</b> Her istek canlı adımları olan bir görevdir; oturumun altındaki panelde ve web panelinde görünür. Size sorulanlar kırmızıyla, takılanlar turuncuyla en üstte durur.<br><br>
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/panel-tasks-light.png">
-        <img src="docs/screenshots/panel-tasks-dark.png" alt="Panelin görevler sayfası: canlı görevlerin üstünde sizi bekleyen, takılan, çalışan ve biten işlerin özet kartı">
-      </picture>
+      <img src="docs/screenshots/panel-tasks-dark.png" alt="Panelin görevler sayfası: canlı görevlerin üstünde sizi bekleyen, takılan, çalışan ve biten işlerin özet kartı"><br><br>
+      <b>Her şey göz önünde.</b> Her istek canlı adımları olan bir görevdir; oturumun altındaki panelde ve web panelinde görünür. Size sorulanlar kırmızıyla, takılanlar turuncuyla en üstte durur.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <b>"Ne oluyor?" sorusuna tek cevap.</b> <code>ekip durum</code> ne çalıştığını, sizden ne beklendiğini, neyin takıldığını ve neyin bittiğini sonuç ve bağlantılarıyla gösterir.<br><br>
-      <img src="docs/demo/terminal-status.gif" alt="ekip durum: şu an çalışanlar, sizi bekleyenler, takılanlar, sonuç ve bağlantılarıyla bitenler ve sürüm satırı">
+      <img src="docs/demo/terminal-status.gif" alt="ekip durum: şu an çalışanlar, sizi bekleyenler, takılanlar, sonuç ve bağlantılarıyla bitenler ve sürüm satırı"><br><br>
+      <b>"Ne oluyor?" sorusuna tek cevap.</b> <code>ekip durum</code> ne çalıştığını, sizden ne beklendiğini, neyin takıldığını ve neyin bittiğini sonuç, bağlantı ve sürüm satırıyla gösterir.
     </td>
     <td width="50%" valign="top">
-      <b>Takılmamak için tasarlandı.</b> Bekçiler, ölü worker'ları kapatan bir toplayıcı, havuz değiştirme, kuyruklar (<code>--after</code>, <code>--when</code>), <code>--resume</code> ve uzun yüklemeler ile render'lar için <code>ekip track</code>.<br><br>
-      <img src="docs/demo/terminal-track.gif" alt="ekip track: yüzde, hız ve bitiş zamanıyla tamamlanan bir yükleme ve beklenenden yavaş olduğunu hemen bildiren bir kopyalama">
+      <img src="docs/demo/terminal-track.gif" alt="ekip track: yüzde, hız ve bitiş zamanıyla tamamlanan bir yükleme ve beklenenden yavaş olduğunu hemen bildiren bir kopyalama"><br><br>
+      <b>Takılmamak için tasarlandı.</b> Bekçiler, ölü worker'ları kapatan bir toplayıcı, havuz değiştirme, kuyruklar (<code>--after</code>, <code>--when</code>), <code>--resume</code> ve uzun işler için <code>ekip track</code>.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <b>Proje başına bellek.</b> Vektör deposunda geçmiş Claude oturumları, dokümanlardan bir wiki, kod grafiği ve dersler. Bir projeden söz edin, yazım hatasıyla bile; ilgili bilgiler yaklaşık bir saniyede gelir.<br><br>
-      <img src="docs/screenshots/panel-codemap-dark.png" alt="Panelin kod haritası: bir projenin dosyaları ve sembolleri grafik olarak">
+      <img src="docs/screenshots/panel-codemap-dark.png" alt="Panelin kod haritası: bir projenin depoları, klasörleri ve bir dosyanın sembolleri"><br><br>
+      <b>Proje başına bellek.</b> Vektör veritabanında geçmiş oturumlar, dokümanlardan bir LLM wiki, kod grafiği, skill'ler ve dersler. Bir projeden söz edin, bilgileri bir saniyede gelir. <a href="#mesajınızı-izleyen-bellek">Ayrıntı ↓</a>
     </td>
     <td width="50%" valign="top">
-      <b>Öğrendiği skill'ler.</b> Bir projede tekrar eden iş, sizin onayladığınız bir <code>SKILL.md</code> olur ve o projedeki sonraki her worker brief'i onu kullanır. <a href="#skill-kendi-işinizden-öğrenilen-prosedürler">Nasıl çalışır ↓</a><br><br>
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
-        <img src="docs/assets/skill-loop-dark.svg" alt="Skill döngüsü, küçük">
-      </picture>
+      <img src="docs/assets/skill-loop-mini.svg" alt="Skill döngüsü, küçük: çalıştırmalar kaydedilir, tekrarlar gruplanır, skill learn, siz kabul edersiniz, .claude/skills, her brief; dersler her brief'in ve liderin en üstünde"><br><br>
+      <b>Öğrendiği skill'ler.</b> Bir projede tekrar eden iş, sizin onayladığınız bir <code>SKILL.md</code> olur ve o projedeki sonraki her worker brief'i onu kullanır. <a href="#skill-kendi-işinizden-öğrenilen-prosedürler">Nasıl çalışır ↓</a>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <img src="docs/demo/panel-demo.gif" alt="Koyu temada ekip web paneli: canlı görevlerin üstünde durum özeti, komut menüsü, kod haritası, projeler arası çalıştırmalar, proje kartları ve kotalarıyla worker havuzları" width="100%"><br><br>
+      <b>Web paneli.</b> Bir hub bağlıysa aynı görevler, projeler arası çalıştırmalar, kotalarıyla worker havuzları ve her projenin kod haritası tarayıcıda, her cihazdan açılır. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">Ayrıntı</a>
     </td>
   </tr>
 </table>
+
+## Mesajınızı izleyen bellek
+
+Kayıtlı her projenin bir kez kurulan ve güncel tutulan kendi belleği vardır; her worker sıfırdan değil
+ondan başlar:
+
+- **Vektör veritabanı:** geçmiş Claude oturumları, kararlar ve worker raporları, anlamına göre aranır.
+- **LLM wiki** projenin dokümanlarından yazılır; **kod grafiği** dosyalarını ve sembollerini tutar.
+- **Skill'ler** projenin kendi işinden öğrenilir; **dersler** düzelttiğiniz hatalardan gelir.
+
+Bir projeden söz edin, yazım hatasıyla bile; ekip önemli olanı yaklaşık bir saniyede Claude'un
+bağlamına ekler. `ekip stats` bu bilginin gerçekten kullanılıp kullanılmadığını gösterir: aramalar,
+isabet oranı, worker'ların açtığı skill'ler.
+
+<p align="center"><img src="docs/assets/memory-follows.svg" alt="ios-ap diye yazım hatasıyla yazarsınız; ekip ios-app projesini bulur, belleğini yaklaşık bir saniyede arar ve ilgili bilgileri ve skill'leri Claude'un bağlamına ekler" width="100%"></p>
+
+Belleğin nasıl çalıştığı ve vektörlerin neden önemli olduğu: [docs/memory.md](docs/memory.md) (İngilizce)
+ve yazarın 2023 tarihli yazısı [Vektörel Database nedir, ne işe yarar?](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac).
 
 ## Skill: kendi işinizden öğrenilen prosedürler
 
@@ -85,10 +103,7 @@ Her projenin kimsenin yazmadığı prosedürleri vardır: nasıl yayınlandığ�
 kontrolün yakaladığı, asla unutulmaması gereken o tek bayrak. ekip bunları zaten yaptığınız işte bulur
 ve sıradan Claude Code skill'lerine dönüştürür.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
-  <img src="docs/assets/skill-loop-dark.svg" alt="Skill döngüsü: çalıştırmalar kaydedilir, tekrarlar gruplanır, ekip skill learn bir SKILL.md taslağı yazar, siz kabul edersiniz, .claude/skills içine girer, sonraki her brief onu kullanır; düzelttiğiniz hatalar her brief'in başına giren derslere dönüşür" width="100%">
-</picture>
+<p align="center"><img src="docs/assets/skill-loop.svg" alt="Skill döngüsü: çalıştırmalar kaydedilir, tekrarlar gruplanır, ekip skill learn bir SKILL.md taslağı yazar, siz kabul edersiniz, .claude/skills içine girer, sonraki her worker brief'i ve lider onu kullanır; düzelttiğiniz hatalar her brief'in ve liderin bağlamının başına giren derslere dönüşür" width="100%"></p>
 
 - **Gerçek çalıştırmalardan.** Her worker brief'i ve raporu proje başına kaydedilir. Aynı etiketli ya
   da birbirine benzeyen brief'ler gruplanır; üç ve daha fazla çalıştırmalık bir grup için prosedür,
@@ -123,7 +138,7 @@ Ayrıntı: [docs/skills.md](docs/skills.md) (adım adım döngü, dersler, proje
 Tek bir Claude oturumuyla konuşursunuz. Bir görev açar, her parçayı kotası olan ve son sonuçları en iyi
 havuza yönlendirir, dönenleri `ekip review` ile inceler. Claude'un kotası karar vermeye gider; okuma ve
 yazma başka yerde yürür. `ekip savings` bu payı ölçer: yazarın sıradan bir gününde işin %81'i Claude
-dışında yürüdü.
+dışında yürüdü, soğuk kurulum sırasında %58 ([rakamlar](docs/architecture.md#why), İngilizce).
 
 <details>
 <summary><b>Kısaca daha fazlası</b></summary>
