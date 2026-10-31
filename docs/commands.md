@@ -57,6 +57,7 @@ Projects and memory
 
 VPS hub
   ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
+  ekip phone setup [--token-stdin] [--remove]   connect the Telegram bot: token (hidden) → hub, then pair
   ekip phone link|unlink|status|on|off|verbose on|off|quiet HH:MM-HH:MM|off|listen  Telegram: follow tasks, answer, give work
   ekip hub link|push|status|open
   ekip hub passkey add|list|remove ID   panel passkeys: one-time enrolment code, list, remove
@@ -148,9 +149,16 @@ Criteria grow from failures: a `NEW-CRITERION` proposal is kept as a candidate (
 
 ### Phone (Telegram)
 
-The hub runs a Telegram bot when `EKIP_TELEGRAM_TOKEN` is set in its `.env` (setup:
+The hub runs a Telegram bot once it has a bot token (setup:
 [Install → your phone](install.md#optional-your-phone-telegram)). It uses long polling, so the hub needs no public address.
 
+- `ekip phone setup` connects the bot in one go: the BotFather steps, the token read without echo
+  (a hidden macOS dialog, a no-echo prompt elsewhere, or `--token-stdin`), Telegram's `getMe` to
+  check it, then `PUT /api/phone/telegram-token` (hub token only) stores it on the hub (mode 600,
+  masked in logs and `/api/status`) and starts the bot without a restart; it then prints the
+  `/link` code and waits up to ten minutes for the pairing. The token never stays on the Mac.
+  `--remove` deletes it on the hub and stops the bot. `EKIP_TELEGRAM_TOKEN` in the hub's `.env`
+  still works and wins; while it is set the endpoint answers 409.
 - `ekip phone link` asks the hub for a one-time code (ten minutes, single use; the hub keeps only
   its hash) and prints `/link <code>` to send to the bot. Only paired private chats are served; any
   other chat gets no answer. `ekip phone unlink` removes every paired chat; `ekip phone status`

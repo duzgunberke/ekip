@@ -6,6 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import { Auth, normCode } from "./auth.js";
 import { CodeMap } from "./codemap.js";
+import { redact } from "./redact.js";
 import { releaseInfo } from "./release.js";
 import { hubSetup } from "./setup.js";
 import { openStore, trim } from "./store.js";
@@ -74,15 +75,28 @@ function serverSecret() {
   }
 }
 
+// The bot token set by `ekip phone setup` (PUT /api/phone/telegram-token): one file, mode 600, never
+// served back. EKIP_TELEGRAM_TOKEN in the hub's env wins over it.
+const TELEGRAM_FILE = path.join(DATA, "telegram-token");
+const BOT_TOKEN = /^\d{5,15}:[A-Za-z0-9_-]{30,100}$/;
+function storedTelegramToken() { try { const s = fs.readFileSync(TELEGRAM_FILE, "utf8").trim(); return BOT_TOKEN.test(s) ? s : ""; } catch { return ""; } }
+function saveTelegramToken(token) {
+  const tmp = `${TELEGRAM_FILE}.tmp`;
+  fs.writeFileSync(tmp, `${token}\n`, { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600);
+  fs.renameSync(tmp, TELEGRAM_FILE);
+}
+
 const store = openStore(DATA);
 const auth = new Auth({ token: cfg.hubToken, password: cfg.hubPassword, secret: serverSecret(), sessionHours: cfg.sessionHours, passkeys: store.passkeys, requirePasskey: cfg.requirePasskey });
 const worker = new Worker({ cfg, store });
 const codemap = new CodeMap({ githubToken: cfg.githubToken, knowledgeUrl: cfg.knowledgeUrl });
 const phone = new Telegram({
-  token: cfg.telegramToken, store, apiBase: cfg.telegramApi, filesDir: path.join(DATA, "phone-files"),
+  token: cfg.telegramToken || storedTelegramToken(), store, apiBase: cfg.telegramApi, filesDir: path.join(DATA, "phone-files"),
   secrets: [cfg.hubToken, cfg.hubPassword, cfg.githubToken, cfg.freellmapiKey, cfg.tdaiUserKey, cfg.copilotToken],
   queueJob: (b) => queueJob(b), release: () => releaseInfo(cfg.ciDir, { commit: cfg.commit, startedAt: STARTED }),
 });
+if (!cfg.telegramToken && phone.enabled) phone.source = "store";
 
 // ---- http helpers --------------------------------------------------------------------------------
 
@@ -423,6 +437,8 @@ async function status() {
     workers: worker.status(),
     links: cfg.links,
     clients: Object.values(store.clients.data).sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? "")),
+    // the phone: whether a bot is set (never its token) and paired
+    phone: { enabled: phone.enabled, source: phone.source, bot: phone.bot, chats: phone.status().chats },
     // the hub's own setup gaps, shown under the Mac's checklist on the panel
     setup: hubSetup(cfg),
   };
@@ -682,9 +698,31 @@ async function api(req, res, url, who) {
   if (p === "/api/phone" && m === "GET") return send(res, 200, phone.status());
   if (p.startsWith("/api/phone/") && !who.bearer) return send(res, 403, { error: "the phone is managed with the hub token (ekip phone)" });
   if (p === "/api/phone/link" && m === "POST") {
-    if (!phone.enabled) return send(res, 409, { error: "telegram not configured: set EKIP_TELEGRAM_TOKEN on the hub and restart it" });
+    if (!phone.enabled) return send(res, 409, { error: "telegram not configured: run ekip phone setup" });
     const b = await readJson(req, 10_000);
     return send(res, 201, phone.linkCode({ lang: str(b.lang, 5, "lang"), tz: str(b.tz, 64, "tz") }));
+  }
+  // `ekip phone setup`: the bot token, checked with getMe from the hub, kept in a 600 file, the poller
+  // restarted in process. The env variable wins: then the hub refuses, so the two never disagree.
+  if (p === "/api/phone/telegram-token" && (m === "PUT" || m === "DELETE")) {
+    if (cfg.telegramToken) return send(res, 409, { error: "EKIP_TELEGRAM_TOKEN is set in the hub's environment and wins; change it there", source: "env" });
+    if (m === "DELETE") {
+      fs.rmSync(TELEGRAM_FILE, { force: true });
+      phone.setToken("");
+      return send(res, 200, { ok: true, enabled: false });
+    }
+    const b = await readJson(req);
+    const token = typeof b.token === "string" ? b.token.trim() : "";
+    if (!BOT_TOKEN.test(token)) return send(res, 400, { error: "not a Telegram bot token (digits:secret, from @BotFather)" });
+    let bot;
+    try { bot = await phone.probe(token); } catch (e) {
+      return send(res, e.code === 401 || e.code === 404 ? 400 : 502, { error: e.code === 401 || e.code === 404 ? "Telegram rejected the token (getMe 401)" : `Telegram not reachable from the hub: ${redact(e.message, [token])}` });
+    }
+    saveTelegramToken(token);
+    phone.setToken(token, { start: !DEMO });
+    phone.bot = bot;
+    console.log(`phone: telegram bot set${bot ? ` (@${bot})` : ""}`);
+    return send(res, 200, { ok: true, enabled: true, bot, chats: phone.status().chats });
   }
   if (p === "/api/phone/link" && m === "DELETE") { phone.unlink(); return send(res, 200, { ok: true }); }
   if (p === "/api/phone/settings" && m === "PUT") {

@@ -1,4 +1,4 @@
-// The phone on the Mac side: `ekip phone link|unlink|status|on|off|verbose|quiet|listen|sync`, the
+// The phone on the Mac side: `ekip phone setup|link|unlink|status|on|off|verbose|quiet|listen|sync`, the
 // inbox the hub's Telegram bot fills (answers, requests, /stop, /new, /sessions), and delivery to the
 // live lead: a phone message is typed into the lead's terminal pane as the user would type it, only
 // while the lead is idle at its prompt (Stop hook marker newer than the UserPromptSubmit one); while
@@ -8,11 +8,11 @@
 // Files under data/phone/: state.json (link, mode, target lead, seen inbox ids), leads/<id>.json (one
 // per open lead session, written by the hooks), queue/<id>.json (messages waiting for that lead),
 // inbox.jsonl (requests for `ekip phone listen`, the fallback for terminals ekip cannot type into).
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOME, ROOT, SETTINGS } from "../core/core.js";
+import { HOME, ROOT, SETTINGS, ask, askSecret } from "../core/core.js";
 import { lang, t } from "../core/i18n.js";
 import { redact } from "../core/redact.js";
 import { backendOf, detect, leadId } from "../core/terminal.js";
@@ -346,7 +346,7 @@ export async function sync({ force = false, run, fetchFn } = {}) {
     }
     let acks = done;
     if (done.length) { try { await hubCall("/api/inbox/ack", { method: "POST", fetchFn, body: { ids: done } }); acks = []; } catch { /* next round */ } }
-    writeState({ acks, seen: [...seen].slice(-500), syncedAt: now(), ...(res.phone ? { mode: res.phone.mode, verbose: res.phone.verbose, hubLinked: res.phone.linked } : {}) });
+    writeState({ acks, seen: [...seen].slice(-500), syncedAt: now(), ...(res.phone ? { mode: res.phone.mode, verbose: res.phone.verbose, hubLinked: res.phone.linked, hubEnabled: res.phone.enabled } : {}) });
     return { items: done.length };
   } catch (e) { log(`sync: ${e.message}`); return null; } finally { fs.rmSync(l, { recursive: true, force: true }); }
 }
@@ -405,23 +405,13 @@ export async function hook(event, input = {}, { env = process.env, run, fetchFn 
 
 // ---- CLI ------------------------------------------------------------------------------------------
 
-const USAGE = "usage: ekip phone link | unlink | status | on | off | verbose on|off | quiet HH:MM-HH:MM|off | listen [--timeout MIN] | sync";
+const USAGE = "usage: ekip phone setup [--token-stdin] [--remove] | link | unlink | status | on | off | verbose on|off | quiet HH:MM-HH:MM|off | listen [--timeout MIN] | sync";
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } };
 
-export async function main([sub = "status", ...args] = [], { out = console.log, fetchFn } = {}) {
+export async function main([sub = "status", ...args] = [], { out = console.log, fetchFn, ...io } = {}) {
   const need = () => { if (!hubOk()) { out(t("Önce bir hub bağla: ekip hub link <url> <token> (ya da ekip hub local)")); return false; } return true; };
-  if (sub === "link") {
-    if (!need()) return 1;
-    let r;
-    try { r = await hubCall("/api/phone/link", { method: "POST", fetchFn, body: { lang, tz: tz() } }); } catch (e) {
-      out(e.status === 409 ? t("Hub'da Telegram botu ayarlı değil: hub'ın .env dosyasına EKIP_TELEGRAM_TOKEN yaz ve hub'ı yeniden başlat (docs/install.md, Telefon)") : `${t("hub yanıt vermedi")}: ${e.message}`);
-      return 1;
-    }
-    writeState({ linked: true, linkedAt: now(), mode: readState().mode ?? "on" });
-    out(t("Telegram'da botuna şunu gönder: /link {code}", { code: r.code }) + (r.bot ? `  (@${r.bot})` : ""));
-    out(t("Kod 10 dakika geçerli ve tek kullanımlık. Sonra: ekip phone status"));
-    return 0;
-  }
+  if (sub === "setup") return need() ? setup(args, { out, fetchFn, ...io }) : 1;
+  if (sub === "link") return need() ? ((await linkCode({ out, fetchFn })) ? 0 : 1) : 1;
   if (sub === "unlink") {
     if (hubOk()) await hubCall("/api/phone/link", { method: "DELETE", fetchFn }).catch(() => {});
     writeState({ linked: false, target: null });
@@ -446,9 +436,9 @@ export async function main([sub = "status", ...args] = [], { out = console.log, 
     const st = readState();
     let hub = null;
     if (hubOk()) { try { hub = await hubCall("/api/phone", { fetchFn, timeoutMs: 5000 }); } catch { /* offline */ } }
-    out(`${t("Telefon")}: ${st.linked ? (hub?.chats ? t("bağlı (Telegram)") : t("kod bekliyor ya da sohbet yok (ekip phone link)")) : t("bağlı değil (ekip phone link)")}`);
+    out(`${t("Telefon")}: ${st.linked ? (hub?.chats ? t("bağlı (Telegram)") : t("kod bekliyor ya da sohbet yok (ekip phone link)")) : t("bağlı değil (ekip phone setup)")}`);
     if (hub) {
-      out(`  bot: ${hub.enabled ? (hub.bot ? `@${hub.bot}` : "telegram") : t("hub'da kapalı (EKIP_TELEGRAM_TOKEN)")}  · ${t("mod")}: ${hub.mode}  · verbose: ${hub.verbose ? "on" : "off"}${hub.quiet ? `  · ${t("sessiz")}: ${hub.quiet.from}-${hub.quiet.to}` : ""}`);
+      out(`  bot: ${hub.enabled ? (hub.bot ? `@${hub.bot}` : "telegram") : t("hub'da kapalı (ekip phone setup)")}  · ${t("mod")}: ${hub.mode}  · verbose: ${hub.verbose ? "on" : "off"}${hub.quiet ? `  · ${t("sessiz")}: ${hub.quiet.from}-${hub.quiet.to}` : ""}`);
       out(`  ${t("bekleyen mesaj")}: ${hub.inbox}`);
     } else if (hubOk()) out(`  ${t("hub yanıt vermedi")}`);
     const open = liveLeads();
@@ -485,11 +475,139 @@ export async function main([sub = "status", ...args] = [], { out = console.log, 
   return 1;
 }
 
+/** `ekip phone link`: a one-time /link code from the hub. Returns it, or null (printed why). */
+async function linkCode({ out, fetchFn }) {
+  let r;
+  try { r = await hubCall("/api/phone/link", { method: "POST", fetchFn, body: { lang, tz: tz() } }); } catch (e) {
+    out(e.status === 409 ? t("Hub'da Telegram botu ayarlı değil: ekip phone setup") : `${t("hub yanıt vermedi")}: ${e.message}`);
+    return null;
+  }
+  writeState({ linked: true, linkedAt: now(), mode: readState().mode ?? "on" });
+  out(t("Telegram'da botuna şunu gönder: /link {code}", { code: r.code }) + (r.bot ? `  (@${r.bot})` : ""));
+  out(t("Kod 10 dakika geçerli ve tek kullanımlık. Sonra: ekip phone status"));
+  return r.code;
+}
+
+// ---- ekip phone setup -----------------------------------------------------------------------------
+
+export const BOT_TOKEN = /^\d{5,15}:[A-Za-z0-9_-]{30,100}$/;
+const PAIR_MS = 10 * 60_000;
+const hide = (s, token) => redact(String(s ?? "").split(token).join("****"));
+
+/** Telegram getMe for a token: { ok, bot } or { ok: false, status, error }. The token is never printed. */
+export async function getMe(token, { fetchFn = globalThis.fetch, apiBase = "https://api.telegram.org" } = {}) {
+  if (!BOT_TOKEN.test(token)) return { ok: false, status: 0, error: t("bu bir bot token'ı gibi görünmüyor (rakamlar:harfler, @BotFather'dan)") };
+  try {
+    const r = await fetchFn(`${apiBase}/bot${token}/getMe`, { signal: AbortSignal.timeout(15_000) });
+    const j = await r.json().catch(() => null);
+    if (j?.ok && j.result?.username) return { ok: true, bot: j.result.username };
+    const status = j?.error_code ?? r.status;
+    return { ok: false, status, error: status === 401 || status === 404 ? t("Telegram bu token'ı reddetti (401); BotFather'dan yeniden kopyala") : hide(j?.description ?? `HTTP ${r.status}`, token) };
+  } catch (e) { return { ok: false, status: 0, error: `${t("Telegram'a ulaşılamadı")}: ${hide(e.message, token)}` }; }
+}
+
+const appleString = (s) => `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+/**
+ * The token, never echoed: --token-stdin reads it from stdin (scripts); on macOS a native dialog with
+ * a hidden answer (works without a terminal, e.g. from the lead's `!` prompt); elsewhere a no-echo
+ * prompt. "" when cancelled or there is no way to ask.
+ */
+export async function readToken(args = [], { platform = process.platform, run = spawnSync, stdin = () => fs.readFileSync(0, "utf8"), tty = !!process.stdin.isTTY, secret = askSecret } = {}) {
+  if (args.includes("--token-stdin")) { try { return String(stdin()).trim(); } catch { return ""; } }
+  if (platform === "darwin") {
+    const prompt = t("@BotFather'ın verdiği bot token'ını yapıştır:");
+    const script = `text returned of (display dialog ${appleString(prompt)} default answer "" with hidden answer with title "ekip" with icon note)`;
+    const r = run("osascript", ["-e", script], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10 * 60_000 });
+    if (r.status === 0) return String(r.stdout ?? "").trim();
+    if (/-128/.test(String(r.stderr ?? ""))) return ""; // Cancel
+  }
+  if (!tty) return "";
+  return (await secret(`  ${t("bot token")}: `).catch(() => "")).trim();
+}
+
+/**
+ * `ekip phone setup`: the BotFather steps, the token (hidden), getMe, the hub stores it and starts the
+ * bot, then the /link code and a wait for the pairing. The token stays off the Mac: not printed, not
+ * logged, not in config.json or the phone state. `--remove` takes the bot off the hub.
+ */
+export async function setup(args = [], { out = console.log, fetchFn, tgFetch = fetchFn ?? globalThis.fetch, token: given, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), waitMs = PAIR_MS, pollMs = 3000, ...io } = {}) {
+  if (args.includes("--remove")) {
+    try { await hubCall("/api/phone/telegram-token", { method: "DELETE", fetchFn }); } catch (e) {
+      out(e.status === 409 ? t("Bot hub'ın ortamındaki EKIP_TELEGRAM_TOKEN'dan geliyor; onu hub'ın .env dosyasından kaldır") : `${t("hub yanıt vermedi")}: ${e.message}`);
+      return 1;
+    }
+    writeState({ linked: false, target: null, hubEnabled: false, hubLinked: false });
+    out(t("Telegram botu hub'dan kaldırıldı."));
+    return 0;
+  }
+  out(t("Telegram botu (bir kez, 1 dakika):"));
+  out(`  1. ${t("Telegram'da @BotFather'ı aç ve /newbot yaz")}`);
+  out(`  2. ${t("bir ad ver (ör. ekip)")}`);
+  out(`  3. ${t("\"bot\" ile biten bir kullanıcı adı ver (ör. benim_ekip_bot)")}`);
+  out(`  4. ${t("verdiği token'ı kopyala ve istendiğinde yapıştır (ekranda görünmez)")}`);
+  const token = (given ?? await readToken(args, io)).trim();
+  if (!token) { out(t("token girilmedi; sonra: ekip phone setup")); return 1; }
+  const me = await getMe(token, { fetchFn: tgFetch });
+  if (!me.ok) { out(me.error); return 1; }
+  out(`${t("bot doğrulandı")}: @${me.bot}`);
+  let r;
+  try { r = await hubCall("/api/phone/telegram-token", { method: "PUT", fetchFn, timeoutMs: 30_000, body: { token } }); } catch (e) {
+    out(e.status === 409 ? t("Hub'ın ortamında EKIP_TELEGRAM_TOKEN ayarlı ve o geçerli; botu değiştirmek için onu hub'ın .env dosyasında değiştir")
+      : e.status === 404 ? t("hub bu komutu tanımıyor ya da hub token'ı yanlış; hub'ı güncelle (VPS'te docker compose up -d --build) ya da yeniden bağla: ekip hub link <url> <token>")
+        : `${t("hub token'ı kaydetmedi")}: ${hide(e.message, token)}`);
+    return 1;
+  }
+  writeState({ hubEnabled: true });
+  out(t("hub botu başlattı (@{bot}); yeniden başlatma gerekmedi", { bot: r.bot ?? me.bot }));
+  if (r.chats > 0) { writeState({ linked: true, hubLinked: true }); out(`${t("eşleşti")}: @${r.bot ?? me.bot}`); return 0; }
+  if (!(await linkCode({ out, fetchFn }))) return 1;
+  out(t("eşleşme bekleniyor (en çok 10 dakika; Ctrl-C: sonra ekip phone status)…"));
+  const end = Date.now() + waitMs;
+  while (Date.now() < end) {
+    await sleep(pollMs);
+    let s = null;
+    try { s = await hubCall("/api/phone", { fetchFn, timeoutMs: 5000 }); } catch { /* try again */ }
+    if (s?.chats > 0) { writeState({ hubLinked: true }); out(`${t("eşleşti")}: @${s.bot ?? r.bot ?? me.bot}`); return 0; }
+  }
+  out(t("10 dakikada eşleşme olmadı; yeni kod için: ekip phone link"));
+  return 1;
+}
+
+/** For `ekip setup`: does the hub have a bot, and a paired chat? From the hub, else the last sync's answer. */
+export async function phoneFacts({ fetchFn, timeoutMs = 1500 } = {}) {
+  if (!hubOk()) return { bot: false, paired: false };
+  try {
+    const s = await hubCall("/api/phone", { fetchFn, timeoutMs });
+    writeState({ hubEnabled: !!s.enabled, hubLinked: (s.chats ?? 0) > 0 });
+    return { bot: !!s.enabled, paired: (s.chats ?? 0) > 0 };
+  } catch {
+    const st = readState();
+    return { bot: !!st.hubEnabled, paired: !!st.hubLinked && !!st.linked };
+  }
+}
+
+/**
+ * `ekip init`: asked once, default no (it needs the user's own bot), only with a linked hub in an
+ * interactive session; --no-phone skips it. Marks the setup step offered, so the wizard does not ask again.
+ */
+export async function initPhone(args = [], { interactive = !!(process.stdin.isTTY && process.stdout.isTTY) && !process.env.CI, prompt = ask, hub = hubOk(), facts = phoneFacts, exec = () => spawnSync(process.execPath, [path.join(ROOT, "plugin/bin/ekip.js"), "phone", "setup"], { stdio: "inherit" }).status ?? 1 } = {}) {
+  if (args.includes("--no-phone") || !interactive || !hub) return "skipped";
+  const { snooze, snoozed } = await import("../ops/snooze.js");
+  if (snoozed("phone:offered") || snoozed("phone")) return "skipped";
+  const f = await facts();
+  if (f.bot && f.paired) return "done";
+  snooze("phone:offered", 3650);
+  const a = (await prompt(`${t("Telefondan takip için Telegram botu bağlansın mı? [e/H]")} `)).trim();
+  if (!/^(e|evet|y|yes)$/i.test(a)) { console.log(t("Telefon atlandı; sonra: ekip phone setup")); return "no"; }
+  return exec() === 0 ? "linked" : "failed";
+}
+
 /** "Telefon: bağlı (Telegram) · mod açık · 1 açık lead" for `ekip status`; "" without a hub. */
 export function statusLine() {
   if (!hubOk()) return "";
   const st = readState();
-  if (!st.linked) return `${t("Telefon")}: ${t("bağlı değil (ekip phone link)")}`;
+  if (!st.linked) return `${t("Telefon")}: ${t("bağlı değil (ekip phone setup)")}`;
   const open = leads().length;
   const parts = [t("bağlı (Telegram)"), st.mode === "off" ? t("mod kapalı") : t("mod açık"), ...(st.verbose ? ["verbose"] : []), t("{n} açık lead", { n: open })];
   if (st.syncedAt) parts.push(`${t("son eşitleme")} ${new Date(st.syncedAt).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit" })}`);

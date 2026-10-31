@@ -1378,7 +1378,7 @@ You are a long-running worker in an ekip team. Other agents send you tasks over 
 inbox notice appears, read your inbox, do each task completely and autonomously, and reply to the
 sender with send_message (reply_to the message id): what you changed, how you verified it, what is open.`;
 
-// Added to the lead's prompt while a phone is linked (`ekip phone link`).
+// Added to the lead's prompt while a phone is linked (`ekip phone setup` / `ekip phone link`).
 async function phonePrompt() { try { return (await import("../lib/phone/phone.js")).leadPrompt(); } catch { return ""; } }
 
 const HOPTELL_MCP = JSON.stringify({ mcpServers: { hoptell: { command: "hoptell", args: ["mcp"] } } });
@@ -1572,6 +1572,8 @@ async function init({ skipKeys = false, args = [] } = {}) {
     step(9, t("ekip'in kendi terminali (WezTerm)"));
     try { await (await import("../lib/ops/terminal.js")).initTerminal(args); } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip terminal install`); }
   }
+  // the phone: with a hub linked, asked once (default no: it needs the user's own bot); --no-phone skips
+  try { await (await import("../lib/phone/phone.js")).initPhone(args); } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip phone setup`); }
   // keys, worker logins, projects and the rest: the guided setup takes over (a list without a terminal)
   const setup = await import("../lib/ops/setup.js");
   if (!skipKeys && process.stdin.isTTY && process.stdout.isTTY && !process.env.CI) await setup.wizard({ askLang: false });
@@ -1970,12 +1972,12 @@ ${c.bold("Projects and memory")}
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip phone")} ${c.gray("link|unlink|status|on|off|verbose on|off|quiet HH:MM-HH:MM|off|listen")}  Telegram: follow tasks, answer, give work
+  ${c.cyan("ekip phone")} ${c.gray("setup|link|unlink|status|on|off|verbose on|off|quiet HH:MM-HH:MM|off|listen")}  Telegram: follow tasks, answer, give work (setup: connect the bot)
   ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Setup")}
-  ${c.cyan("ekip init")}                     one-time setup (--yes, --no-terminal, --no-keys)
+  ${c.cyan("ekip init")}                     one-time setup (--yes, --no-terminal, --no-keys, --no-phone)
   ${c.cyan("ekip setup")} ${c.gray("[--list|--json]")}      guided setup, step by step (ekip kurulum)
   ${c.cyan("ekip setup snooze")} ${c.gray("ID [days]")}     silence a reminder | unsnooze ID
   ${c.cyan("ekip lang")} ${c.gray("[tr|en]")}               ekip's language (ekip dil)
@@ -2022,12 +2024,12 @@ ${c.bold("Projeler ve hafıza")}
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip phone")} ${c.gray("link|unlink|status|on|off|verbose on|off|quiet SS:DD-SS:DD|off|listen")}  Telegram: görevleri izle, cevap ver, iş ver
+  ${c.cyan("ekip phone")} ${c.gray("setup|link|unlink|status|on|off|verbose on|off|quiet SS:DD-SS:DD|off|listen")}  Telegram: görevleri izle, cevap ver, iş ver (setup: botu bağla)
   ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Kurulum")}
-  ${c.cyan("ekip init")}                     tek seferlik kurulum (--yes, --no-terminal, --no-keys)
+  ${c.cyan("ekip init")}                     tek seferlik kurulum (--yes, --no-terminal, --no-keys, --no-phone)
   ${c.cyan("ekip kurulum")} ${c.gray("[--list|--json]")}    adım adım kurulum (ekip setup)
   ${c.cyan("ekip kurulum snooze")} ${c.gray("ID [gün]")}    hatırlatmayı sustur | unsnooze ID
   ${c.cyan("ekip dil")} ${c.gray("[tr|en]")}                ekip'in dili (ekip lang)

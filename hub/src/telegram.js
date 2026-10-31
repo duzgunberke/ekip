@@ -67,12 +67,15 @@ export class Telegram {
     this.secrets = [token, ...secrets].filter((s) => s && s.length >= 6);
     this.st = Object.assign(fresh(), store.phone.data ?? {});
     store.phone.data = this.st;
+    if (token) this.adopt(token);
     if (this.st.lang) setLang(this.st.lang);
     this.chain = Promise.resolve();
     this.lastCall = 0;
     this.pendingLive = new Map(); // key -> { html, final }
     this.liveTimer = null;
     this.bot = null;
+    this.gen = 0; // one poll loop per token: a loop from an older start() ends on its next turn
+    this.source = token ? "env" : null;
   }
 
   save() { this.store.phone.data = this.st; this.store.phone.save(); }
@@ -162,14 +165,15 @@ export class Telegram {
   start() {
     if (!this.enabled || this.running) return;
     this.running = true;
+    const gen = ++this.gen;
     this.api("deleteWebhook", {}).catch(() => {});
-    this.api("getMe", {}).then((me) => { this.bot = me?.username ?? null; }).catch((e) => this.log.error(this.clean(`telegram getMe: ${e.message}`)));
+    this.api("getMe", {}).then((me) => { if (this.gen === gen) this.bot = me?.username ?? null; }).catch((e) => this.log.error(this.clean(`telegram getMe: ${e.message}`)));
     this.api("setMyCommands", { commands: COMMANDS.map(([command, d]) => ({ command, description: t(d) })) }).catch(() => {});
     (async () => {
       let backoff = 1000;
-      while (this.running) {
+      while (this.running && this.gen === gen) {
         try { await this.pollOnce(); backoff = 1000; } catch (e) {
-          if (!this.running) break;
+          if (!this.running || this.gen !== gen) break;
           this.log.error(this.clean(`telegram poll: ${e.message}`));
           await sleep(backoff); backoff = Math.min(60_000, backoff * 2);
         }
@@ -181,7 +185,42 @@ export class Telegram {
       this.releaseTimer.unref?.();
     }
   }
-  stop() { this.running = false; this.abort?.abort(); clearInterval(this.releaseTimer); clearTimeout(this.liveTimer); }
+  stop() { this.running = false; this.gen++; this.abort?.abort(); clearInterval(this.releaseTimer); clearTimeout(this.liveTimer); }
+
+  /**
+   * A new bot token at run time (`ekip phone setup`), or "" to turn the bot off: the poller stops and
+   * starts again in this process, no restart. Another bot (its id is the token's part before ":")
+   * cannot write to the old bot's chats, so its pairing, live messages and update offset are reset.
+   */
+  setToken(token = "", { start = true, source = "store" } = {}) {
+    this.stop();
+    if (token) this.adopt(token);
+    this.token = token;
+    this.enabled = !!token;
+    this.source = token ? source : null;
+    this.bot = null;
+    if (token && !this.secrets.includes(token)) this.secrets.push(token);
+    if (start && token) this.start();
+  }
+
+  adopt(token) {
+    const id = String(token).split(":")[0];
+    if (this.st.botId === id) return;
+    if (this.st.botId) Object.assign(this.st, { chats: [], codes: [], live: {}, asks: {}, cb: {}, replies: {}, offset: 0 });
+    this.st.botId = id;
+    this.save();
+  }
+
+  /** The bot's @username for a token, without keeping it: getMe through the hub's own route to Telegram. */
+  async probe(token) {
+    const r = await this.fetch(`${this.apiBase}/bot${token}/getMe`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(15_000) });
+    let j = null;
+    try { j = await r.json(); } catch { /* not json */ }
+    if (j?.ok) return j.result?.username ?? null;
+    const e = new Error(`getMe: ${j?.description ?? `HTTP ${r.status}`}`);
+    e.code = j?.error_code ?? r.status;
+    throw e;
+  }
 
   async pollOnce() {
     this.abort = new AbortController();
@@ -262,7 +301,7 @@ export class Telegram {
   }
 
   status() {
-    return { enabled: this.enabled, bot: this.bot, chats: this.st.chats.length, mode: this.st.mode, verbose: this.st.verbose, quiet: this.st.quiet,
+    return { enabled: this.enabled, source: this.source, bot: this.bot, chats: this.st.chats.length, mode: this.st.mode, verbose: this.st.verbose, quiet: this.st.quiet,
       macOnline: this.macOnline(), inbox: this.store.inbox.data.length, leads: this.st.leads, codes: this.st.codes.filter((c) => c.exp > this.now()).length };
   }
   settings({ mode, verbose, quiet } = {}) {

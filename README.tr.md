@@ -171,7 +171,8 @@ dışında yürüdü, soğuk kurulum sırasında %58 ([rakamlar](docs/architectu
 - **Gizli hub:** `ekip hub private` hub'ı Tailscale ağınıza alır; panel ve API yalnız kendi
   cihazlarınızdan açılır, alan adı ve DNS kaydı gerekmez. [Kurulum](docs/install.md#private-hub-with-tailscale)
 - **Telefonun** (hub'daki bir Telegram botu) her görevi canlı izler, lead'in sorularını düğmeyle cevaplar
-  ve yeni işi açık lead'e yazar; Mac kapalıyken iş hub'ın kuyruğuna gider. [Telefon](docs/install.md#optional-your-phone-telegram)
+  ve yeni işi açık lead'e yazar; Mac kapalıyken iş hub'ın kuyruğuna gider. `ekip phone setup` bağlar.
+  [Telefon](docs/install.md#optional-your-phone-telegram)
 
 </details>
 

@@ -180,14 +180,33 @@ your decision (its options as buttons, plus "Other…"), when a review fails and
 result lands. What you type goes to the live lead as if you typed it at the Mac, and the lead's reply
 of each turn comes back. With the Mac off, a request becomes a job on the hub's queue.
 
-1. In Telegram, open **@BotFather**, send `/newbot`, pick a name and a user name; it answers with a
-   token like `123456789:AA…`. Keep it secret (anyone with it controls the bot).
-2. Put it in the hub's `.env`: `EKIP_TELEGRAM_TOKEN=<token>`, then restart the hub
-   (`docker compose up -d` in `hub/`). The hub log says `phone=telegram`. The hub uses long polling
-   (`getUpdates`), never a webhook, so it can stay private, for example reachable only over a VPN.
-3. On the Mac: `ekip phone link`. It prints `/link <code>`; send that to your bot within ten minutes
-   (the code works once). Only chats paired this way are served; anyone else gets no answer at all.
-4. Check with `ekip phone status`. `ekip setup` lists the phone as an optional step.
+One command connects it: **`ekip phone setup`** (`ekip init` offers it once when a hub is linked,
+default no; `ekip setup` offers it once too).
+
+1. It shows the BotFather steps: in Telegram open **@BotFather**, send `/newbot`, give a name and a
+   user name ending in `bot`, copy the token it answers with (`123456789:AA…`). Keep it secret:
+   anyone with it controls the bot.
+2. It asks for the token without showing it: on macOS a native dialog with a hidden answer (this
+   works from the lead's `!` prompt too), elsewhere a prompt that does not echo; scripts pipe it in
+   with `--token-stdin`. The token is checked with Telegram's `getMe` and the bot's `@username` is
+   shown. It is never printed, logged or kept on the Mac (not in `data/config.json`).
+3. It sends the token to the hub (`PUT /api/phone/telegram-token`, hub token only, never a panel
+   session). The hub checks it with `getMe` again, keeps it in `$EKIP_DATA/telegram-token` (mode
+   600), masks it in its logs and API answers, and starts the bot at once: no restart. The hub uses
+   long polling (`getUpdates`), never a webhook, so it can stay private, for example reachable only
+   over a VPN.
+4. It prints `/link <code>`; send that to your bot within ten minutes (the code works once). The
+   command waits for the pairing and says `paired: @username`. Only chats paired this way are served;
+   anyone else gets no answer at all.
+
+`ekip phone status` shows the bot and the pairing; `ekip phone link` gives a new code; `ekip phone
+setup --remove` takes the bot off the hub and stops it. Setting another bot's token resets the
+pairing (the new bot cannot write to the old bot's chats).
+
+Manual alternative: put `EKIP_TELEGRAM_TOKEN=<token>` in the hub's `.env` and restart the hub
+(`docker compose up -d` in `hub/`; the hub log says `phone=telegram`), then run `ekip phone link`
+on the Mac. The env variable wins over a token set with `ekip phone setup`; while it is set, the hub
+refuses to change the bot over the API.
 
 Messages carry titles, steps, results and links only; notes, replies and tool lines pass through a
 redactor that masks tokens, keys, passwords, bearer strings and URLs with credentials. Details and
