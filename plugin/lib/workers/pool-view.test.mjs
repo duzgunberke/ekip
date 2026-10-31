@@ -8,6 +8,7 @@ import path from "node:path";
 
 process.env.EKIP_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "ekip-pools-"));
 process.env.EKIP_LANG = "en";
+process.env.TZ = "UTC"; // the reset times as the assertions spell them
 const pv = await import("./pool-view.js");
 const bg = await import("../ops/background.js");
 const { styleFor, cols, renderPane, strip } = await import("../tasks/pane.js");
@@ -29,7 +30,7 @@ const rs = { platforms: {
 }, recent: { platform: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b", at: new Date(at - 60_000).toISOString() } };
 
 const view = pv.poolView({ workers, free: { keys: true, running: 1, capacity: 3, providers: pv.freeProviders(rs, at) }, claude: { running: 0, capacity: 0 }, disabled: ["jcode"] });
-assert.deepEqual(view.pools.map((p) => p.name), ["copilot", "free", "agy", "grok", "codex"], "running > ready > limited; hidden ones left out");
+assert.deepEqual(view.pools.map((p) => p.name), ["free", "agy", "grok", "copilot", "codex"], "running > ready > full > limited; hidden ones left out");
 assert.equal(view.hidden, 3, "qwen (no login), opencode (not installed), jcode (switched off)");
 const by = Object.fromEntries(view.pools.map((p) => [p.name, p]));
 assert.equal(pv.stateText(by.copilot, at), "2/2 full");
@@ -52,24 +53,74 @@ for (const w of [30, 44, 60, 80, 120, 160]) {
   for (const l of lines) assert.ok(cols(l) <= w, `${w}: ${l}`);
   const text = lines.map((l) => l.replace(/\s+/g, " ").trim()).join(" | ");
   assert.ok(!/\x1b/.test(lines.join("")), "plain: no escape codes");
-  const expect = w < 60 ? ["copilot ● 2/2", "free ● 1", "agy ●", "codex ■ limited", "+3 off", "OpenRouter ◐ ~12 min", "Z.ai ✗ failed"]
-    : ["copilot ● 2/2 full", "free ● 1 running", "agy ● ready", "codex ■ limited ·", "+3 off", "NVIDIA ● ready", "OpenRouter ◐ resting ~12 min", "Z.ai ✗ failed"];
+  const expect = w < 60 ? ["copilot ● 2/2", "free ● 1", "agy ●", "codex ■ limited", "+3 off", "OpenRouter ◐", "Z.ai ✗ failed"]
+    : ["copilot ● 2/2 full", "free ● 1", "agy ● ready", "codex ■ limited · Thu 01:00", "+3 off", "NVIDIA ● ready", "OpenRouter ◐", "Z.ai ✗ failed"];
+  if (w >= 80) expect.push("free ● 1 running", "OpenRouter ◐ resting ~12 min");
   for (const s of expect) assert.ok(text.includes(s), `${w}: ${s} in ${text}`);
   if (w < 60) assert.ok(!text.includes("NVIDIA") && !text.includes("pools"), `${w}: narrow drops the labels and the ready providers: ${text}`);
   else assert.ok(lines[0].startsWith(" pools ") && lines.some((l) => l.startsWith(" providers ")), `${w}: labels in the gutter`);
+  // the limited pool comes last, after the full one; the tail after it
+  assert.ok(text.indexOf("copilot") < text.indexOf("codex") && text.indexOf("codex") < text.indexOf("+3 off"), `${w}: order ${text}`);
 }
-// aligned columns: on a pane that needs two rows the names and states start at the same columns
-const two = pv.chipLines(view, 100, plain, { at }).filter((l) => !l.startsWith(" providers"));
-assert.ok(two.length >= 2);
-const starts = (l) => [...l.matchAll(/ {2,}(?=\S)/g)].map((m) => m.index + m[0].length);
-assert.deepEqual(starts(two[1]).slice(0, 2), starts(two[0]).slice(0, 2), `columns line up:\n${two.join("\n")}`);
 // a wide pane fits the pools on one row
 assert.equal(pv.chipLines(view, 160, plain, { at }).filter((l) => !l.startsWith(" providers") && !l.startsWith("  ")).length, 1);
+
+// one grid for the pools and the providers: a fuller set, where each row starts its names on the same x
+const W = (name, status, running, capacity, extra = {}) => ({ name, status, running, capacity, successRate: 90, ...extra });
+const many = pv.poolView({
+  workers: [W("agy", "ready", 0, 2), W("codex", "limited", 0, 2, { limit: { resetAt: "2026-10-31T14:43:00Z" } }), W("copilot", "limited", 0, 2, { limit: { resetAt: "2026-10-28T14:43:00Z" } }), W("qwen", "ready", 1, 2), W("opencode", "ready", 0, 1), W("grok", "ready", 2, 2), W("gemini", "ready", 0, 1)],
+  free: { keys: true, running: 1, capacity: 3, providers: pv.freeProviders({ platforms: {
+    openrouter: { models: 10, cooling: 10, ok24: 2, fail24: 300, lastError: "429", coolUntil: at + 12 * 60_000 },
+    nvidia: { models: 17, cooling: 0, ok24: 1700, fail24: 4 }, google: { models: 4, cooling: 0, ok24: 500, fail24: 3 }, groq: { models: 5, cooling: 0, ok24: 300, fail24: 3 },
+    zhipu: { models: 3, cooling: 0, ok24: 0, fail24: 8, lastError: "500" }, cerebras: { models: 3, cooling: 0, ok24: 30, fail24: 1 }, mistral: { models: 3, cooling: 0, ok24: 20, fail24: 1 },
+  } }, at) },
+  claude: { running: 1, capacity: 2 },
+});
+many.hidden = 2;
+assert.deepEqual(many.pools.map((p) => p.name), ["qwen", "claude", "free", "agy", "opencode", "gemini", "grok", "codex", "copilot"], "running, ready, full, limited (in their own order)");
+assert.deepEqual(pv.chips(many, plain)[1].items.map((x) => x.state), ["ready", "ready", "ready", "ready", "ready", "resting", "error"], "providers: ready first, resting and failing last");
+const NAMES = [...many.pools.map((p) => p.name), ...many.pools.find((p) => p.name === "free").providers.map((x) => x.name)];
+// the x where each item's name starts, ANSI and the label gutter left out
+const starts = (l) => NAMES.map((n) => strip(l).search(new RegExp(`(?<=^|\\s)${n.replace(".", "\\.")}(?=\\s)`))).filter((x) => x >= 0).sort((a, b) => a - b);
+for (const [w, style] of [[80, plain], [120, plain], [200, plain], [120, color0()], [200, styleFor({ isTTY: true }, { TERM: "xterm-256color", COLORTERM: "truecolor" })]]) {
+  const lines = pv.chipLines(many, w, style, { at, ...(style.color && w === 200 ? { proto: "iterm" } : {}) });
+  for (const l of lines) assert.ok(cols(l) <= w, `${w}: ${strip(l)}`);
+  const grid = pv.footerGrid(many, w, style, { at, ...(style.color && w === 200 ? { proto: "iterm" } : {}) });
+  const names = grid.stops.map((x) => x + (grid.mark ? grid.mark + 1 : 0)); // a name starts after the mark
+  const pools = lines.slice(0, lines.findIndex((l) => strip(l).startsWith(" providers"))), prov = lines.slice(pools.length);
+  assert.ok(pools.length && prov.length, `${w}: both groups`);
+  // the first full rows of both groups start on exactly the same columns: the grid's stops
+  assert.deepEqual(starts(pools[0]), names, `${w}: pools row\n${lines.map(strip).join("\n")}`);
+  assert.deepEqual(starts(prov[0]), names, `${w}: providers row\n${lines.map(strip).join("\n")}`);
+  // every other row starts its items on those columns too
+  for (const l of lines) for (const x of starts(l)) assert.ok(names.includes(x), `${w}: ${x} off the grid in ${strip(l)}`);
+  // and the states line up under each other: the column of "●" in the first rows is the same
+  const syms = (l) => [...strip(l).matchAll(/[●■◐✗]/g)].map((m) => m.index);
+  assert.deepEqual(syms(pools[0]), syms(prov[0]), `${w}: states aligned`);
+}
+function color0() { return styleFor({ isTTY: true }, { TERM: "xterm-256color" }); }
+// the long state of a limited pool does not widen the grid; with room it shows its reset time
+const noReset = { ...many, pools: many.pools.map((p) => ({ ...p, resetAt: null })) };
+for (const w of [80, 120, 200]) assert.deepEqual(pv.footerGrid(many, w, plain, { at }).stops, pv.footerGrid(noReset, w, plain, { at }).stops, `${w}: same grid`);
+const wide = pv.chipLines(many, 200, plain, { at }).map(strip).join("\n");
+assert.match(wide, /codex {7}■ limited · Sat 14:43 /, "200: the whole reset time");
+assert.match(wide, /copilot {5}■ limited · 14:43 /);
+assert.match(wide, /\+2 off/);
+const mid = pv.chipLines(many, 120, plain, { at }).map(strip).join("\n");
+assert.match(mid, /codex {7}■ limited( |$)/m, "120: no room before copilot, the short form");
+assert.match(mid, /copilot {5}■ limited · 14:43 {3}\+2 off/, "the last one takes the room on its right, the tail still fits");
+const narrowMany = pv.chipLines(many, 50, plain, { at }).map(strip);
+assert.ok(narrowMany.some((l) => /^ copilot {5}■ limited/.test(l)) && !/NVIDIA|pools|providers/.test(narrowMany.join("\n")), `narrow: no labels, no ready providers\n${narrowMany.join("\n")}`);
+for (const w of [80, 120, 160, 200]) {
+  // the tail stays on the pools' last row, never past the edge
+  const pl = pv.chipLines(many, w, plain, { at });
+  assert.ok(pl.some((l) => l.includes("+2 off")) && pl.every((l) => cols(l) <= w));
+}
 
 // colour without images: a one-colour "◆" in the brand colour, no letter monograms; images: the real logos
 const color = styleFor({ isTTY: true }, { TERM: "xterm-256color", COLORTERM: "truecolor" });
 const glyphs = pv.chipLines(view, 120, color, { at }).join("\n");
-assert.match(strip(glyphs), /◆ copilot {2}● 2\/2 full/);
+assert.match(strip(glyphs), /◆ copilot {2,}● 2\/2 full/);
 assert.ok(!/\b(cp|cx|or|zh|nv)\b ●/.test(strip(glyphs)), "no two-letter monograms");
 assert.ok(glyphs.includes("\x1b[38;2;118;185;0m◆"), "NVIDIA's mark in NVIDIA green");
 const img = pv.chipLines(view, 120, color, { proto: "iterm", at });
@@ -86,7 +137,7 @@ assert.ok(!strip(pv.chipLines(view, 120, color, { logos: "off", at }).join("")).
 const noColor = styleFor({ isTTY: true }, { NO_COLOR: "1", TERM: "xterm-256color" });
 const nc = pv.chipLines(view, 120, noColor, { proto: pv.imageProtocol({ isTTY: true }, { NO_COLOR: "1", TERM_PROGRAM: "WezTerm" }), at }).join("\n");
 assert.ok(!/\x1b|◆/.test(nc), "NO_COLOR: no escapes, no marks");
-assert.match(nc, /copilot {2}● 2\/2 full/);
+assert.match(nc, /copilot {2,}● 2\/2 full/);
 // which terminals get images
 assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm" }), "iterm");
 assert.equal(pv.imageProtocol({ isTTY: true }, { WEZTERM_PANE: "3" }), "iterm");
@@ -101,7 +152,7 @@ assert.equal(pv.imageProtocol({ isTTY: true }, { TERM_PROGRAM: "WezTerm" }, "gly
 assert.equal(pv.imageProtocol({ isTTY: false }, { TERM_PROGRAM: "WezTerm" }), null);
 // the pane takes the view as its footer
 const pane = renderPane({ clock: "10:00", counts: {}, cards: [], pools: view }, { width: 70, height: 16, stream: { isTTY: false }, env: {} });
-assert.match(pane.join("\n"), /^ pools {7,}copilot {2}● 2\/2 full/m);
+assert.match(pane.join("\n"), /^ pools {7,}free {2,}● 1/m);
 
 // background work: embeddings with their provider and queue, a stopped backfill, the import, reindexing
 const jobs = bg.backgroundJobs({
@@ -113,6 +164,14 @@ assert.match(jobs[0].detail, /^NVIDIA · 280 queued · last success 2 min ago$/)
 assert.match(jobs[1].detail, /120\/400 \(30%\) · stopped → ekip memory reindex/);
 for (const w of [40, 70, 100]) { const l = bg.backgroundLine(jobs, w, plain); assert.equal(l.length, 1); assert.ok(cols(l[0]) <= w, `${w}: ${l[0]}`); assert.ok(!/\S…\S/.test(l[0])); }
 assert.deepEqual(bg.backgroundLine([{ id: "embeddings", label: "embeddings", state: "ok" }], 80, plain), [], "quiet: no line");
+// on the pools' grid: each job starts on a column of the pools under it
+for (const w of [120, 200]) {
+  const grid = pv.footerGrid(many, w, plain, { at, gutter: 13 });
+  const [line] = bg.backgroundLine(jobs.slice(0, 3), w, plain, { gutter: 13, stops: grid.stops });
+  const at0 = [...line.matchAll(/[●✗] /g)].map((m) => m.index);
+  assert.ok(at0.length >= 2 && at0.every((x) => grid.stops.includes(x)), `${w}: ${line} on ${grid.stops}`);
+  assert.ok(cols(line) <= w);
+}
 const quietPane = renderPane({ clock: "10:00", counts: {}, cards: [], pools: view, background: jobs }, { width: 90, height: 18, stream: { isTTY: false }, env: {} });
 assert.ok(quietPane.some((l) => l.startsWith(" background")), "the pane shows it over the pools");
 assert.match(bg.statusSection(jobs), /Background/);
