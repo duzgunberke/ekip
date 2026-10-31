@@ -310,7 +310,11 @@ export async function enable(io, opt = {}) {
     const route = await removeRoute(io, host, pub, { yes: opt.yes });
     if (route) io.save({ hubPrivate: { ...io.settings.hubPrivate, route } });
   }
-  io.log(`\n✓ ${t("Hub artık yalnız tailnet'teki cihazlarınızdan açılıyor")}: ${url}\n  ${t("telefon ve diğer cihazlar: Tailscale uygulamasını kurup aynı hesapla oturum açın")}\n  ${t("durum: ekip hub private status · geri almak: ekip hub private off")}`);
+  // "only the tailnet" is said only when the old public address really stopped answering
+  const stillOpen = pub && !isPrivateHost(new URL(pub).hostname) && await answers(io, pub);
+  if (stillOpen) io.log(`\n! ${t("Hub tailnet'te de açık: {url}", { url })}\n  ${t("{pub} hâlâ cevap veriyor; yönlendirmesini kaldırın ya da ekip hub private'ı --keep-route olmadan çalıştırın", { pub })}`);
+  else io.log(`\n✓ ${t("Hub artık yalnız tailnet'teki cihazlarınızdan açılıyor")}: ${url}`);
+  io.log(`  ${t("telefon ve diğer cihazlar: Tailscale uygulamasını kurup aynı hesapla oturum açın")}\n  ${t("durum: ekip hub private status · geri almak: ekip hub private off")}`);
   return 0;
 }
 
@@ -341,7 +345,8 @@ export async function status(io) {
 export async function off(io, opt = {}) {
   const s = io.settings, p = s.hubPrivate;
   const host = sshHost(s, opt);
-  if (!p && !host) { io.log(t("gizli mod açık değil")); return 0; }
+  // never touch a Serve config ekip did not set up
+  if (!p) { io.log(t("gizli mod açık değil")); return 0; }
   if (host) {
     const r = io.ssh(host, vsh("$SU timeout 20 tailscale serve --https=443 off"), { timeout: 40_000 });
     io.log(r.status === 0 ? `✓ ${t("tailscale serve kapatıldı")}` : `! tailscale serve: ${(r.stderr || r.stdout).trim()}`);

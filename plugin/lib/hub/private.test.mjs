@@ -195,5 +195,13 @@ function fakeIo({ settings, serveOffTimes = 1, vpsHasTailscale = false }) {
   assert.match(log.join("\n"), /ssh host/);
 }
 
+// off without private mode never touches a Serve config ekip did not set up
+{
+  const { io, sshCmds, log } = fakeIo({ settings: { hubUrl: "https://hub.example.com", hubSsh: "vps" } });
+  assert.equal(await pv.off(io), 0);
+  assert.equal(sshCmds.length, 0, "no ssh command");
+  assert.match(log.join("\n"), /gizli mod|private mode/);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("hub private: ok");
