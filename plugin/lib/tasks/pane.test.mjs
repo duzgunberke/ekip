@@ -173,5 +173,17 @@ for (const m of [busy, empty]) {
   assert.ok(written.includes("\x1b[2J"), "a resize redraws everything");
 }
 
-fs.rmSync(tmp, { recursive: true, force: true });
 console.log("task pane: ok");
+
+// the tab bar shows the pane's own counts: a stalled step or a failure of the last day is stuck there too
+{
+  const d = { waiting: [{}], stuck: [{}, {}], running: [{}, {}, {}], done: [] };
+  assert.deepEqual(tasks.digestCounts(d), { waiting: 1, blocked: 2, running: 3 });
+  tasks.writeTerminalStatus([], d);
+  const s = JSON.parse(fs.readFileSync(tasks.STATUS_FILE, "utf8"));
+  assert.deepEqual([s.waiting, s.blocked, s.running], [1, 2, 3]);
+  // a task write right after (no digest) keeps the pane's numbers instead of counting on its own
+  assert.deepEqual((({ waiting, blocked, running }) => ({ waiting, blocked, running }))(tasks.terminalStatus([])), { waiting: 1, blocked: 2, running: 3 });
+  console.log("ok: tab bar counts follow the task pane");
+}
+fs.rmSync(tmp, { recursive: true, force: true });

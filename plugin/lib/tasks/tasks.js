@@ -412,8 +412,14 @@ export function active() { return read().filter((t) => t.status === "running"); 
 // when a task changes, and by the task pane, only when something in it changed; the terminal reads
 // this small file instead of starting ekip every second.
 export const STATUS_FILE = path.join(HOME, "terminal-status.json");
-export function terminalStatus(all = read()) {
-  const n = { waiting: 0, blocked: 0, running: 0 };
+// The task pane's own counts (digest.collect: stalled steps and failures of the last day are stuck
+// too), kept for a moment so a task write in between does not flip the tab bar to other numbers.
+const COUNTS_FILE = path.join(HOME, "pane-counts.json");
+export const digestCounts = (d) => ({ waiting: d.waiting.length, blocked: d.stuck.length, running: d.running.length });
+function paneCounts(maxAgeMs = 15_000) {
+  try { const j = JSON.parse(fs.readFileSync(COUNTS_FILE, "utf8")); return Date.now() - j.at < maxAgeMs ? j.counts : null; } catch { return null; }
+}
+function countTasks(all, n) {
   for (const t of all.filter((x) => x.status === "running")) {
     if (t.hold?.kind === "waiting-user") n.waiting++;
     else if (t.hold || paused(t)) n.blocked++;
@@ -426,6 +432,10 @@ export function terminalStatus(all = read()) {
       try { const j = JSON.parse(fs.readFileSync(path.join(HOME, "tracks", f), "utf8")); if (!j.endedAt && pidAlive(j.pid) && !open.has(j.taskId)) n.running++; } catch { /* half-written */ }
     }
   } catch { /* no tracked jobs */ }
+}
+export function terminalStatus(all = read(), counts = paneCounts()) {
+  const n = counts ? { ...counts } : { waiting: 0, blocked: 0, running: 0 };
+  if (!counts) countTasks(all, n);
   let projects = [];
   try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")).filter((p) => p?.name && p?.path).map((p) => ({ name: p.name, path: p.path })); } catch { /* none registered */ }
   // missing required setup steps, from the cached check (ekip setup); the status bar shows "kurulum 5/9"
@@ -433,9 +443,15 @@ export function terminalStatus(all = read()) {
   try { const b = setupBadge({ spawnRefresh: false }); if (b?.missing.length) setup = { done: b.done, total: b.total, missing: b.missing.length }; } catch { /* no state yet */ }
   return { ...n, projects, ...(setup ? { setup } : {}) };
 }
-export function writeTerminalStatus(all) {
+export function writeTerminalStatus(all, digest = null) {
   try {
-    const body = JSON.stringify(terminalStatus(all));
+    let counts;
+    if (digest) {
+      counts = digestCounts(digest);
+      fs.writeFileSync(`${COUNTS_FILE}.${process.pid}.tmp`, JSON.stringify({ at: Date.now(), counts }));
+      fs.renameSync(`${COUNTS_FILE}.${process.pid}.tmp`, COUNTS_FILE);
+    }
+    const body = JSON.stringify(terminalStatus(all, counts));
     let old = "";
     try { old = fs.readFileSync(STATUS_FILE, "utf8"); } catch { /* first write */ }
     if (body === old) return false;
@@ -701,7 +717,7 @@ export async function main([sub = "ls", ...args]) {
       if (version == null) try { const dg = await import("./digest.js"); version = dg.cachedRelease(Infinity)?.version ?? (await import("../ops/update.js")).localVersion(); } catch { version = ""; }
       let digest = null;
       try { const dg = await import("./digest.js"); digest = await dg.collect(); } catch { /* the pane never stops for this */ }
-      try { writeTerminalStatus(read()); } catch { /* best effort */ }
+      try { writeTerminalStatus(read(), digest); } catch { /* best effort */ }
       const pd = await poolData();
       let background = null;
       try { background = (await import("../ops/background.js")).backgroundJobs(); } catch { /* the pane never stops for this */ }
