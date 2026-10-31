@@ -25,8 +25,8 @@ Keep one topic per pull request and write commit messages, branch names and merg
 
 ## Branches and releases
 
-Work on a branch (`feat/<topic>`, `fix/<topic>`) and merge it into `main` when `bash scripts/smoke.sh`
-and the privacy check pass. Every commit that lands on `main` gets a fresh-install test on a clean
+Work on a branch (`feat/<topic>`, `fix/<topic>`) and merge it into `main` when `bash scripts/smoke.sh`,
+`bash scripts/ci/linux-smoke.sh` (the same tests on Linux with an English locale, in Docker) and the privacy check pass. Every commit that lands on `main` gets a fresh-install test on a clean
 machine; when it passes, it is released automatically: the version comes from the commit subjects
 merged since the last tag (`feat:` or `minor:` bumps the minor version, `major:` or `BREAKING CHANGE`
 the major one, anything else the patch), that exact commit is tagged and a GitHub release lists the

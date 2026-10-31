@@ -25,15 +25,20 @@ step() { echo "== $1" | tee -a "$log"; }
 run() { docker exec "$name" bash -lc "$1" >> "$log" 2>&1; }
 
 step "isolated machine"
-docker run -d --privileged -v /var/lib/docker --cpus 2 --memory 6g --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
+docker run -d --privileged -v /var/lib/docker --cpus 4 --memory 6g --name "$name" ubuntu:24.04 sleep infinity >> "$log" 2>&1 || { result fail "isolated machine"; exit 1; }
 run 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq git sqlite3 tmux curl ca-certificates docker.io python3 sudo >/dev/null
 (dockerd > /var/log/dockerd.log 2>&1 &) ; for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info >/dev/null
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null
 npm i -g @anthropic-ai/claude-code >/dev/null 2>&1; node -v; claude --version | head -1' || { result fail "prerequisites"; exit 1; }
 
+# The unit tests need no services: run them first, so a broken test fails in two minutes instead of
+# after the long install (31 Oct: three rounds lost 40 min each to tests that only failed on Linux).
+step "clone $ref and smoke test before the install"
+run "git clone -q '$repo' /root/ekip && cd /root/ekip && git checkout -q '$ref' && git log -1 --format='%h %s' && bash scripts/smoke.sh" || { result fail "smoke test (before install)"; exit 1; }
+
 # A fresh init pulls the memory images and builds the panel image; on a busy host it took over 40 min.
-step "clone $ref and ekip init"
-run "git clone -q '$repo' /root/ekip && cd /root/ekip && git checkout -q '$ref' && git log -1 --format='%h %s' && timeout 3600 node plugin/bin/ekip.js init --no-keys < /dev/null" || { rc=$?; [ $rc -eq 124 ] && result fail "ekip init (timed out after 60 min)" || result fail "ekip init"; exit 1; }
+step "ekip init"
+run "cd /root/ekip && timeout 3600 node plugin/bin/ekip.js init --no-keys < /dev/null" || { rc=$?; [ $rc -eq 124 ] && result fail "ekip init (timed out after 60 min)" || result fail "ekip init"; exit 1; }
 
 step "memory stack up and patched"
 run 'for i in $(seq 1 40); do curl -sf http://127.0.0.1:8420/health >/dev/null && break; sleep 5; done; curl -sf http://127.0.0.1:8420/health >/dev/null
