@@ -22,6 +22,7 @@ echo '== statusline =='; node plugin/lib/ops/statusline.test.mjs
 echo '== task pane =='; node plugin/lib/tasks/pane.test.mjs
 echo '== WezTerm as the default terminal =='; node plugin/lib/ops/terminal.test.mjs
 echo '== guided setup =='; node plugin/lib/ops/setup.test.mjs
+echo '== private hub over Tailscale =='; node plugin/lib/hub/private.test.mjs
 echo '== pools and background work =='; node plugin/lib/workers/pool-view.test.mjs
 echo '== Claude history gap and catch-up =='; node plugin/lib/memory/history.test.mjs
 echo '== pool logos: the panel list, PNGs, image protocols =='; node plugin/lib/workers/logos.test.mjs

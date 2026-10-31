@@ -50,6 +50,7 @@ flowchart LR
 | ekip's terminal | recommended (macOS) | WezTerm installed and the default | `ekip terminal install` |
 | Notifications | recommended (macOS) | `terminal-notifier` installed | `brew install terminal-notifier` |
 | Hub | optional | a hub is linked | `ekip hub local` or `ekip hub link <url> <token>` |
+| Private hub | optional, shown only while the hub is linked at a public address; offered once | the hub is served on your tailnet | `ekip hub private` |
 
 In a terminal it shows `Setup 5/9` with a bar, and for each missing step why it matters and the command, then asks **now / later / skip**. "Now" runs what needs you right there: `ekip keys` opens each provider's key page, the embedding step opens NVIDIA's key page and adds the key you paste, `ekip agents login` signs in to the worker CLIs, the project step asks for a folder. Indexing and the history import start in the background under `ekip track`. Each step is checked again when it finishes. "Skip" silences the step until `ekip setup unsnooze <id>`. Without a terminal (or with `--list`) it prints the list; `--json` gives the counts and steps to scripts.
 
@@ -154,6 +155,20 @@ ekip memory import-history
    address; open it on your Mac or phone, enter the panel password and save the passkey. From then
    on the panel asks for the password and the passkey, and a stranger sees only 404 pages. Set
    `EKIP_HUB_ORIGIN=https://ai.example.com` in the hub's `.env` so passkeys are bound to that host.
+
+### Private hub with Tailscale
+
+`ekip hub private` makes the hub reachable only from your own devices: no public domain, DNS record or open port. It uses [Tailscale](https://tailscale.com) (a free personal plan is enough) and the ssh host ekip already knows for the VPS (`ekip remote`, `ekip vps add`, or `--ssh <host>`):
+
+1. **Mac:** finds Tailscale (the app or `tailscale` on the PATH). If it is missing it installs it with `brew install --cask tailscale-app`; without a terminal for the password it opens the downloaded installer package instead. It opens the app and waits until you sign in.
+2. **VPS:** installs Tailscale with the official install script when it is missing, runs `tailscale up --hostname=ekip-hub` (change it with `--hostname`) in the background under a time limit, opens the login link on the Mac (and prints it) and waits until the VPS is on your tailnet.
+3. **Serve:** runs `tailscale serve --bg --https=443 http://127.0.0.1:7777` on the VPS (`--port` for another hub port). When Serve or HTTPS is off on your tailnet, Tailscale prints a page to turn it on and waits; ekip runs the command under `timeout`, opens that page for you and retries until it goes through.
+4. **Switch:** reads the VPS's MagicDNS name (for example `https://ekip-hub.tailnet-name.ts.net`), checks that it answers from the Mac, then sets `hubUrl` to it. The token stays. ts.net certificates are real HTTPS, so the panel's `Secure` login cookie and anything else that needs HTTPS (passkeys, WebAuthn) work.
+5. **Old route:** looks on the VPS for what routes the old hub address (a Traefik dynamic file such as Coolify's `/data/coolify/proxy/dynamic/`, an nginx or Caddy site, a Coolify app domain) and shows it. A Traefik file that routes only the hub is backed up to `~/ekip-route-backup/` on the VPS and removed after you confirm (`--yes` confirms ahead, `--keep-route` leaves it). Anything shared with other sites is only shown. Delete the old DNS record at your DNS provider yourself; ekip has no DNS access.
+
+`ekip hub private status` shows the Mac and VPS on the tailnet, what is served, whether the hub answers and whether the old public address still does. `ekip hub private off` turns Serve off, puts the backed up route back and points `hubUrl` at the old address again. Other devices (a phone, a second laptop) reach the panel after installing Tailscale and signing in with the same account.
+
+While the hub is linked at a public address, `ekip setup`, `ekip doctor` and the lead start list "The hub is open to the internet" as an info-level gap with this command. `ekip doctor` checks the private URL on every run.
 
 ## Language
 
