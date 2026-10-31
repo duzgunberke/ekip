@@ -46,5 +46,5 @@ running while the Mac is off, and serves the web panel.
   front page (about 170 lines: hero, quick start, "What you get" grid, skills, how it works, links);
   details go to the matching `docs/` page, not into the README. Both READMEs keep the same structure
   and images.
-- Work on a branch (`feat/…`, `fix/…`), merge into `main` when checks pass; a passing merge is
+- Work on a branch (`feat/…`, `fix/…`), merge into `main` when `bash scripts/smoke.sh`, `bash scripts/ci/linux-smoke.sh` and the privacy check pass; a passing merge is
   released automatically (see `CONTRIBUTING.md`). Never tag or bump versions by hand.
