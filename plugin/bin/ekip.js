@@ -1077,6 +1077,8 @@ async function hubFetch(pathname, init = {}) {
     headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}`, ...init.headers },
   });
   const body = await r.json().catch(() => ({}));
+  // the hub answers a wrong token with the same bare 404 a stranger gets
+  if (r.status === 404 && !body.error) die(`hub ${pathname}: HTTP 404 (${t("token yanlış ya da hub eski sürüm; ekip hub link <url> <token>")})`);
   if (!r.ok) die(`hub ${pathname}: HTTP ${r.status} ${body.error ?? ""}`);
   return body;
 }
@@ -1102,7 +1104,35 @@ async function job(args) {
   console.log(`queued ${j.id ?? JSON.stringify(j)} on ${SETTINGS.hubUrl} (ekip job show ${j.id})`);
 }
 
+// ekip hub passkey add|list|remove ID: the panel's passkeys. The first one can only be registered
+// with a one-time code from here (this machine holds the hub token), never with the password alone.
+async function hubPasskey([action, id]) {
+  if (action === "add") {
+    const r = await hubFetch("/api/passkeys/code", { method: "POST", body: "{}" });
+    const mins = Math.max(1, Math.round((Date.parse(r.expiresAt) - Date.now()) / 60000));
+    console.log(`${t("Kayıt kodu")}: ${c.bold(r.code)}  ${c.gray(t("(tek kullanımlık, {n} dk geçerli)", { n: mins }))}`);
+    console.log(`${t("Bu adresi passkey'in olacağı cihazda aç, hub parolasını gir ve passkey'i kaydet")}:`);
+    console.log(`  ${c.under(`${SETTINGS.hubUrl}${r.path}`)}`);
+    return;
+  }
+  if (action === "list" || action === "ls" || !action) {
+    const r = await hubFetch("/api/passkeys");
+    if (!r.passkeys.length) console.log(t("Kayıtlı passkey yok (ekleme: ekip hub passkey add)"));
+    for (const k of r.passkeys) console.log(`${k.id.slice(0, 12)}  ${String(k.name).padEnd(20)} ${t("eklendi")} ${String(k.createdAt).slice(0, 10)}  ${t("son kullanım")} ${String(k.lastUsedAt ?? "-").slice(0, 16).replace("T", " ")}`);
+    console.log(c.gray(r.required ? t("Panel girişi parola + passkey ister.") : t("Panel girişi şimdilik yalnız parola ister; ilk passkey kaydedilince passkey zorunlu olur.")));
+    return;
+  }
+  if (action === "remove" || action === "rm") {
+    if (!id) die("usage: ekip hub passkey remove <id>");
+    const r = await hubFetch(`/api/passkeys/${encodeURIComponent(id)}`, { method: "DELETE" });
+    console.log(t("Silindi: {name} ({n} passkey kaldı)", { name: r.name, n: r.left }));
+    return;
+  }
+  die("usage: ekip hub passkey add | list | remove <id>");
+}
+
 async function hub([sub, url, token]) {
+  if (sub === "passkey" || sub === "passkeys") return hubPasskey([url, token]);
   if (sub === "local") { process.exitCode = await (await import("../lib/hub/local-hub.js")).main([url]); return; }
   if (sub === "link") {
     if (!url || !token) die("usage: ekip hub link <https://hub.example.com> <token>");
@@ -1131,7 +1161,7 @@ async function hub([sub, url, token]) {
     console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
   } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));
   else if (sub === "open") openUrl(SETTINGS.hubUrl ?? die("no hub linked"));
-  else die("usage: ekip hub link <url> <token> | local [up|down|status] | push | status | open");
+  else die("usage: ekip hub link <url> <token> | local [up|down|status] | push | status | open | passkey add|list|remove");
 }
 
 // Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together,
@@ -1931,7 +1961,7 @@ ${c.bold("Projects and memory")}
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Setup")}
@@ -1982,7 +2012,7 @@ ${c.bold("Projeler ve hafıza")}
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Kurulum")}

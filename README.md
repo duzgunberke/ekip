@@ -74,7 +74,7 @@ or `ekip lang tr` sets the language. New releases install themselves.
   <tr>
     <td colspan="2" valign="top">
       <img src="docs/demo/panel-demo.gif" alt="The ekip web panel in dark mode: the status digest above live tasks, the command menu, the code map, runs across projects, project cards and worker pools with their quotas" width="100%"><br><br>
-      <b>The web panel.</b> With a hub linked, the same tasks, runs across projects, worker pools with their quotas and each project's code map open in the browser, from any device. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">More</a>
+      <b>The web panel.</b> With a hub linked, the same tasks, runs across projects, worker pools with their quotas and each project's code map open in the browser, from any device, behind the password and a passkey. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">More</a>
     </td>
   </tr>
 </table>

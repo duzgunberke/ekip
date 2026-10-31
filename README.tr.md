@@ -74,7 +74,7 @@ hatırlar; her açılışta en faydalı sonraki adım bir kez hatırlatılır. D
   <tr>
     <td colspan="2" valign="top">
       <img src="docs/demo/panel-demo.gif" alt="Koyu temada ekip web paneli: canlı görevlerin üstünde durum özeti, komut menüsü, kod haritası, projeler arası çalıştırmalar, proje kartları ve kotalarıyla worker havuzları" width="100%"><br><br>
-      <b>Web paneli.</b> Bir hub bağlıysa aynı görevler, projeler arası çalıştırmalar, kotalarıyla worker havuzları ve her projenin kod haritası tarayıcıda, her cihazdan açılır. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">Ayrıntı</a>
+      <b>Web paneli.</b> Bir hub bağlıysa aynı görevler, projeler arası çalıştırmalar, kotalarıyla worker havuzları ve her projenin kod haritası tarayıcıda, her cihazdan, parola ve passkey ile açılır. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">Ayrıntı</a>
     </td>
   </tr>
 </table>
