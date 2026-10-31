@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" role="img" aria-label="How ekip learns skills: runs are logged, repeated work is grouped, ekip skill learn drafts a SKILL.md from the real runs, you accept it, it is installed in the project's .claude/skills folder, and every later brief in that project gets it. Mistakes you correct become lessons that go on top of every brief.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#F3F5F8"/></linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0F9E8C"/></marker>
+    <marker id="arra" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 10 5 0 10z" fill="#D9792C"/></marker>
+  </defs>
+  <style>text{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.m{font-family:ui-monospace,'SF Mono',Menlo,monospace}.hh{font-weight:700}.s{fill:#4B5563}.tf{fill:#E7FAF6;stroke:#5FD9C6}.af{fill:#FFF2E5;stroke:#FFA95E}.tk{fill:#0F3D37}.ak{fill:#6B3510}.ln{stroke:#0F9E8C;stroke-width:2.5;fill:none}.la{stroke:#D9792C;stroke-width:2.5;fill:none}</style>
+  <rect width="1200" height="660" rx="24" fill="url(#bg)" stroke="#D4D9E1"/>
+  <text x="48" y="44" font-size="15" font-weight="700" fill="#111827">The skill loop <tspan class="s" font-weight="400">· per project, from real work</tspan></text>
+
+  <g>
+    <rect x="48" y="66" width="340" height="150" rx="16" class="tf"/>
+    <text x="70" y="98" class="s" font-size="12.5" letter-spacing="1.5">1 · WORK HAPPENS</text>
+    <text x="70" y="132" class="hh tk" font-size="21">Runs are logged</text>
+    <text x="70" y="166" class="s" font-size="14.5">Every worker's brief and final report</text>
+    <text x="70" y="188" class="s" font-size="14.5">is kept, per registered project.</text>
+  </g>
+
+  <g>
+    <rect x="430" y="66" width="340" height="150" rx="16" class="tf"/>
+    <text x="452" y="98" class="s" font-size="12.5" letter-spacing="1.5">2 · REPEATS ARE GROUPED</text>
+    <text x="452" y="132" class="hh tk" font-size="21">Similar runs cluster</text>
+    <text x="452" y="166" class="s" font-size="14.5">Same label or overlapping briefs;</text>
+    <text x="452" y="188" class="s" font-size="14.5">a group needs 3 runs or more.</text>
+  </g>
+
+  <g>
+    <rect x="812" y="66" width="340" height="150" rx="16" class="tf"/>
+    <text x="834" y="98" class="s" font-size="12.5" letter-spacing="1.5">3 · A DRAFT IS WRITTEN</text>
+    <text x="834" y="132" class="m hh tk" font-size="19">ekip skill learn</text>
+    <text x="834" y="166" class="s" font-size="14.5">A worker writes SKILL.md from those</text>
+    <text x="834" y="188" class="s" font-size="14.5">runs and docs. No made-up commands.</text>
+  </g>
+
+  <g>
+    <rect x="812" y="290" width="340" height="150" rx="16" class="af"/>
+    <text x="834" y="322" class="s" font-size="12.5" letter-spacing="1.5">4 · YOU DECIDE</text>
+    <text x="834" y="356" class="m hh ak" font-size="19">ekip skill accept</text>
+    <text x="834" y="390" class="s" font-size="14.5">Read it in ekip skill candidates.</text>
+    <text x="834" y="412" class="s" font-size="14.5">A rejected idea is not proposed again.</text>
+  </g>
+
+  <g>
+    <rect x="430" y="290" width="340" height="150" rx="16" class="tf"/>
+    <text x="452" y="322" class="s" font-size="12.5" letter-spacing="1.5">5 · IT LIVES IN THE REPO</text>
+    <text x="452" y="356" class="m hh tk" font-size="19">.claude/skills/&lt;name&gt;</text>
+    <text x="452" y="390" class="s" font-size="14.5">A plain Claude Code skill, committed</text>
+    <text x="452" y="412" class="s" font-size="14.5">with the code like any other file.</text>
+  </g>
+
+  <g>
+    <rect x="48" y="290" width="340" height="150" rx="16" class="tf"/>
+    <text x="70" y="322" class="s" font-size="12.5" letter-spacing="1.5">6 · EVERY BRIEF USES IT</text>
+    <text x="70" y="356" class="hh tk" font-size="21">Matched to each task</text>
+    <text x="70" y="390" class="s" font-size="14.5">Fitting skills go into worker briefs</text>
+    <text x="70" y="412" class="s" font-size="14.5">and the lead's context, by itself.</text>
+  </g>
+  <path d="M390 141 H426" class="ln" marker-end="url(#arr)"/>
+  <path d="M772 141 H808" class="ln" marker-end="url(#arr)"/>
+  <path d="M982 218 V286" class="ln" marker-end="url(#arr)"/>
+  <path d="M810 365 H774" class="ln" marker-end="url(#arr)"/>
+  <path d="M428 365 H392" class="ln" marker-end="url(#arr)"/>
+  <path d="M218 288 V220" class="ln" marker-end="url(#arr)"/>
+  <text x="232" y="259" class="s" font-size="13">the next runs follow it, and feed the loop</text>
+  <text x="996" y="259" class="s" font-size="13">ekip doctor also drafts once a day</text>
+
+  <rect x="48" y="476" width="1104" height="148" rx="16" class="af"/>
+  <text x="70" y="508" class="s" font-size="12.5" letter-spacing="1.5">LESSONS · WHEN YOU CORRECT A MISTAKE</text>
+  <rect x="70" y="526" width="420" height="44" rx="10" fill="#FFFFFF" stroke="#D4D9E1"/>
+  <text x="88" y="554" class="m" font-size="15" fill="#1F2937">ekip project lesson app "…"</text>
+  <path d="M494 548 H538" class="la" marker-end="url(#arra)"/>
+  <rect x="542" y="526" width="200" height="44" rx="10" fill="#FFFFFF" stroke="#D4D9E1"/>
+  <text x="560" y="554" class="m" font-size="15" fill="#1F2937">.ekip/lessons.md</text>
+  <path d="M746 548 H790" class="la" marker-end="url(#arra)"/>
+  <text x="800" y="542" class="hh ak" font-size="16">on top of every worker brief,</text>
+  <text x="800" y="564" class="hh ak" font-size="16">whatever it is about</text>
+  <text x="70" y="604" class="s" font-size="14">The newest lessons also reach the lead with every message, so the same correction is not needed twice.</text>
+</svg>
