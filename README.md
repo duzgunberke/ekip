@@ -97,7 +97,7 @@ How memory works and why vectors matter, in depth: [docs/memory.md](docs/memory.
   </tr>
 </table>
 
-<p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · the same tasks in a pane next to your Claude session</sub></p>
+<p align="center"><img src="docs/screenshots/terminal-wezterm-layout.png" alt="ekip in WezTerm: the lead, two workers on the right, the task pane below with a card per task" width="100%"><br><sub><b>Terminal</b> · the same tasks in a pane next to your Claude session</sub></p>
 
 ## Built not to get stuck
 
@@ -228,8 +228,11 @@ are in, and iTerm2 keeps working.
 ekip runs in iTerm2 as before. If driving iTerm2 with AppleScript feels slow, or the plain terminal
 makes states hard to tell apart, `ekip terminal install` sets up **WezTerm** for ekip and
 `ekip terminal open` starts the lead in it: the lead on the left, worker panes in a column on the
-right, the task pane below, in ekip's dark theme, with the open tasks (waiting for you, blocked,
-running) in the tab bar. ekip drives it with `wezterm cli`, which answers in milliseconds with a JSON
+right, the task pane below, in ekip's dark theme. The tab bar carries the ekip mark, one tab per
+project (the registered project's name, `~` at home) and the open tasks on the right (waiting for
+you, stuck, running), read from a small status file ekip rewrites when a task changes. The task
+pane draws a card per task with its progress, step and workers; with nothing running it shows the
+last results instead ([empty pane](docs/screenshots/terminal-empty.png)). ekip drives it with `wezterm cli`, which answers in milliseconds with a JSON
 pane list, so a busy machine can no longer open the same task pane twice. Your own `wezterm.lua` is
 left alone. WezTerm was picked over kitty because it is MIT licensed, installs with a Homebrew cask,
 lists and splits panes from the command line without extra settings, and is configured in Lua;

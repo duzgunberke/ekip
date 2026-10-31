@@ -82,7 +82,7 @@ Panes go through `plugin/lib/core/terminal.js`, one small interface per terminal
 | kitty | `kitty @ ls`, `launch`, `focus-window`, `set-tab-title` (needs `allow_remote_control` and the splits layout) | its title in `kitty @ ls` |
 | other | a new Terminal.app window | no task pane |
 
-Each lead records its own id on its tasks (`terminal.js` `leadId()`: the iTerm2 session, `wezterm-<pane>`, `kitty-<window>`), so a lead sees only its own tasks. `ekip terminal install` writes WezTerm's `ekip.lua`, which reads `data/tasks.json` every two seconds for the tab bar and status line.
+Each lead records its own id on its tasks (`terminal.js` `leadId()`: the iTerm2 session, `wezterm-<pane>`, `kitty-<window>`), so a lead sees only its own tasks. `ekip terminal install` writes WezTerm's `ekip.lua`, which reads `data/terminal-status.json` (the waiting / stuck / running counts and the registered projects, rewritten by `tasks.js` when a task changes and by the task pane) at most once a second for the tab bar; it never starts ekip itself.
 
 Panel routes: `/tasks`, `/overview`, `/projects`, `/code-map`, `/jobs`, `/runs`, `/pools`, and `/panels`.
 
@@ -95,7 +95,7 @@ Secrets are redacted from context and logs. Development database commands reject
 <table>
   <tr>
     <td width="50%"><img src="screenshots/panel-tasks-dark.png" alt="Web panel task list showing progress, steps, and stalled work"><br><sub>Live tasks and step status</sub></td>
-    <td width="50%"><img src="screenshots/terminal-tasks-wide.png" alt="Terminal task pane with progress and current step"><br><sub>Task progress beside the lead session</sub></td>
+    <td width="50%"><img src="screenshots/terminal-wezterm-layout.png" alt="Terminal task pane with a card per task: progress, current step and workers"><br><sub>Task progress beside the lead session</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"><br><sub>Overview across the hub</sub></td>

@@ -1325,8 +1325,9 @@ async function lead(args) {
     // Tasks, workers and their logs are visible under the lead from the start, not only after its
     // first task ("taskPane": false in data/config.json turns this off).
     ensureTaskPane();
-    // WezTerm / kitty: an "ekip" tab title, so ekip's WezTerm config shows the task counts on it
-    try { const term = await import("../lib/core/terminal.js"); if (["wezterm", "kitty"].includes(term.detect())) term.setTitle(null, `ekip · ${here?.name ?? path.basename(process.cwd())}`); } catch { /* cosmetic */ }
+    // kitty: the project as the tab title. WezTerm's ekip.lua names the tab from the pane's folder
+    // and the registered projects itself (it follows a cd), so no fixed title is set there.
+    try { const term = await import("../lib/core/terminal.js"); if (term.detect() === "kitty") term.setTitle(null, here?.name ?? (process.cwd() === os.homedir() ? "~" : path.basename(process.cwd()))); } catch { /* cosmetic */ }
   }
   // The free config dir has none of the user's MCP servers; hand it hoptell when it is installed.
   if (free && has("hoptell")) argv.unshift("--mcp-config", HOPTELL_MCP);

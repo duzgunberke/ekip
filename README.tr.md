@@ -85,7 +85,7 @@ Belleğin nasıl çalıştığını ve vektörlerin neden önemli olduğunu ayr�
   </tr>
 </table>
 
-<p align="center"><img src="docs/screenshots/terminal-tasks-wide.png" alt="Task pane in the terminal" width="100%"><br><sub><b>Terminal</b> · aynı görevler, Claude oturumunun yanındaki panelde</sub></p>
+<p align="center"><img src="docs/screenshots/terminal-wezterm-layout.png" alt="WezTerm'de ekip: lead, sağda iki işçi, altta her görev için bir kartla görev bölmesi" width="100%"><br><sub><b>Terminal</b> · aynı görevler, Claude oturumunun yanındaki panelde</sub></p>
 
 ## Takılmamak için tasarlandı
 
@@ -213,8 +213,11 @@ gibi konuşursunuz. `ekip init` kurar, `ekip --here` bulunduğunuz terminalde ka
 ekip iTerm2'de eskisi gibi çalışır. iTerm2'yi AppleScript ile yönetmek yavaş geliyorsa ya da düz
 terminalde durumları ayırt etmek yoruyorsa `ekip terminal install` ekip için **WezTerm** kurar,
 `ekip terminal open` lead'i onda başlatır: lead solda, işçi bölmeleri sağda bir sütunda, görev
-bölmesi altta; ekip'in koyu temasıyla ve açık görevler (sizi bekleyen, engellenen, çalışan) sekme
-çubuğunda. ekip onu `wezterm cli` ile yönetir; milisaniyede JSON bölme listesi döner, böylece yoğun
+bölmesi altta; ekip'in koyu temasıyla. Sekme çubuğunda ekip işareti, her proje için bir sekme
+(kayıtlı projenin adı, ev klasöründe `~`) ve sağda açık görevler (sizden beklenen, takılan, çalışan)
+durur; bunları ekip'in görev değişince yazdığı küçük bir durum dosyasından okur. Görev bölmesi her
+görevi ilerlemesi, adımı ve işçileriyle bir kart olarak çizer; çalışan iş yokken son sonuçları
+gösterir ([boş bölme](docs/screenshots/terminal-empty.png)). ekip onu `wezterm cli` ile yönetir; milisaniyede JSON bölme listesi döner, böylece yoğun
 bir makinede aynı görev bölmesi iki kez açılamaz. Kendi `wezterm.lua` dosyanıza dokunulmaz. WezTerm
 kitty'ye tercih edildi: MIT lisanslı, Homebrew cask ile kurulur, bölmeleri ek ayar olmadan komut
 satırından listeler ve böler, Lua ile ayarlanır; kitty de çalışır (`kitty @`, remote control açıkken)

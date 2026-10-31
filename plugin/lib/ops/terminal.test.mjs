@@ -158,5 +158,28 @@ assert.equal(core.SETTINGS.terminal, undefined);
   assert.notEqual(spawnSync(process.execPath, [ekip, "terminal", "default", "kitty"], { env, encoding: "utf8" }).status, 0);
 }
 
+// ---- ekip.lua: the tab bar reads the status file, names tabs by project, pads the window -------------
+{
+  const luaText = term.ekipLua({ statusFile: "/x/data/terminal-status.json" });
+  assert.ok(luaText.includes('local STATUS = "/x/data/terminal-status.json"'));
+  assert.ok(!/tasks\.json/.test(luaText), "the tab bar never parses tasks.json");
+  for (const part of ["window_padding", 'font_with_fallback({ "JetBrains Mono", "Menlo"', "show_new_tab_button_in_tab_bar = false", "format-window-title", "set_left_status", "inactive_pane_hsb", "split = C.border", "local function middle", "wezterm.home_dir"]) assert.ok(luaText.includes(part), part);
+  assert.ok(!luaText.includes("—"), "no em dash");
+  assert.ok(!/truncate_right/.test(luaText), "names are shortened in the middle, never cut at the end");
+  // a real WezTerm loads it (when one is installed here)
+  const bin = ["/opt/homebrew/bin/wezterm", "/usr/local/bin/wezterm", "/Applications/WezTerm.app/Contents/MacOS/wezterm"].find((p) => fs.existsSync(p));
+  if (bin) {
+    const dir = path.join(tmp, "lua-check");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "ekip.lua"), luaText);
+    fs.writeFileSync(path.join(dir, "check.lua"), term.loaderLua(dir));
+    const r = spawnSync(bin, ["--config-file", path.join(dir, "check.lua"), "ls-fonts", "--text", "a"], { encoding: "utf8", timeout: 20_000 });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!/error|stack traceback/i.test(r.stderr ?? ""), r.stderr);
+  }
+}
+assert.equal(term.jetbrainsInstalled([path.join(tmp, "no-fonts")]), false);
+{ const d = path.join(tmp, "fonts"); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, "JetBrainsMono-Regular.ttf"), ""); assert.equal(term.jetbrainsInstalled([d]), true); }
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("ok: WezTerm default terminal (plan, close scripts, handoff, init, subcommands)");
