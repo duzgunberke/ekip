@@ -88,6 +88,8 @@ pointing at freellmapi).
 
 ## Seeing what is going on
 
+<img src="demo/panel-demo.gif" alt="The ekip panel: the status digest above live tasks, runs across projects, worker pools with their quotas, the code map" width="100%">
+
 | Surface | What it shows |
 |---|---|
 | Terminal task pane | On top, the `ekip status` digest in short: counts of what waits for you, is stuck, runs and finished, the first question with its options, the first stuck job and the last release line. Then task progress, current step, elapsed time, ETA, and a detail line. A step with no progress for 15 minutes shows the elapsed stall time. When the pane is short, each task switches to a two-line compact view. The web panel labels this state `stalled for N min`. |
@@ -150,7 +152,7 @@ Secrets are redacted from context and logs. Development database commands reject
     <td width="50%"><img src="screenshots/terminal-wezterm-layout.png" alt="Terminal task pane with a card per task: progress, current step and workers"><br><sub>Task progress beside the lead session</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"><br><sub>Overview across the hub</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: light)" srcset="screenshots/panel-overview-light.png"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"></picture><br><sub>Overview across the hub</sub></td>
     <td width="50%"><img src="screenshots/panel-runs-dark.png" alt="Web panel run history with worker and task results"><br><sub>Run history and reports</sub></td>
   </tr>
   <tr>

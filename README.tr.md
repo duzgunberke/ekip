@@ -4,7 +4,14 @@
 
 <p align="center">
   <b>Tek bir Claude Code oturumunu ekip liderine dönüştürün.</b><br>
-  Claude planlar ve inceler. Diğer kotalardaki agent'lar işleri yapar; her biri projenin kendi belleğiyle başlar.
+  Claude planlar ve inceler. Diğer kotalardaki agent'lar işi yapar; her biri projenin kendi belleği ve skill'leriyle başlar.
+</p>
+
+<p align="center">
+  <a href="https://github.com/duzgunberke/ekip/releases"><img src="https://img.shields.io/github/v/release/duzgunberke/ekip?style=flat-square&label=release&color=2DD4BF" alt="Son sürüm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-FFA95E?style=flat-square" alt="MIT lisansı"></a>
+  <img src="https://img.shields.io/badge/macOS-Node%2022%2B-6B7280?style=flat-square" alt="macOS, Node 22+">
+  <img src="https://img.shields.io/badge/hub-any%20Linux%20VPS-6B7280?style=flat-square" alt="Hub: Docker'lı herhangi bir Linux VPS">
 </p>
 
 <p align="center">
@@ -12,309 +19,146 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo/panel-demo.gif" alt="ekip paneli: adımları ve takılmalarıyla canlı görevler, projeler arasında çalışmalar, kotalarıyla worker havuzları ve kod haritası" width="100%">
+  <img src="docs/demo/terminal-wezterm.gif" alt="ekip yazınca lider WezTerm'de açılır: solda Claude oturumu, sağda loglarını yazan iki worker, altta çalışan, sırada, engelli, sizi bekleyen ve biten görevlerle görev paneli" width="100%"><br>
+  <sub><code>ekip</code> yazın: solda lider, sağda worker'lar, altta canlı görevler (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub>
 </p>
-
-> [!NOTE]
-> **Durum:** v1.1; yazarı tarafından 15 projede her gün kullanılıyor. Öncelik macOS'ta; hub, Docker ile herhangi bir Linux VPS'te çalışır.
-
-## Neden?
-
-Claude Code kotasının çoğu **okumaya** gider: dosyalar, loglar, geçmiş ve her oturumda aynı bağlamı yeniden okumak. ekip, işleri kimin yaptığını değiştirir:
-
-- **Kararları yalnızca Claude verir.** İsteği anlar, parçalara ayırır, her parça için bir worker seçer ve sonucu inceler. Okuma ve yazma işlerini **başka kotalardaki** agent'lar üstlenir: Antigravity, Codex, Copilot ve tek bir uç noktanın arkasındaki yaklaşık 60 ücretsiz model.
-- **Bağlam bir kez hazırlanır.** Her projenin bir belleği olur: vektör veritabanındaki geçmiş oturumlar, dokümanlarından oluşturulmuş bir LLM wiki'si, kod grafiği ve projeye özel beceriler. Worker'lar repo'yu yeniden okumak yerine bunlarla işe başlar.
-- **Her şeyi görürsünüz.** Her worker'a bir terminal paneli ayrılır, her istek canlı adımları olan bir göreve dönüşür; web panelinde çalışmaları, kotaları ve yeni bir görevin hangi modele yönlendirileceğini görürsünüz. Sunucunuz yoksa `ekip init` paneli kendi bilgisayarınızda açar: http://localhost:7777.
-
-<p align="center"><img src="docs/assets/savings.svg" alt="ekip savings ile ölçülen, Claude dışında yürüyen iş payı: iki günlük kurulumda %58, ertesi gün %81" width="100%"></p>
-
-> [!TIP]
-> **%58 en kötü durumdu:** ekip'in kendisini geliştirmek ve 15 projeyi ilk kez indekslemekle geçen iki gün; bu işleri yalnızca lider yapabilirdi. **Ertesi gün oran %81 oldu.**
-> Kendi işinde `ekip savings` ile ölç: Claude oturumlarını, worker loglarını ve ücretsiz havuzu gün gün okur.
-
-## Nasıl çalışır?
-
-<p align="center"><img src="docs/assets/how-it-works.svg" alt="Tek bir Claude liderine konuşursunuz. İşin her parçasını Antigravity, Codex, Copilot veya ücretsiz havuza yönlendirir. Her worker proje belleğinden başlar: bilgiler, wiki, kod grafiği ve beceriler. İsteğe bağlı VPS hub belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutar." width="100%"></p>
-
-```text
-sen   › iki tanıtım videosu hazırla, storefront-web'de kalanları düzelt, payments-api'ye passkey ekle
-lider › 3 görev · videolar → Antigravity + film becerisi · storefront düzeltmesi → Codex + proje belleği · passkey'ler → Copilot
-        diff'leri ve render'ları inceler, nelerin teslim edildiğini, doğrulandığını ve kaldığını bildirir
-```
-
-### Mesai modu: bütün havuzlar aynı anda çalışır
-
-Birkaç havuzda oturum açıksa `ekip mesai on` mesaiyi başlatır: lider her isteği havuzların
-kaldırabileceği kadar bağımsız parçaya böler, parçaları paralel dağıtır, emin olmadıklarını yarıştırır;
-kendi Claude'u yalnızca planlar ve inceler. Her havuzun bir kapasitesi vardır (codex, copilot ve agy 2,
-qwen, opencode ve grok 1, free 3; `data/config.json` içindeki `poolConcurrency` ile değişir).
-`--via auto` dolu ya da kotası bitmiş havuzları atlar, böylece paralel işler kendiliğinden dağılır.
-İsteğe bağlı: [jcode](https://github.com/1jehuang/jcode), ücretsiz havuzda bir kabuk daha (işçi başına
-600 yerine yaklaşık 60 MB; `jcodeBin` ve freellmapi'ye bakan bir jcode sağlayıcı profili gerekir).
-`ekip mesai status` her havuzun çalışan/kapasite ve başarı oranını gösterir; `ekip mesai all "iş"` bir işi
-boş yeri olan her havuzda, her biri kendi dalında çalıştırır. Başsız Claude havuzu yalnızca
-`--include-claude` ile katılır.
-
-## Devam eden projelere katılır
-
-Sıfırdan başlamazsınız. ekip bir projeyi kaydettiğinde o projeye ait **eski Claude Code oturumlarınızı** içe aktarır, kodu bir grafiğe indeksler, dokümanlarından bir **wiki** oluşturur ve **becerileri** çıkarır (projenin nasıl derlendiği, yayınlandığı ve sık karşılaşılan sorunların nasıl çözüldüğü). Verdiğiniz ilk görev bile daha önce aldığınız tüm kararları hesaba katar.
-
-Tekrarlanan işler proje için gerçek bir Claude Code skill'ine dönüşebilir: `ekip skill learn PROJE`
-çalıştırma geçmişini inceler ve `SKILL.md` adaylarını kaydeder. `ekip skill candidates` ile gözden
-geçirin, `ekip skill accept PROJE AD` ile açıkça projeye ekleyin. `ekip skill prune PROJE` yalnızca
-eskimiş TencentDB skill'lerini raporlar; yerel skill dosyalarını silmez.
-
-## Mesajınızla birlikte gelen bellek
-
-`ekip review [--project NAME] [--base REF]` ilgili proje kontrollerini ve değişen dosyalar için iki salt okunur incelemeyi çalıştırır. Yalnızca kontroller için `--checks-only`, proje inceleme profilini yenilemek için `ekip review profile NAME --refresh` kullanın.
-
-Herhangi bir klasörde Claude'u açıp bir projeden söz edin, yazım hatası olsa bile ekip projeyi bulur, mesajınız için o projenin belleğinde arama yapar ve gerekli bilgileri yaklaşık bir saniyede ekler.
-
-<p align="center"><img src="docs/assets/memory-follows.svg" alt="ios-ap diye yazım hatasıyla yazıyorsun; ekip ios-app projesini buluyor, belleğinde yaklaşık bir saniyede arıyor ve ilgili bilgileri ve skill'leri Claude'un bağlamına ekliyor" width="100%"></p>
-
-Belleğin nasıl çalıştığını ve vektörlerin neden önemli olduğunu ayrıntılı öğrenmek için: [docs/memory.md](docs/memory.md) ve yazarın 2023 tarihli [Vektörel Database nedir, ne işe yarar?](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac) yazısı.
-
-## Görün
-
-<p align="center"><img src="docs/screenshots/panel-tasks-dark.png" alt="Tasks page" width="100%"><br><sub><b>Görevler</b> · her istek canlı adımlarla; ilerlemeyen adım işaretlenir</sub></p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/panel-pools-dark.png" alt="Pools page"><br><sub><b>Havuzlar</b> · hangisi limitte, yeni bir görev nereye gider</sub></td>
-    <td width="50%"><img src="docs/screenshots/panel-codemap-dark.png" alt="Code map page"><br><sub><b>Kod haritası</b> · her proje bir grafiğe indekslenmiş</sub></td>
-  </tr>
-</table>
-
-<p align="center"><img src="docs/screenshots/terminal-wezterm-layout.png" alt="WezTerm'de ekip: lead, sağda iki işçi, altta her görev için bir kartla görev bölmesi" width="100%"><br><sub><b>Terminal</b> · aynı görevler, Claude oturumunun yanındaki panelde</sub></p>
-
-## Takılmamak için tasarlandı
-
-Uzun agent işleri sessizce bozulur: bir CLI donar, ücretsiz bir model cevap vermeyi keser, bir görev
-bütün gece "sürüyor" der. ekip bunları kendisi yakalar; peşinden koşmanız gerekmez.
-
-- **Her worker'ın bir bekçisi var.** 15 dakika çıktı yoksa ya da toplam 90 dakika aşıldıysa durdurulur;
-  nedeni göreve yazılır ve `auto` işi sıradaki havuza taşır. Kendi başlattığı uzun bir işi bekleyen
-  worker, o iş CPU kullandıkça sessiz sayılmaz. Sessiz kalan bir havuzdan sonra zayıf havuzlar atlanır;
-  üst üste ikinci sessiz havuz zinciri durdurur ve bir saat daha yakmak yerine görevi engeller.
-- **Hayalet worker yok.** Süreci ölen worker, her görev komutunda, bölmede ve hub eşitlemesinde nedeniyle
-  (sinyal, olası sebep) kapatılır; `ekip task cancel` görevin canlı worker'larını durdurur. Çalışan
-  worker'ı kalmamış bir adım "sürüyor" değil "duraklamış" görünür.
-- **Beklemek takılmak değildir.** `ekip task block ID "neden"` ve `ekip task wait ID "neye karar
-  vereceksiniz"` görevi engellendi ya da sizi bekliyor diye işaretler (bildirim gelir); ikisi de
-  takıldı uyarısı ya da tahmin göstermez.
-- **Kararlar panelde kalır.** Lider sohbette size bir şey sorduğunda `ekip task ask ID "soru" --option A
-  --option B` de çalıştırır; soru ve seçenekler siz cevaplayana kadar panelin ve `ekip durum`'un en
-  üstünde durur.
-- **Biten her görev ne ürettiğini söyler.** `ekip task done ID "sonuç" --link <dosya ya da URL>` ya da,
-  kendiliğinden, worker raporunun ilk paragrafı ve içindeki yollar/URL'ler: bölmede, `ekip durum`'da
-  ve panelde tıklanabilir linklerle "Sonuç: …".
-- **İş sırasını bekler.** `ekip run --after ID` ya da `--when "KOMUT"` bir görev veya çalıştırma bitene ya
-  da bir kabuk testi geçene kadar arka planda bekler. Ağır yerel iş (`--heavy` ya da render içeren bir
-  brief) makinenin yuvalarından birini alır (çekirdek ve belleğe göre, `maxLocalWorkers`); Mac dolu ya
-  da aşırı yüklüyse kuyrukta bekler. `--resume RUN` yarıda kalan brief'i kaldığı yerden sürdürür,
-  `--retry-on-kill` yük yüzünden öldürülen worker'ı yük düşünce bir kez yeniden başlatır.
-- **Havuz değişimi görünür.** Her geçiş göreve not düşer ("codex kotası bitti, yenilenme …, copilot'a
-  geçildi"); `--min-tier strong` zayıf bir havuza hiç düşmez.
-- **Uzun komutlar izlenir, unutulmaz.** Bir yükleme, kodlama ya da kuyruk betiği çıplak bir arka plan
-  kabuğunda değil `ekip track --task ID --label "..." -- <komut>` ile çalışır. İlerlemeyi çıktıdan
-  (`%12`, `3/12`, `256 MiB/1.5 GiB`) ya da `--measure "<komut>"` ile `--total`'a göre okur; adımın
-  yüzdesini, hızını ve bitiş saatini güncel tutar, `--stall` dakika hiçbir şey ilerlemezse adımı
-  engeller, ilk iki dakikanın hızı `--eta-max`'ı kaçıracaksa hemen uyarır ve komut bitince adımı
-  bitti ya da başarısız (son satırlar ve sinyal nedeniyle) olarak kapatır.
-- **Sahipsiz işler en önde.** 10 dakikadır ne canlı worker'ı ne izlenen işi olan "sürüyor" adımı
-  duraklamış görünür; liderin bir sonraki mesajı onunla, yapması zorunlu bir eylem olarak başlar:
-  kapat ya da canlı bir süreçle yeniden başlat.
-- **Görevler kendiliğinden kapanır:** adımlar bitince ya da son worker bitince. 6 saat kimsenin
-  dokunmadığı görev "takıldı" olarak kapanır. Panel ve terminal dünkü işi canlı göstermez.
-- **Tahminler ölçülür, uydurulmaz.** Bitiş zamanı gerçek ilerleme hızından hesaplanır; dayanak yoksa
-  sahte bir sayı yerine hiç tahmin gösterilmez.
-- **Arka plan işleri tek kopya çalışır**, iki içe aktarma aynı kota için yarışmaz.
-- **Her worker projenin bilgisiyle başlar.** `ekip run --project`, brief'le projenin becerilerini ve
-  belleğini arar ve eşleşenleri ekler; lider bakmayı unutsa bile.
-- **O bilginin kullanılıp kullanılmadığını görürsün.** `ekip stats` proje başına hafıza, wiki, beceri
-  ve kod grafiği aramalarını lead hook'u, worker brief'leri ve MCP çağrılarına göre sayar; isabet
-  oranını, worker'ların gerçekten açtığı becerileri ve bilgiyle/bilgisiz işlerin başarısını gösterir
-  (kanıt değil, sinyal).
-- **Hiçbir şey gözden uzakta çalışmaz.** Worker'lar bir bölmede açılır; liderin kendi başlattığı
-  uzun işler de (`ekip show <log>`).
-- **"Ne oluyor?" sorusunun cevabı tek ekranda.** `ekip durum` (`ekip status`) şu an neyin çalıştığını
-  (yüzde, hız, bitiş, son çıktı satırı), sizden ne beklendiğini, neyin takıldığını ve ekip'in ne
-  yaptığını, son 24 saatte biten işleri sonuç ve linkleriyle, ekip'in kendi yayın durumunu (sürüm,
-  main test ediliyor ya da geçti, hub güncel mi) gösterir. Görev bölmesi ve panelin görevler sayfası
-  aynı özeti en üstte gösterir; sorular kırmızı, takılan işler turuncu.
-- **Kotası biten havuz sıradan çıkar**, sıfırlanana kadar her işi oraya gönderip düşmez; yenilenme
-  zamanı CLI'ın kendi mesajından okunur ve `ekip agents` ne zaman geri geleceğini gösterir.
-- **Worker'lar birbirinin işine karışmaz.** Her brief, yalnız kendi başlattıkları süreçleri PID ile
-  durdurmalarını söyler, `pkill`/`killall` asla; `ekip show --pid` ile devredilen iş, worker'ı
-  durdurulsa da yaşar.
-- **Panel doğruyu söyler.** Hub'a ulaşmayan güncellemeler yeniden gönderilir, biten her çalıştırma
-  logunu getirir, gerçek iş ölçüldükçe uzun bir adım "canlı" kalır ve terminal paneli ekip
-  güncellenince kendini yeniler.
-- **Bellek sizin dilinizde kalır.** Ücretsiz bir modelin yanlış dilde yazdığı kayıtları her gece bir
-  tarama yeniden yazar: metin, arama dizini ve vektör birlikte.
-
-## Her projeye uyan inceleme ve beceriler
-
-Her projenin kendi kontrolleri ve kendi tuzakları var. ekip her şeye aynı genel incelemeyi uygulamak
-yerine bunları öğrenir.
-
-- **`ekip review`** neyin değiştiğine bakar, projenin o dosyalara dokunan kendi kontrol script'lerini
-  seçer (canlı servislere yazanları atlar), çalıştırır ve farklı havuzlardaki iki inceleyiciye farkı
-  projenin inceleme profiliyle okutur: `CLAUDE.md` kuralları, bilinen tuzaklar ve onları yakalayan
-  kontroller.
-- **Dersler kalır.** Bir worker başarısız olup sonraki deneme işe yarayınca lider, farkı yaratan şeyi
-  projenin belleğine yazar. Bir hatayı düzelttiğinizde lider onu projenin dersler dosyasına ekler
-  (`ekip project lesson AD "..."`); sonraki her worker brief'i listenin tamamını alır. Liderin
-  kendisi de projenin (ve kendi, `ekip project lesson genel`) en yeni derslerini her mesajda alır;
-  bir hataya özürle değil, kök nedeniyle ve onu artık kalıcı olarak önleyen mekanizmayla cevap verir.
-- **Tekrarlanan iş beceriye dönüşür.** Aynı türden iş defalarca gelince ekip, gerçek çalıştırmalardan o
-  projeye özel düzgün bir `SKILL.md` taslağı çıkarır; tek komutla kabul edersiniz ve o andan itibaren
-  her agent kullanır.
-
-## Projeyle birlikte gezen ayarlar
-
-`ekip project config <ad>` bir kez çalıştırılınca projeye kodla birlikte commit edilen bir `.ekip/`
-klasörü gelir; o projede ekip ile çalışan herkes aynı ayarları kullanır:
-
-- `rules.md`: projenin kuralları; her worker'ın brief'ine ve liderin bağlamına eklenir.
-- `lessons.md`: düzelttiğiniz hatalar; konusu ne olursa olsun her worker'ın brief'ine eklenir.
-- `review.md`: `ekip review`'un değişiklikleri okuduğu inceleme profili.
-- `checks/`: projenin kendi kontrol script'leri; `ekip review` her değişiklikte çalıştırır.
-- `dev.json`: geliştirme veritabanı eşlemesi (şifre asla).
-
-Süreç becerileri Claude Code'un okuduğu `.claude/skills/` içinde kalır.
-
-## Kendi ortamlarınızda çalışır (isteğe bağlı)
-
-Testler ve migration'lar hiçbir zaman production'a dokunmamalı. ekip'in worker'larının gerçek veri
-depolarıyla çalışmasını istiyorsanız, onlara bozulması sorun olmayan bir ortam verin:
-
-- **Kendi geliştirme ortamlarınız.** Şirketinizin zaten dev, test ya da UAT sistemleri varsa, onları
-  Claude Code'a herhangi bir aracı bağladığınız gibi bağlayın: veritabanı ya da servis için bir MCP
-  sunucusu veya projenin ortam değişkenlerindeki bağlantı ayarları. Worker'lar bunları kullanır,
-  production erişim dışında kalır.
-- **Ya da ekip barındırsın.** `ekip dev`, kendi sunucunuzda tek bir geliştirme Postgres'i ve Redis'i
-  tutar, her projeye ayrı bir veritabanı verir ve hazır bir `.env.ekip-dev` ile yerel tünel açar.
-  Geliştirme hedefi olmayan hiçbir şeye izin vermez. VPS hub'ında kuyruğa alınan işler de aynı
-  ortamı, sunucuya göre adreslenmiş olarak alır.
-
-## Birbiriyle konuşan agent'lar
-
-Kısa görevler arka planda çalışır ve sonuçlarını bildirir. Uzun süre çalışan agent'lar kendi terminallerinde **ekip üyeleri** olarak açılıp [hoptell](https://github.com/EminUZUN/hoptell) üzerinden birbirlerine mesaj atabilir: biri diğerinden bir dosyayı incelemesini ister ya da sıradaki adımı devreder. `ekip team up --open` komutuyla başlatabilirsiniz.
-
-## Kendi terminali (isteğe bağlı)
-
-<p align="center"><img src="docs/demo/terminal-wezterm.gif" alt="ekip yazınca lead WezTerm'de açılır: solda Claude oturumu, sağda logunu yazan iki işçi, altta çalışan, kuyrukta, engellenen, sizi bekleyen ve biten görevlerle görev bölmesi" width="100%"><br><sub><b>Tek komut</b> · <code>ekip</code> lead'i WezTerm'de açar: işçiler sağda, canlı görevler altta (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub></p>
-
-`ekip` yazın, lead WezTerm'de açılsın: işçi bölmeleri sağda, görev bölmesi altta; Claude ile eskisi
-gibi konuşursunuz. `ekip init` kurar, `ekip --here` bulunduğunuz terminalde kalır, iTerm2 de
-çalışmaya devam eder.
-
-ekip iTerm2'de eskisi gibi çalışır. iTerm2'yi AppleScript ile yönetmek yavaş geliyorsa ya da düz
-terminalde durumları ayırt etmek yoruyorsa `ekip terminal install` ekip için **WezTerm** kurar,
-`ekip terminal open` lead'i onda başlatır: lead solda, işçi bölmeleri sağda bir sütunda, görev
-bölmesi altta; ekip'in koyu temasıyla. Sekme çubuğunda ekip işareti, her proje için bir sekme
-(kayıtlı projenin adı, ev klasöründe `~`) ve sağda açık görevler (sizden beklenen, takılan, çalışan)
-durur; bunları ekip'in görev değişince yazdığı küçük bir durum dosyasından okur. Görev bölmesi her
-görevi ilerlemesi, adımı ve işçileriyle bir kart olarak çizer; çalışan iş yokken son sonuçları
-gösterir ([boş bölme](docs/screenshots/terminal-empty.png)). ekip onu `wezterm cli` ile yönetir; milisaniyede JSON bölme listesi döner, böylece yoğun
-bir makinede aynı görev bölmesi iki kez açılamaz. Kendi `wezterm.lua` dosyanıza dokunulmaz. WezTerm
-kitty'ye tercih edildi: MIT lisanslı, Homebrew cask ile kurulur, bölmeleri ek ayar olmadan komut
-satırından listeler ve böler, Lua ile ayarlanır; kitty de çalışır (`kitty @`, remote control açıkken)
-ama ikinci sırada.
-
-macOS'ta `ekip init` onu bir kez kurmayı önerir (`--yes` sormadan kurar, `--no-terminal` atlar).
-Kurulduktan sonra başka bir terminalde `ekip` yazınca lead aynı klasörde yeni bir WezTerm
-penceresinde açılır; pencere açıldığında yalnız yazdığınız iTerm2 oturumu ya da Terminal.app sekmesi
-kapanır (diğer terminaller açık kalır ve bunu söyler). WezTerm açılmazsa hiçbir şey kapanmaz, lead
-bulunduğunuz terminalde başlar. `ekip --here` ya da `EKIP_TERMINAL=current` o seferlik mevcut
-terminalde kalır, `ekip terminal default wezterm|current` ayarı değiştirir; `ekip run`, `ekip tasks`
-gibi alt komutlar terminal değiştirmez.
-
-Her terminalde durumlar aynı görünür; sizi bekleyen her zaman en üstte:
-
-| Durum | Görünüş | | Durum | Görünüş |
-|---|---|---|---|---|
-| sizi bekliyor | sarı `?` | | çalışıyor | camgöbeği `●` |
-| engellendi | turuncu `■` ve nedeni | | kuyrukta | mavi `⧗` ve sırası |
-| hata | kırmızı `✗` | | bitti | yeşil `✓` |
-| duraklamış, çalışan işçi yok | gri `◌` | | | |
-
-256 renk yoksa düz ASCII'ye düşer, `NO_COLOR`'a uyar.
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/demo/terminal-status.gif" alt="ekip durum: şimdi çalışan, sizden beklenen, takılan, sonucu ve bağlantısıyla biten işler ve yayın satırı"><br><sub><b>ekip durum</b> · ne çalışıyor, sizden ne bekleniyor, ne takıldı, ne bitti</sub></td>
-    <td width="50%"><img src="docs/demo/terminal-track.gif" alt="ekip track: yüzde, hız ve bitiş saatiyle ilerleyip biten bir yükleme ve beklenenden yavaş olduğunu hemen söyleyen bir kopyalama"><br><sub><b>ekip track</b> · yüzde, hız ve bitiş saatiyle uzun bir yükleme; yavaş bir kopya hemen uyarır</sub></td>
-  </tr>
-</table>
 
 ## Hızlı başlangıç
 
 macOS, Node 22+, Docker ve [Claude Code](https://claude.com/claude-code) gerekir.
 
 ```bash
-git clone https://github.com/duzgunberke/ekip.git && cd ekip
-node plugin/bin/ekip.js init     # servisler, plugin, MCP sunucuları, worker CLI'ları, ücretsiz model anahtarları, projeleriniz ve WezTerm
-ekip                             # lideri başlatın; ne isterseniz sorun
+git clone https://github.com/duzgunberke/ekip.git && cd ekip && node plugin/bin/ekip.js init
+ekip kurulum   # adım adım: ücretsiz model anahtarları, worker girişleri, projeleriniz (ekip setup)
+ekip           # lideri başlatın ve Claude'la konuştuğunuz gibi konuşun
 ```
 
-ekip ilk açılışta sizi karşılar ve her açılışta neyin eksik kaldığına bakar: daha yeni bir ekip
-sürümü, indekslenmemiş bir proje, eksik kod grafiği ya da wiki, belleğe aktarılmamış Claude
-geçmişi, vektörsüz kayıtlar, bağlanmamış worker havuzları ya da ücretsiz model anahtarları. Claude
-en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni sürümler kendiliğinden kurulur: sürüm çıktığında ve kurulumunuzda yerel değişiklik yoksa ekip
-kendini günceller ve bir kez haber verir (`data/config.json` içinde `"autoUpdate": false` kapatır,
-`ekip update` elle yapar).
+`ekip init` servisleri, eklentiyi, MCP sunucularını, worker CLI'larını ve ekip'in kendi terminalini
+(WezTerm, Dock'ta bir `ekip.app` ile) kurar. `ekip kurulum` eksik kalanları gösterir ve ertelediklerinizi
+hatırlar; her açılışta en faydalı sonraki adım bir kez hatırlatılır. Dili `ekip dil tr` ya da
+`ekip dil en` seçer. Yeni sürümler kendiliğinden kurulur.
 
-`ekip keys` her ücretsiz sağlayıcının anahtar sayfasını sırayla açar. Mac'iniz kapalıyken de belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutmak için bir VPS bağlayın: [docs/install.md](docs/install.md).
+## Neler sunar
 
-Yapmadığı şey: ücretsiz modelleri Claude kadar iyi hâle getirmez. Daha yavaştırlar, yoğunlukta zaman aşımına uğrar ve limitlerine ulaşınca beklemeye geçerler. ekip bunları hesaba katar ve kararlar için Claude'u kullanır.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <b>Başka kotalarda bir ekip.</b> Claude isteği böler ve parçaları Antigravity, Codex, Copilot, Qwen, OpenCode, grok ve yaklaşık 60 ücretsiz modele verir. <code>ekip mesai on</code> bağlı her havuzu aynı anda çalıştırır.<br><br>
+      <img src="docs/screenshots/terminal-wezterm-layout.png" alt="WezTerm'de ekip: lider, sağda iki worker, altta her görev için bir kartla görev paneli">
+    </td>
+    <td width="50%" valign="top">
+      <b>Her şey göz önünde.</b> Her istek canlı adımları olan bir görevdir; oturumun altındaki panelde ve web panelinde görünür. Size sorulanlar kırmızıyla, takılanlar turuncuyla en üstte durur.<br><br>
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/panel-tasks-light.png">
+        <img src="docs/screenshots/panel-tasks-dark.png" alt="Panelin görevler sayfası: canlı görevlerin üstünde sizi bekleyen, takılan, çalışan ve biten işlerin özet kartı">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>"Ne oluyor?" sorusuna tek cevap.</b> <code>ekip durum</code> ne çalıştığını, sizden ne beklendiğini, neyin takıldığını ve neyin bittiğini sonuç ve bağlantılarıyla gösterir.<br><br>
+      <img src="docs/demo/terminal-status.gif" alt="ekip durum: şu an çalışanlar, sizi bekleyenler, takılanlar, sonuç ve bağlantılarıyla bitenler ve sürüm satırı">
+    </td>
+    <td width="50%" valign="top">
+      <b>Takılmamak için tasarlandı.</b> Bekçiler, ölü worker'ları kapatan bir toplayıcı, havuz değiştirme, kuyruklar (<code>--after</code>, <code>--when</code>), <code>--resume</code> ve uzun yüklemeler ile render'lar için <code>ekip track</code>.<br><br>
+      <img src="docs/demo/terminal-track.gif" alt="ekip track: yüzde, hız ve bitiş zamanıyla tamamlanan bir yükleme ve beklenenden yavaş olduğunu hemen bildiren bir kopyalama">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <b>Proje başına bellek.</b> Vektör deposunda geçmiş Claude oturumları, dokümanlardan bir wiki, kod grafiği ve dersler. Bir projeden söz edin, yazım hatasıyla bile; ilgili bilgiler yaklaşık bir saniyede gelir.<br><br>
+      <img src="docs/screenshots/panel-codemap-dark.png" alt="Panelin kod haritası: bir projenin dosyaları ve sembolleri grafik olarak">
+    </td>
+    <td width="50%" valign="top">
+      <b>Öğrendiği skill'ler.</b> Bir projede tekrar eden iş, sizin onayladığınız bir <code>SKILL.md</code> olur ve o projedeki sonraki her worker brief'i onu kullanır. <a href="#skill-kendi-işinizden-öğrenilen-prosedürler">Nasıl çalışır ↓</a><br><br>
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
+        <img src="docs/assets/skill-loop-dark.svg" alt="Skill döngüsü, küçük">
+      </picture>
+    </td>
+  </tr>
+</table>
 
-## Sırada ne var
+## Skill: kendi işinizden öğrenilen prosedürler
 
-### v2: koca bir ekip için tek ortak bellek
+Her projenin kimsenin yazmadığı prosedürleri vardır: nasıl yayınlandığı, alışıldık hatayı hangi
+kontrolün yakaladığı, asla unutulmaması gereken o tek bayrak. ekip bunları zaten yaptığınız işte bulur
+ve sıradan Claude Code skill'lerine dönüştürür.
 
-<p align="center"><img src="docs/assets/team-memory.svg" alt="Kendi ekip'ine sahip birkaç kişi, kişisel, proje ve ekip katmanları olan ortak bir belleğe bilgi ekler ve bellekten bilgi alır" width="100%"></p>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
+  <img src="docs/assets/skill-loop-dark.svg" alt="Skill döngüsü: çalıştırmalar kaydedilir, tekrarlar gruplanır, ekip skill learn bir SKILL.md taslağı yazar, siz kabul edersiniz, .claude/skills içine girer, sonraki her brief onu kullanır; düzelttiğiniz hatalar her brief'in başına giren derslere dönüşür" width="100%">
+</picture>
 
-Bugün ekip, tek kişi, bir Claude ve koca bir agent ekibi demek. Sırada **ortak bir bellek** kullanan koca bir insan ekibi var.
+- **Gerçek çalıştırmalardan.** Her worker brief'i ve raporu proje başına kaydedilir. Aynı etiketli ya
+  da birbirine benzeyen brief'ler gruplanır; üç ve daha fazla çalıştırmalık bir grup için prosedür,
+  dosyalar, kontroller, tuzaklar ve "bitti" tanımıyla bir `SKILL.md` taslağı yazılır. Komutlar yalnızca
+  çalıştırmalardan ve projenin kendi dokümanlarından alınır.
+- **Siz onaylarsınız.** Taslaklar aday olarak bekler. Kabul edilen, projenin `.claude/skills/` klasörüne
+  girer ve kodla birlikte commit'lenir; reddedilen bir daha önerilmez. `ekip doctor` günde bir kez
+  kendiliğinden taslak çıkarır.
+- **Sormadan kullanılır.** `ekip run` brief'i projenin skill'leriyle karşılaştırır ve uyanları ekler;
+  liderin istem kancası da aynısını yapar. Belleğin geçmiş oturumlardan çıkardığı skill'ler de aynı
+  yolla ve `skill_search`, `skill_get` araçlarıyla bulunur.
+- **Dersler en üstte.** Bir hatayı düzelttiğinizde `ekip project lesson` onu yazar ve o projedeki sonraki
+  her brief, konusu ne olursa olsun, onunla başlar.
 
-- Herkes kendi terminalini ve agent'larını kullanır; hepsi tek bir hub'a bağlanır.
-- Birinin projede çözdüğü sorun, o projenin belleğine eklenir. Ertesi gün ekip arkadaşının agent'ı çözümü, işe yarayan testi ve işe yaramayanları bilir.
-- Wiki'ler, kod grafikleri ve beceriler ortaktır; birinin öğrettiği yöntemi herkesin agent'ları kullanır.
-- Kişisel notlar kişiye özel kalır. Ekip kuralları, her agent'ın okuyabildiği bir ekip katmanında tutulur.
-- Yeni katılanlar ekibin deneyiminden yararlanır; biri ayrılsa da bildikleri ekipte kalır.
-
-Temel zaten hazır: bellek, tek bir depoda proje ve agent bazında yalıtılmış durumda. v2 bunu roller ve gizlilik kurallarıyla birden fazla kişiye açacak. Gelişmeleri takip etmek için repo'yu izleyin.
-
-### v3: entegrasyonlar, sizin yerinize bağlanır
-
-Projelerin koddan fazlasına ihtiyacı var: hata takibi, uptime kontrolleri, analitik, metrikler,
-loglar. Çoğu ekip bu araçları zaten çalıştırıyor, çoğu zaman uygulamalarıyla aynı sunucuda. v3 ile
-ekip bunları bulur, eksikse kurar ve her projeye bağlar.
+Bir video düzenleme projesi "9:16 kesimi render et, ses yüksekliğini kontrol et, yükle" işini üç kez
+çalıştırdı. ekip render edilecek kompozisyonu, ses kontrolünü ve bir çalıştırmayı bozan tuzağı içeren
+`flow-production-unit` taslağını çıkardı. Tek bir `accept`'ten sonra bir sonraki render brief'i onu
+listeledi ve worker ona göre çalıştı.
 
 ```bash
-ekip integrate my-app errors     # hata takibi: kendi sunucunuzda GlitchTip ya da bir Sentry hesabı
-ekip integrate my-app uptime     # projenin her açık adresi için bir kontrol
-ekip integrate --all errors --dry-run
+ekip skill learn my-app                    # tekrar eden çalıştırmaları grupla, SKILL.md adayları yaz
+ekip skill candidates                      # yazılan taslakları oku
+ekip skill accept my-app release-ios       # my-app/.claude/skills içine kur
 ```
 
-Her entegrasyon aynı beş adımı izler: zaten çalışanı **tespit et**, yoksa ve onay verirseniz sunucunuza
-**kur**, aracın içinde projeyi **bağla**, SDK'yı incelenen bir değişiklikle koda **ekle** ve bir test
-olayının ulaştığını **doğrula**. Sonra döngü kapanır: yeni hatalar ve başarısız kontroller, yığın
-iziyle birlikte ekip görevine dönüşür; tekrarlayan hataların düzeltmeleri ders ve beceri olur.
-Ayrıntılar: [yol haritası](docs/roadmap.md).
+Ayrıntı: [docs/skills.md](docs/skills.md) (adım adım döngü, dersler, proje incelemeleri, `.ekip/` ayarları; İngilizce).
+
+## Nasıl çalışır?
+
+<p align="center"><img src="docs/assets/how-it-works.svg" alt="Tek bir Claude liderine konuşursunuz. İşin her parçasını Antigravity, Codex, Copilot veya ücretsiz havuza yönlendirir. Her worker proje belleğinden başlar: bilgiler, wiki, kod grafiği ve skill'ler. İsteğe bağlı VPS hub belleği, ücretsiz havuzu ve iş kuyruğunu çalışır durumda tutar." width="100%"></p>
+
+Tek bir Claude oturumuyla konuşursunuz. Bir görev açar, her parçayı kotası olan ve son sonuçları en iyi
+havuza yönlendirir, dönenleri `ekip review` ile inceler. Claude'un kotası karar vermeye gider; okuma ve
+yazma başka yerde yürür. `ekip savings` bu payı ölçer: yazarın sıradan bir gününde işin %81'i Claude
+dışında yürüdü.
+
+<details>
+<summary><b>Kısaca daha fazlası</b></summary>
+
+- **Proje kaydı** (`ekip project add`) projenin geçmiş Claude oturumlarını içe aktarır, kod grafiği ve
+  wiki oluşturur, bir proje kartı yazar. [Bellek](docs/memory.md)
+- **Havuz seçimi** test edilmiş havuzlara, son başarıya ve algılanan kota sınırlarına bakar; ücretsiz
+  havuz en sondadır. [Nasıl çalışır](docs/architecture.md)
+- **Takılan iş** bulunur ve ele alınır: sessiz worker'lar durdurulur, ölüler nedeniyle kapatılır, uzun
+  işler gerçek yüzde ve bitiş zamanıyla izlenir. [Güvenilirlik](docs/reliability.md)
+- **Agent'lar** hoptell üzerinden birbiriyle konuşabilir ve güvenli geliştirme veritabanlarında
+  (`ekip dev`) çalışabilir. [Nasıl çalışır](docs/architecture.md#agents-that-talk-to-each-other)
+- **Bir VPS hub**, Mac kapalıyken belleği, ücretsiz havuzu ve iş kuyruğunu çalışır tutar ve web panelini
+  sunar. [Kurulum](docs/install.md#optional-vps-hub)
+
+</details>
+
+Yapmadığı şey: ücretsiz modelleri Claude kadar iyi yapmaz. Daha yavaştırlar, yük altında zaman aşımına
+düşerler ve sınırlarında soğumaya girerler. ekip bunların etrafından dolaşır ve Claude'u kararlara
+saklar.
 
 ## Daha fazla bilgi
 
+Belgeler İngilizcedir.
+
 | | |
 |---|---|
-| [Nasıl çalışır](docs/architecture.md) | İstek yaşam döngüsü, havuzlar arası yönlendirme, hangi bilgiyi nerede gördüğünüz |
-| [Bellek](docs/memory.md) | Proje indeksleme, vektörler, wiki, kod grafiği, beceriler, nelerin saklandığı ve saklanmadığı |
-| [Kurulum](docs/install.md) | Mac kurulumu, ücretsiz model anahtarları, VPS hub |
-| [Komutlar ve havuzlar](docs/commands.md) | Tüm komutlar ve worker havuzları |
-| [Operasyonlar](docs/operations.md) | Üst projelere yamalar, sorun giderme, veri ve gizlilik |
-| [Yol haritası](docs/roadmap.md) | v2 ortak hafıza ve ekip çalışması, v3 entegrasyonlar (hata takibi, uptime, analitik, metrikler) |
-| [Marka](docs/brand.md) | Logo, renkler, kullanım |
+| [Nasıl çalışır](docs/architecture.md) | isteğin yaşam döngüsü, havuz seçimi, mesai modu, neyi nerede görürsünüz |
+| [Bellek](docs/memory.md) | proje indeksleme, vektörler, wiki, kod grafiği, neyin saklandığı |
+| [Skill'ler](docs/skills.md) | öğrenme döngüsü, dersler, proje incelemeleri, `.ekip/` ayarları |
+| [Güvenilirlik](docs/reliability.md) | bekçiler, kuyruklar, izlenen işler, görev durumları |
+| [Kurulum](docs/install.md) | Mac kurulumu, adım adım kurulum, terminal, sağlayıcı anahtarları, VPS hub |
+| [Komutlar](docs/commands.md) | tüm komutlar, tüm worker havuzları |
+| [İşletim](docs/operations.md) | upstream yamaları, sorun giderme, veri ve gizlilik |
+| [Yol haritası](docs/roadmap.md) | v2 paylaşılan ekip belleği, v3 entegrasyonlar (hata, erişilebilirlik, analitik) |
 
 ## Üzerine kurulduğu projeler
 
@@ -323,8 +167,8 @@ Ayrıntılar: [yol haritası](docs/roadmap.md).
 [codegraph](https://github.com/colbymchenry/codegraph) ·
 [hoptell](https://github.com/EminUZUN/hoptell) ·
 [shadcn-admin](https://github.com/satnaing/shadcn-admin) ·
-ve Antigravity, Codex, Copilot, Qwen Code, OpenCode ve grok-cli agent CLI'ları.
+[WezTerm](https://wezterm.org) ·
+ve Antigravity, Codex, Copilot, Qwen Code, OpenCode ile grok-cli'nin agent CLI'ları.
 
-MIT lisanslıdır. Üzerine kurulduğu projeler kendi lisanslarını korur.
-
-Pull request açmadan önce [Katkıda bulunma rehberini](CONTRIBUTING.md) okuyun.
+MIT lisanslıdır; üzerine kurulduğu projeler kendi lisanslarını korur. Pull request açmadan önce
+[Katkı rehberine](CONTRIBUTING.md) bakın.
