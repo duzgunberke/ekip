@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/ekip/status-badge'
 import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ActiveTaskCard } from './active-card'
-import { ResultLinks, StatusDigest } from './digest-card'
+import { ResultLinks, StatusDigest, digestOf } from './digest-card'
 import { StepList, elapsed, reviewLine } from './parts'
 import { formatNumber, useT } from '@/lib/i18n'
 import { ProviderLogo } from '@/components/provider-logo'
@@ -25,6 +25,8 @@ export function Tasks() {
   const now = useNow(1000)
   const list = tasks.data ?? []
   const active = list.filter((t) => t.status === 'running')
+  // the header counts what the sections below call running (stuck and waiting ones are not), as the terminal does
+  const runningNow = digestOf(list, now).running
   const finished = list.filter((t) => t.status !== 'running')
 
   return (
@@ -35,10 +37,10 @@ export function Tasks() {
           title={t('Görevler')}
           description={t("Mac'teki ekip'e verdiğiniz isteklerin canlı ilerlemesi.")}
           actions={
-            active.length > 0 && (
+            runningNow.length > 0 && (
               <span className='flex items-center gap-2 text-sm text-muted-foreground'>
                 <Loader2 className='size-4 animate-spin text-status-running motion-reduce:animate-none' aria-hidden='true' />
-                {t('{count} görev çalışıyor', { count: active.length })}
+                {t('{count} görev çalışıyor', { count: runningNow.length })}
               </span>
             )
           }
