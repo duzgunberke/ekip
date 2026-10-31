@@ -241,7 +241,7 @@ export function actions(step, f, { ask: prompt = ask, secret = askSecret, open =
         if (p.gaps.some((g) => g.id !== "history" && g.id !== "card")) cmds.push(tracked(`${p.name}: ${t("wiki ve kod grafiği")}`, ["project", "sync", p.name]));
         if (p.gaps.some((g) => g.id === "card")) cmds.push(ekip(["project", "card", p.name]));
       }
-      if (f.projectGaps.some((x) => x.gaps.some((g) => g.id === "history"))) cmds.push(tracked(t("Claude geçmişi hafızaya"), ["memory", "import-history"]));
+      if (f.projectGaps.some((x) => x.gaps.some((g) => g.id === "history"))) cmds.push(tracked(t("Claude geçmişi hafızaya"), ["memory", "catch-up", "--all"]));
       if (f.vectors?.never || f.vectors?.missing > 0) cmds.push(ekip(["memory", "reindex"]));
       return cmds;
     }

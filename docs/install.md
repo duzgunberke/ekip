@@ -46,7 +46,7 @@ flowchart LR
 | Embedding provider | required | an NVIDIA or OpenRouter key, or `MEMORY_EMBEDDING_BASE_URL` | `ekip key add nvidia <key>` |
 | Worker CLI logins | required | two pools ready (signed-in CLIs, plus the free pool when it has keys) | `ekip agents login` |
 | A project | required | at least one registered project | `ekip project add <folder>` / `ekip project scan <parent>` |
-| Project index | required | every project has its card, code graphs and wiki, its Claude history is imported, no records lack vectors | `ekip project sync <project>`, `ekip memory import-history`, `ekip memory reindex` |
+| Project index | required | every project has its card, code graphs and wiki, its Claude history is imported, no records lack vectors | `ekip project sync <project>`, `ekip memory catch-up`, `ekip memory reindex` |
 | ekip's terminal | recommended (macOS) | WezTerm installed and the default | `ekip terminal install` |
 | Notifications | recommended (macOS) | `terminal-notifier` installed | `brew install terminal-notifier` |
 | Hub | optional | a hub is linked | `ekip hub local` or `ekip hub link <url> <token>` |

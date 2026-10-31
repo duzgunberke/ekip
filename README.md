@@ -277,7 +277,9 @@ ekip                             # start the lead; ask for anything
 On first start ekip greets you, and every start it checks what is still missing: a newer ekip
 release, a project that is not indexed, no code graph or wiki, Claude history not in memory,
 memories without vectors, worker pools or free model keys not connected. Claude offers the most
-useful step once, in a sentence, and does it when you say yes. New releases install themselves: when one is out and your checkout is clean, ekip fast-forwards it
+useful step once, in a sentence, and does it when you say yes. New Claude sessions reach memory on
+their own (after each turn, and an hourly catch-up for sessions that ended without one); ekip's own
+worker sessions never count as missing history. New releases install themselves: when one is out and your checkout is clean, ekip fast-forwards it
 and tells you once (`"autoUpdate": false` in `data/config.json` turns that off, `ekip update` does it
 by hand).
 

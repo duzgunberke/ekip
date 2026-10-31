@@ -8,6 +8,7 @@ import { findProject } from "./projects.js";
 import { detect } from "../core/terminal.js";
 import { t } from "../core/i18n.js";
 import { snoozed } from "../ops/snooze.js";
+import { missingSessions } from "../memory/history.js";
 
 const CACHE = path.join(HOME, "onboarding-cache.json");
 const TTL = 10 * 60_000;
@@ -33,15 +34,10 @@ export function projectGaps(p) {
   const repos = p.repos?.length ?? (p.repo ? 1 : 0);
   if (repos && !(p.tdai?.codeGraphs ?? []).some((g) => g.id)) out.push(gap("graph", "Kod grafiği eksik", "işçiler kodun yapısını ve ilişkilerini keşfedemiyor", `ekip project sync ${p.name}`));
   if (!p.tdai?.wikiId) out.push(gap("wiki", "Proje wiki'si eksik", "işçiler proje belgelerinde arama yapamıyor", `ekip project sync ${p.name}`));
-  const base = path.join(os.homedir(), ".claude/projects");
-  const stateFile = path.join(HOME, "memory-state/asset-import.json");
-  const done = (() => { try { return new Set(JSON.parse(fs.readFileSync(stateFile, "utf8")).done ?? []); } catch { return new Set(); } })();
-  let dirs = [];
-  try { dirs = fs.readdirSync(base).filter((d) => d.endsWith(`-Projects-${p.name}`) || d.includes(`-Projects-${p.name}-`)); } catch { /* Claude not used here yet */ }
-  // done keys are "<agent>::session:claude-code:<file path>"; a project dir counts as imported when
-  // any of its session files is in there
-  const keys = [...done].join("\n");
-  if (dirs.some((d) => !keys.includes(`/.claude/projects/${d}/`))) out.push(gap("history", "Claude geçmişi hafızaya aktarılmamış", "önceki oturumlardaki kararlar ve çözümler işçilere ulaşmıyor", "ekip memory import-history"));
+  // sessions the history import, the live capture or a worker's run record took are in memory; ekip's
+  // own workers (`claude -p`) and the last day's sessions (the catch-up sends them) are not a gap
+  const missing = missingSessions(p).length;
+  if (missing) out.push(gap("history", t("Claude geçmişi hafızaya aktarılmamış ({n} oturum)", { n: missing }), "önceki oturumlardaki kararlar ve çözümler işçilere ulaşmıyor", "ekip memory catch-up"));
   return out;
 }
 
