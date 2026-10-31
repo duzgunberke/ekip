@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline";
 import { HOME, ROOT, SETTINGS, TDAI_PORTS, adminKey, die } from "../core/core.js";
 import { getProject, listProjects, updateProject, findProject } from "../projects/projects.js";
 import { redact } from "../core/redact.js";
@@ -426,6 +427,11 @@ function turnText(entry) {
   return { role: entry.type, content: text };
 }
 
+function lastByte(file) {
+  const fd = fs.openSync(file, "r");
+  try { const size = fs.fstatSync(fd).size, b = Buffer.alloc(1); return size && fs.readSync(fd, b, 0, 1, size - 1) ? b[0] : -1; } finally { fs.closeSync(fd); }
+}
+
 // Incremental: remembers how many complete transcript lines were already sent for this session.
 export async function capture(project, transcriptPath, sessionId, { only } = {}) {
   const p = resolve(project);
@@ -441,19 +447,24 @@ export async function capture(project, transcriptPath, sessionId, { only } = {})
   }
   try {
     const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : { lines: 0 };
-    const raw = fs.readFileSync(transcriptPath, "utf8");
-    const lines = raw.split("\n");
-    if (!raw.endsWith("\n")) lines.pop(); // last line still being written
-    else lines.pop(); // empty tail after the final newline
-    if (lines.length <= state.lines) return { sent: 0, lines: lines.length };
+    // read line by line: a long session file runs to hundreds of MB (mostly tool output), near the
+    // largest string V8 can hold; only complete lines count, the last one may still be being written
     const msgs = [];
-    for (const l of lines.slice(state.lines)) {
-      if (only && !only(l)) continue;
+    let lines = 0, held = null;
+    const take = (l) => {
+      lines++;
+      if (lines <= state.lines || (only && !only(l))) return;
       try { const m = turnText(JSON.parse(l)); if (m) msgs.push(m); } catch { /* not json */ }
+    };
+    for await (const l of readline.createInterface({ input: fs.createReadStream(transcriptPath, { encoding: "utf8" }), crlfDelay: Infinity })) {
+      if (held !== null) take(held);
+      held = l;
     }
+    if (held !== null && lastByte(transcriptPath) === 0x0a) take(held);
+    if (lines <= state.lines) return { sent: 0, lines };
     const sent = msgs.length ? await addConversation(p, sid, msgs) : 0;
-    fs.writeFileSync(stateFile, JSON.stringify({ lines: lines.length, project: p.name, transcript: transcriptPath, at: new Date().toISOString() }));
-    return { sent, lines: lines.length };
+    fs.writeFileSync(stateFile, JSON.stringify({ lines, project: p.name, transcript: transcriptPath, at: new Date().toISOString() }));
+    return { sent, lines };
   } finally {
     fs.rmSync(lock, { recursive: true, force: true });
   }
