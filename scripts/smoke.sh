@@ -53,7 +53,7 @@ run plugin/bin/ekip.js task answer "$id" Evet
 run plugin/bin/ekip.js task done "$id" "Özet hazır" --link docs/commands.md --link https://example.com/x
 EKIP_LANG=tr run plugin/bin/ekip.js status --offline | tee "$tmp/status.out"
 grep -q 'Sonuç: Özet hazır' "$tmp/status.out"; grep -q 'https://example.com/x' "$tmp/status.out"; grep -q 'Senden beklenen (0)' "$tmp/status.out"
-echo '== hub release endpoint test =='; node --test hub/src/release.test.mjs
+echo '== hub release endpoint and setup tests =='; node --test hub/src/release.test.mjs hub/src/setup.test.mjs
 for args in 'review --project x --dry-run' 'dev ls'; do
   echo "== $args (expected config error) =="
   read -r -a parts <<< "$args"
