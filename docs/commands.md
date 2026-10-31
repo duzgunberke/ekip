@@ -28,6 +28,7 @@ Everyday
 Workers
   ekip run [--via POOL|a,b,c] [--project NAME] [--model ID] [--plugin P] [--skill S] [--worktree] "task"
   ekip run [--after ID | --when "CMD"] [--resume RUN] [--min-tier strong] [--heavy|--light] [--retry-on-kill]
+  ekip run --review | --no-review   automatic review before the result counts (default: on in mesai mode)
   ekip review [--project NAME] [--base REF] [--checks-only] [--via a,b] [--dry-run]
   ekip review profile NAME [--refresh]
   ekip clean <id>
@@ -42,6 +43,8 @@ Development environment
 Projects and memory
   ekip project add|remove|move|scan|ls|show|sync|card
   ekip project lesson NAME|genel "lesson"   a corrected mistake, added to every worker brief (genel: the lead's own)
+  ekip project criteria NAME                what every delivery is reviewed against
+  ekip project criterion NAME "criterion"   add an acceptance criterion
   ekip memory search|remember|ingest|import-history|catch-up|reindex|up|down|status|open
   ekip skill ls|search|show|learn|prune|candidates|accept|reject
   ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
@@ -100,6 +103,28 @@ Options that keep work moving without you:
 Every fallback from one pool to the next is noted on the task with its reason, including the quota reset time when the CLI gave one. After a pool was stopped for silence, the weak pools left in the order are skipped; a second silent pool in a row stops the chain, blocks the task and sends a notification. A quota message's reset time (`Resets in …`, `try again at …`, `try again in …`) is written to the pool's state in `data/config.json`; `ekip agents` shows "limited until …" and `auto` skips the pool until then or until a later run on it succeeds.
 
 Every pool takes a limited number of workers at once (`poolConcurrency` in `data/config.json`; defaults agy, codex and copilot 2, qwen, opencode and grok 1, free 3, claude 0). A running worker is a run log without an `[exit]` line whose `ekip run` process is alive; `--via auto` skips pools at capacity (the free pool stays as the last fallback). `ekip mesai on` (work shift) adds a section to new lead sessions telling the lead to split requests into parallel parts over every free slot; `--include-claude` gives the headless Claude pool capacity 1. `ekip mesai status` prints each pool's state, running/capacity and success rate; `ekip mesai all "task"` races the task on every ready pool with a free slot, like `--via a,b,c`. `ekip status`, `ekip limits`, the task pane header and the panel's Pools page show running/capacity too.
+
+### Automatic review and acceptance criteria
+
+With `ekip run --review`, in mesai mode (`ekip mesai on`) or with `"autoReview": true` in `data/config.json`, a worker's result is reviewed before it counts as done. `--no-review` (or `"autoReview": false`) turns it off; races over several pools and ekip's own housekeeping runs are never reviewed.
+
+1. When the worker ends, `ekip run` starts a reviewer on a pool of another model family (google: agy, gemini; openai: codex; github: copilot; anthropic: claude; one family for every free-pool harness; `poolFamilies` overrides). Strong pools come first; with `--min-tier strong` only a strong one. `reviewPools` in `data/config.json` sets the order.
+2. The reviewer gets the brief, the worker's report, the diff since the commit the run started from (files already changed before are named as not the worker's), the numbered acceptance criteria and the project rules. It must run the checks itself, look at every image or page the work produced, and end with a fixed block: `VERDICT: PASS|FAIL`, `CRITERIA: met/total`, `FINDING: severity | file:line | criterion | problem` lines and, for a failure no criterion covered, `NEW-CRITERION: class | one line`. A HIGH finding fails the work whatever the verdict says. A reviewer that gives no verdict is replaced once by another pool.
+3. FAIL: the worker's pool gets the same brief with the findings first, in the same working tree (fix round 1/2), and the reviewer looks again. After `reviewRounds` fix rounds (default 2) that still fail, the task waits for a decision with the summary (`ekip task ask`: the lead fixes it, re-dispatch to a strong pool, accept as it is).
+4. PASS: the task gets the worker's report as its result with `review: passed (criteria n/n)` and the review file (`data/reviews/`) as a link. The run's output ends with the review line; its exit code is 0 only when the review passed.
+
+Reviewer and fix rounds are ordinary `ekip run` processes: watchdog, machine slots, pool fallback, run logs and the task's worker list apply to them. While the review runs, the task stays open and shows its state in the pane, `ekip tasks`, `ekip status` and on the panel: `in review (reviewer: claude) · fix round 1/2`, then `review: passed (criteria 12/12)` or `review: failed (findings: 3)`. A review whose process died is closed as not done and the task is blocked for the lead. Verdicts the lead has not acted on come with its next prompt.
+
+`ekip project criteria NAME` lists every criterion with its source:
+
+- ekip's base criteria: every brief item met or left open with a reason, the checks ran and passed (run by the reviewer), touched files build, no personal data or secrets, no unwanted files, evidence for every claim, images actually looked at;
+- the project's checks: `check:`/`test:`/`verify:` scripts, `typecheck` and `lint` in `package.json` (deploy, publish, migrate and similar left out), the test and smoke commands in the card's run/test section, `.ekip/checks/*`;
+- the acceptance file: `acceptance` in the project registry, else `.ekip/acceptance.md` when the project has a `.ekip` folder, else `data/projects/NAME.acceptance.md`; `ekip project criterion NAME "..."` adds to its Project section (the same criterion in other words is not added twice);
+- the project's lessons: every `ekip project lesson` is also checked at delivery ("Lesson respected: …").
+
+Criteria grow from failures: a `NEW-CRITERION` proposal is kept as a candidate (`data/projects/NAME.criteria-candidates.json`); when the same class, or the same criterion in other words, is proposed a second time, it goes into the file's "From reviews" section and the task notes it. The file keeps at most 40 items: past that the most alike review-made criteria are merged into one line.
+
+### Code review on demand
 
 `ekip review` reviews the current changes with project profile lenses and configured checks. `--dry-run` prints the plan without running checks or reviewers; `--checks-only` skips reviewer runs. `--via` selects review pools. `ekip review profile NAME [--refresh]` creates or refreshes a registered project's profile. Review check commands pass through a safety filter.
 

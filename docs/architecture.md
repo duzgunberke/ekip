@@ -28,7 +28,7 @@ lead › 3 tasks · videos → Antigravity + film skill · storefront fix → Co
 
 ## Request lifecycle
 
-Claude is the lead: it understands the request, creates a task with steps, dispatches scoped work to other pools, then reviews the result. Workers receive the project card, relevant memories, and skills, plus the project's lessons file in full (`.ekip/lessons.md`, mistakes the user corrected); the lead gets the newest of them, and its own (`genel`), with every message through the prompt hook. Their reports return to the lead and project memory.
+Claude is the lead: it understands the request, creates a task with steps, dispatches scoped work to other pools, then reviews the result. With automatic review on (mesai mode, `ekip run --review`), a result first goes through an independent review on another model family, with fix rounds, before it reaches the lead (below). Workers receive the project card, relevant memories, and skills, plus the project's lessons file in full (`.ekip/lessons.md`, mistakes the user corrected); the lead gets the newest of them, and its own (`genel`), with every message through the prompt hook. Their reports return to the lead and project memory.
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
@@ -48,6 +48,40 @@ flowchart LR
   class lead amber;
   class user,task,worker,panel,memory,review teal;
 ```
+
+### Automatic review: results checked before anyone sees them
+
+The user should be able to hand work over and leave. So in mesai mode (and with `ekip run --review`)
+`ekip run` does not end when the worker ends:
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
+flowchart LR
+  worker["Worker (codex)"] --> reviewer["Reviewer, another family (copilot)"]
+  criteria["Acceptance criteria: base, checks, acceptance.md, lessons"] --> reviewer
+  reviewer -->|PASS| lead["Lead: review summary and a short check"]
+  reviewer -->|FAIL, round 1-2| fix["Writer fixes the findings"]
+  fix --> reviewer
+  reviewer -->|still FAIL| ask["Task waits for a decision"]
+  reviewer -->|new kind of failure, twice| criteria
+  classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
+  classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
+  class lead amber;
+  class worker,reviewer,criteria,fix,ask teal;
+```
+
+The reviewer runs on a pool of another model family than the writer (`family`, `reviewerPool` in
+`plugin/lib/workers/agents.js`), so it does not share the writer's blind spots. It is read-only, runs
+the checks itself and answers in a fixed block (verdict, criteria met, findings with file:line and
+criterion, proposals for new criteria) that `plugin/lib/review/auto.js` parses. The criteria
+(`plugin/lib/review/criteria.js`) are written down and cumulative: ekip's base list, the project's
+check commands, its `acceptance.md`, and its lessons, so every correction the user made is also
+something each later delivery is checked against. A kind of failure the list did not cover becomes a
+candidate; seen a second time, it is a new criterion. Reviewer and fix rounds are ordinary
+`ekip run` processes under the same watchdog, slots and pool fallback; the task stays open while the
+review runs and shows its state everywhere tasks are shown. The lead starts every run in the
+background, so the run's exit (after the review) wakes it; verdicts it has not acted on also come
+with its next prompt.
 
 ## Pool selection
 
