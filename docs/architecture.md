@@ -186,7 +186,7 @@ Secrets are redacted from context and logs. Development database commands reject
     <td width="50%"><img src="screenshots/terminal-wezterm-layout.png" alt="Terminal task pane with a card per task: progress, current step and workers"><br><sub>Task progress beside the lead session</sub></td>
   </tr>
   <tr>
-    <td width="50%"><picture><source media="(prefers-color-scheme: light)" srcset="screenshots/panel-overview-light.png"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"></picture><br><sub>Overview across the hub</sub></td>
+    <td width="50%"><img src="screenshots/panel-overview-dark.png" alt="Web panel overview of projects, runs, tasks, and workers"><br><sub>Overview across the hub</sub></td>
     <td width="50%"><img src="screenshots/panel-runs-dark.png" alt="Web panel run history with worker and task results"><br><sub>Run history and reports</sub></td>
   </tr>
   <tr>
