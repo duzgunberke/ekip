@@ -168,6 +168,9 @@ Claude on a normal day of the author's, 58% during the cold setup ([the numbers]
   the web panel. [Install](docs/install.md#optional-vps-hub)
 - **A private hub:** `ekip hub private` puts the hub on your Tailscale tailnet, so the panel and API
   open only from your own devices, with no domain or DNS record. [Install](docs/install.md#private-hub-with-tailscale)
+- **Your phone** (a Telegram bot on the hub) follows every task live, answers the lead's questions
+  with buttons and types new work into the live lead; with the Mac off, work goes to the hub's queue.
+  [Phone](docs/install.md#optional-your-phone-telegram)
 
 </details>
 

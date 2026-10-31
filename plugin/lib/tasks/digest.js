@@ -259,6 +259,8 @@ export async function main(args = []) {
   // the pools as connected, the work behind the tasks, and at the bottom what setup still misses
   try { process.stdout.write(`${await poolsSection()}\n`); } catch { /* never fail the digest for it */ }
   try { const b = await import("../ops/background.js"); process.stdout.write(`${b.statusSection(b.backgroundJobs())}\n`); } catch { /* idem */ }
+  // the phone (Telegram), when a hub is linked: an optional extra, never a gap
+  try { const line = (await import("../phone/phone.js")).statusLine(); if (line) process.stdout.write(`${c.gray(line)}\n\n`); } catch { /* idem */ }
   try { const s = await import("../ops/setup.js"); process.stdout.write(`${s.statusSection(await s.checkSetup())}\n`); } catch { /* idem */ }
   return 0;
 }

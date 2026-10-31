@@ -1378,6 +1378,9 @@ You are a long-running worker in an ekip team. Other agents send you tasks over 
 inbox notice appears, read your inbox, do each task completely and autonomously, and reply to the
 sender with send_message (reply_to the message id): what you changed, how you verified it, what is open.`;
 
+// Added to the lead's prompt while a phone is linked (`ekip phone link`).
+async function phonePrompt() { try { return (await import("../lib/phone/phone.js")).leadPrompt(); } catch { return ""; } }
+
 const HOPTELL_MCP = JSON.stringify({ mcpServers: { hoptell: { command: "hoptell", args: ["mcp"] } } });
 
 // Tells the hub this Mac is alive (the panel's "Mac last seen"). Sent when the lead starts and by
@@ -1386,6 +1389,8 @@ async function heartbeat() {
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
   await fetch(`${SETTINGS.hubUrl}/api/heartbeat`, { method: "POST", signal: AbortSignal.timeout(4000), headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify({ client: "mac", host: os.hostname(), agents: autoOrder() }) }).catch(() => {});
+  // the phone's inbox: answers given while the Mac was off are applied now
+  try { await (await import("../lib/phone/phone.js")).sync({ force: true }); } catch { /* never block a heartbeat */ }
 }
 
 async function lead(args) {
@@ -1411,7 +1416,9 @@ async function lead(args) {
   // otherwise ("subagentModel" in data/config.json; "inherit" keeps the lead's model).
   const sub = SETTINGS.subagentModel ?? "sonnet";
   if (!free && sub !== "inherit" && !env.CLAUDE_CODE_SUBAGENT_MODEL) env.CLAUDE_CODE_SUBAGENT_MODEL = sub;
-  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : ""), ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
+  // the phone's hooks act only in lead sessions (not in workers, not in a plain `claude`)
+  if (!member) env.EKIP_LEAD = "1";
+  const argv = ["--append-system-prompt", member ? MEMBER_PROMPT : LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : "") + await phonePrompt(), ...(safe || explicit ? [] : ["--permission-mode", "bypassPermissions"]), ...args];
   const interactive = !member && process.stdout.isTTY && !args.some((a) => a === "-p" || a === "--print");
   if (interactive) {
     const here = registry().filter((x) => process.cwd() === x.path || process.cwd().startsWith(`${x.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
@@ -1963,6 +1970,7 @@ ${c.bold("Projects and memory")}
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
+  ${c.cyan("ekip phone")} ${c.gray("link|unlink|status|on|off|verbose on|off|quiet HH:MM-HH:MM|off|listen")}  Telegram: follow tasks, answer, give work
   ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
@@ -2014,6 +2022,7 @@ ${c.bold("Projeler ve hafıza")}
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
+  ${c.cyan("ekip phone")} ${c.gray("link|unlink|status|on|off|verbose on|off|quiet SS:DD-SS:DD|off|listen")}  Telegram: görevleri izle, cevap ver, iş ver
   ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private|passkey")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
@@ -2165,7 +2174,9 @@ switch (cmd) {
   case "logs": spawnSync("tail", ["-n", "60", LOG], { stdio: "inherit" }); break;
   case "help": case "-h": case "--help": process.stdout.write(HELP()); break;
   // the lead's system text as this language setting makes it (tests, docs)
-  case "lead-prompt": process.stdout.write(LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : "")); break;
+  case "lead-prompt": process.stdout.write(LEAD_PROMPT + (SETTINGS.mesai ? MESAI_PROMPT() : "") + await phonePrompt()); break;
+  // the phone (Telegram): link, mode, the listener fallback (lib/phone/phone.js)
+  case "phone": code = await (await import("../lib/phone/phone.js")).main(rest); break;
   default:
     // Only flags (or nothing) start the lead session; an unknown word is a typo, not a prompt.
     if (cmd && !cmd.startsWith("-")) die(nearest(cmd) ? t("bilinmeyen komut: {cmd}. Bunu mu demek istedin: ekip {near}  (tüm komutlar: ekip help)", { cmd, near: nearest(cmd) }) : t("bilinmeyen komut: {cmd}  (tüm komutlar: ekip help)", { cmd }));

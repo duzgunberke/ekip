@@ -47,6 +47,7 @@ export async function facts({ cwd = process.cwd() } = {}) {
     projects, projectGaps: projects.filter((p) => p.path).map((p) => ({ name: p.name, gaps: onboarding.projectGaps(p) })), vectors,
     wezterm: weztermInstalled(), terminal: SETTINGS.terminal ?? null, notifier: has("terminal-notifier"), hub: !!(SETTINGS.hubUrl && SETTINGS.hubToken), cwd,
     hubExposed: (await import("../hub/private.js")).hubExposed(SETTINGS),
+    phone: await import("../phone/phone.js").then((p) => p.linked()).catch(() => false),
   };
 }
 
@@ -99,6 +100,8 @@ export const STEPS = [
   // shown only while a VPS hub is linked at a public address; offered once by the wizard
   { id: "hub-private", level: "optional", once: true, when: (f) => !!f.hubExposed, title: "Hub'ı gizle (Tailscale)", short: "gizli hub", why: "panel ve API yalnız kendi cihazlarınızdan açılır; alan adı, DNS kaydı ve açık port gerekmez", command: "ekip hub private",
     check: (f) => ({ done: !f.hubExposed }) },
+  { id: "phone", level: "optional", title: "Telefon (Telegram ile görevleri izle, cevap ver, iş ver)", short: "telefon", why: "Mac'ten uzaktayken görevleri canlı izler, soruları düğmeyle cevaplar ve lead'e yeni iş yazarsın", command: "ekip phone link",
+    check: (f) => ({ done: f.phone, command: f.hub ? "ekip phone link" : "ekip hub link <url> <token> && ekip phone link" }) },
 ];
 
 // a fake result for a step, for tests and demos: EKIP_SETUP_FAKE="keys=done,agents=missing"
@@ -254,6 +257,7 @@ export function actions(step, f, { ask: prompt = ask, secret = askSecret, open =
     case "notify": return has("brew") ? [["brew", ["install", "terminal-notifier"]]] : [];
     case "hub": return [ekip(["hub", "local"])];
     case "hub-private": return [ekip(["hub", "private"])];
+    case "phone": return f.hub ? [ekip(["phone", "link"])] : [];
     default: return []; // prereqs: printed, the user installs them
   }
 }

@@ -171,6 +171,27 @@ When everything is already in place (the Mac and the VPS online in the same tail
 `ekip hub private status` shows the Mac and VPS on the tailnet (and a mismatch when they are in different tailnets), what is served, whether the hub answers and whether the old public address still does. `ekip hub private off` turns Serve off (only when port 443 still serves the hub), puts the backed up route back and points `hubUrl` at the old address again. Other devices (a phone, a second laptop) reach the panel after installing Tailscale and signing in with the same account.
 
 While the hub is linked at a public address, `ekip setup`, `ekip doctor` and the lead start list "The hub is open to the internet" as an info-level gap with this command. `ekip doctor` checks the private URL on every run.
+## Optional: your phone (Telegram)
+
+With a hub linked, a Telegram bot on the hub lets you follow and steer ekip from your phone: every
+task has one live message that is edited as its steps advance, and a separate message (with a
+notification) arrives when a task is done (its result and links), fails, is blocked or stuck, waits for
+your decision (its options as buttons, plus "Other…"), when a review fails and when a release or CI
+result lands. What you type goes to the live lead as if you typed it at the Mac, and the lead's reply
+of each turn comes back. With the Mac off, a request becomes a job on the hub's queue.
+
+1. In Telegram, open **@BotFather**, send `/newbot`, pick a name and a user name; it answers with a
+   token like `123456789:AA…`. Keep it secret (anyone with it controls the bot).
+2. Put it in the hub's `.env`: `EKIP_TELEGRAM_TOKEN=<token>`, then restart the hub
+   (`docker compose up -d` in `hub/`). The hub log says `phone=telegram`. The hub uses long polling
+   (`getUpdates`), never a webhook, so it can stay private, for example reachable only over a VPN.
+3. On the Mac: `ekip phone link`. It prints `/link <code>`; send that to your bot within ten minutes
+   (the code works once). Only chats paired this way are served; anyone else gets no answer at all.
+4. Check with `ekip phone status`. `ekip setup` lists the phone as an optional step.
+
+Messages carry titles, steps, results and links only; notes, replies and tool lines pass through a
+redactor that masks tokens, keys, passwords, bearer strings and URLs with credentials. Details and
+all commands: [Commands → Phone](commands.md#phone-telegram).
 
 ## Language
 
