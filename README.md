@@ -23,6 +23,21 @@
   <sub>Type <code>ekip</code>: the lead on the left, workers on the right, live tasks below (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub>
 </p>
 
+## Why: Claude's limit goes to deciding, not reading
+
+Most of a Claude Code limit is spent **reading**: files, logs, history, the same context again in every
+session. ekip moves that work off Claude:
+
+- **Claude only decides.** It understands the request, splits it, picks a worker for each part and
+  reviews the result. Reading and typing run on **other quotas**: Antigravity, Codex, Copilot, Qwen,
+  OpenCode, grok and about 60 free-tier models behind one endpoint.
+- **Context is prepared once.** Every project gets a memory: past sessions in a vector database, an LLM
+  wiki from its docs, a code graph and its own skills. Workers start from that instead of re-reading
+  the repo, and the lead gets only the few facts that matter for the message.
+- **Measured, not promised.** `ekip savings` shows the share of the work that ran outside Claude.
+
+<p align="center"><img src="docs/assets/savings.svg" alt="Share of the work that ran outside Claude, measured with ekip savings: 58% during the two-day setup, 81% the next day" width="100%"></p>
+
 ## Quick start
 
 Needs macOS, Node 22+, Docker and [Claude Code](https://claude.com/claude-code).

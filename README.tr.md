@@ -23,6 +23,21 @@
   <sub><code>ekip</code> yazın: solda lider, sağda worker'lar, altta canlı görevler (<a href="docs/demo/terminal-wezterm.mp4">MP4</a>)</sub>
 </p>
 
+## Neden: Claude'un limiti okumaya değil karar vermeye gider
+
+Claude Code limitinin çoğu **okumaya** gider: dosyalar, loglar, geçmiş, her oturumda aynı bağlam yeniden.
+ekip bu işi Claude'un üstünden alır:
+
+- **Claude yalnız karar verir.** İsteği anlar, böler, her parça için bir işçi seçer ve sonucu inceler.
+  Okuma ve yazma **başka kotalarda** yürür: Antigravity, Codex, Copilot, Qwen, OpenCode, grok ve tek
+  uç noktanın arkasındaki 60 kadar ücretsiz model.
+- **Bağlam bir kez hazırlanır.** Her projenin hafızası var: vektör veritabanında geçmiş oturumlar,
+  belgelerinden bir LLM wiki, kod grafiği ve kendi skill'leri. İşçiler repoyu baştan okumak yerine
+  buradan başlar, lead'e de mesaja gereken birkaç bilgi gider.
+- **Söz değil ölçüm.** `ekip savings` işin ne kadarının Claude dışında yürüdüğünü gösterir.
+
+<p align="center"><img src="docs/assets/savings.svg" alt="ekip savings ile ölçülen, Claude dışında yürüyen iş payı: iki günlük kurulumda %58, ertesi gün %81" width="100%"></p>
+
 ## Hızlı başlangıç
 
 macOS, Node 22+, Docker ve [Claude Code](https://claude.com/claude-code) gerekir.
