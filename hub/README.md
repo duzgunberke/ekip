@@ -13,17 +13,59 @@ panel at your own domain (e.g. https://ai.example.com). Node 22, built-ins only;
 - **Registry and reports from the Mac**: `PUT /api/projects`, `POST /api/runs`, `POST /api/heartbeat`.
 - **Panel** (`/`): React SPA in `web/` (based on shadcn-admin, see `web/UPSTREAM.md`), built into
   `public/` by the Docker image: Görevler (live task progress, default page), Genel bakış, Projeler,
-  Kod haritası, İşler, Çalıştırmalar, Havuzlar, Paneller. Password login → session cookie.
+  Kod haritası, İşler, Çalıştırmalar, Havuzlar, Paneller. Password + passkey login → session
+  cookie (see [Panel sign-in](#panel-sign-in-password--passkey)).
   Local dev: `cd web && pnpm install && pnpm dev` (proxies the API to `EKIP_HUB_DEV_URL`,
   default http://127.0.0.1:7799); `pnpm build` writes `../public`.
 
 All `/api/*` calls need `Authorization: Bearer $EKIP_HUB_TOKEN` (or the panel's session cookie plus
-the `X-Ekip-Csrf: 1` header for writes).
+the `X-Ekip-Csrf: 1` header for writes). Without either, every path answers a bare `404 not found`
+(no `401`, no panel, no branding); only `/login`, `/sign-in`, `/assets/*` and `/healthz` exist for a
+stranger.
+
+## Panel sign-in: password + passkey
+
+A stolen password alone does not open the panel. Sign-in is two steps:
+
+1. `POST /login {password}`. Before any passkey exists (and without `EKIP_HUB_REQUIRE_PASSKEY=1`)
+   this still opens a session, as before. Otherwise it only sets a 5-minute `ekip_login` ticket and
+   answers `{ok, next: "passkey" | "enrol"}`.
+2. The passkey (Touch ID, iCloud Keychain, a security key): `POST /login/passkey/options` and
+   `/login/passkey/verify`. The session cookie names the passkey that opened it: removing that
+   passkey ends its sessions, and password-only sessions end when the first passkey is registered.
+   Session lifetime is still `EKIP_SESSION_HOURS`.
+
+**Enrolment.** The first passkey needs a one-time code from a machine that holds the hub token:
+
+```sh
+ekip hub passkey add      # prints a code (single use, 10 minutes) and https://ai.example.com/sign-in?enrol=CODE
+```
+
+Open the address on the device that should hold the passkey, enter the password, and save the
+passkey (`/login/enrol/options`, `/login/enrol/verify`: password + code + the passkey ceremony; the
+code is spent on the first attempt). The same command adds a passkey for a new device later. A
+session opened with a passkey can also add one directly (command palette → "Add a passkey on this
+device"); a password alone never can. Codes live in the hub's memory, so a restart voids them.
+
+`ekip hub passkey list` shows them, `ekip hub passkey remove <id>` (an id prefix is enough) deletes
+one. Removing the last passkey turns the requirement off again unless `EKIP_HUB_REQUIRE_PASSKEY=1`.
+Lost every device? `ekip hub passkey add` on the Mac and register a new one.
+
+Passkeys are stored as public keys in `/data/passkeys.json`. WebAuthn checks run on `node:crypto`
+alone (ES256, EdDSA, RS256; "none" attestation), keeping the hub free of npm dependencies. The
+relying party is the request's host unless `EKIP_HUB_ORIGIN` / `EKIP_HUB_RP_ID` pin it (recommended
+behind a proxy); a passkey only works on the host name it was registered on, and on `localhost`
+for `ekip hub local`, not on a bare IP address. Failed passwords, codes and passkeys count toward
+the same per-IP and global login throttle.
 
 ## API
 
 | method | path | body / notes |
 |---|---|---|
+| GET | `/api/passkeys` | `{required, passkeys:[{id, name, createdAt, lastUsedAt, transports, via}]}` (no key material) |
+| POST | `/api/passkeys/code` | token only: a one-time enrolment code `{code, expiresAt, path}` (`ekip hub passkey add`) |
+| DELETE | `/api/passkeys/:id` | token or a passkey session; an unambiguous id prefix works |
+| POST | `/api/passkeys/register/options`, `/register/verify` | a passkey session adds another passkey |
 | GET | `/api/status` | freellmapi readiness + providers, TDAI health, queue counts, workers, Mac clients |
 | GET / PUT | `/api/projects` | PUT: `[{name, repo, repos?, summary, card, tdai:{teamId,agentId,wikiId,codeGraphId,codeGraphs:[{repo,id,branch,private,status}]}}]` (upsert by name) or `{projects, replace:true}` |
 | DELETE | `/api/projects/:name` | |

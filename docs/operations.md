@@ -35,7 +35,7 @@ ekip keeps patches alongside its deployment tools and applies them to its local 
 - **External processing:** Memory extraction, wiki generation, embeddings, and translation use configured model providers. Session messages, worker reports, and project documentation can be sent to those providers. Do not register material that must stay on your machines; choose providers you trust.
 - **Import scope:** Lean history import excludes tool output by default. See [Memory](memory.md#what-is-stored-and-what-is-not) for stored and excluded content.
 - **Provider terms:** Use one account per provider. Creating extra accounts to evade free-tier limits can violate provider terms.
-- **Hub access:** The API uses a bearer token. The panel uses a password and session cookie; cookie-authenticated writes require a CSRF header. Keep TencentDB and freellmapi ports private behind the hub.
+- **Hub access:** The API uses a bearer token. The panel uses a password and then a passkey (Touch ID, iCloud Keychain or a security key) before it issues a session cookie; cookie-authenticated writes require a CSRF header. The first passkey is registered with a one-time code from `ekip hub passkey add`, never with the password alone; `ekip hub passkey list|remove` manages them. Signed out, every path except the sign-in page answers a bare 404. Details: [hub/README.md](../hub/README.md#panel-sign-in-password--passkey). Keep TencentDB and freellmapi ports private behind the hub.
 
 ---
 

@@ -5,12 +5,13 @@ import { qk } from '@/hooks/queries'
 import { SignIn } from '@/features/auth/sign-in'
 
 export const Route = createFileRoute('/sign-in')({
-  validateSearch: z.object({ redirect: z.string().optional() }),
+  validateSearch: z.object({ redirect: z.string().optional(), enrol: z.string().optional() }),
   beforeLoad: async ({ context, search }) => {
     const ok = await context.queryClient
       .fetchQuery({ queryKey: qk.session, queryFn: () => api('/api/session'), staleTime: 0, retry: false })
       .then(() => true, () => false)
-    if (ok) throw redirect({ to: safeRedirect(search.redirect) })
+    // with an enrolment code a signed-in user still gets the form, to register the passkey
+    if (ok && !search.enrol) throw redirect({ to: safeRedirect(search.redirect) })
   },
   component: SignIn,
 })

@@ -58,6 +58,7 @@ Projects and memory
 VPS hub
   ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
   ekip hub link|push|status|open
+  ekip hub passkey add|list|remove ID   panel passkeys: one-time enrolment code, list, remove
   ekip remote <ssh-host>
   ekip tunnel install|status
   ekip vps add|token|status|sh|apps|deploy|logs|restart

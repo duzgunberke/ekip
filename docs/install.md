@@ -150,6 +150,11 @@ ekip hub push
 ekip memory import-history
 ```
 
+5. Protect the panel with a passkey: `ekip hub passkey add` prints a one-time code and a sign-in
+   address; open it on your Mac or phone, enter the panel password and save the passkey. From then
+   on the panel asks for the password and the passkey, and a stranger sees only 404 pages. Set
+   `EKIP_HUB_ORIGIN=https://ai.example.com` in the hub's `.env` so passkeys are bound to that host.
+
 ## Language
 
 ekip speaks English and Turkish. `ekip init` and `ekip setup` ask once (the system's language by default); `ekip lang` (or `ekip dil`) shows the setting and `ekip lang en` / `ekip lang tr` changes it in `data/config.json`. `EKIP_LANG=en` or `EKIP_LANG=tr` overrides it for one shell.

@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowRight,
   ExternalLink,
+  Fingerprint,
   FolderGit2,
   Laptop,
   LogOut,
@@ -14,6 +15,9 @@ import {
 } from 'lucide-react'
 import { useProjects, useStatus } from '@/hooks/queries'
 import { useSignOut } from '@/hooks/use-sign-out'
+import { toast } from 'sonner'
+import { ApiError, errorMessage } from '@/lib/api'
+import { addPasskey } from '@/lib/passkey'
 import { useNewJob } from '@/context/new-job-provider'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
@@ -139,6 +143,24 @@ export function CommandMenu() {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading={t('Oturum')}>
+          <CommandItem
+            value={t('passkey ekle')}
+            onSelect={() =>
+              run(() =>
+                addPasskey().then(
+                  () => toast.success(t('Passkey eklendi.')),
+                  (e) =>
+                    toast.error(
+                      e instanceof ApiError && e.status === 403
+                        ? t('Önce passkey ile giriş yapın veya ekip hub passkey add ile kod alın.')
+                        : errorMessage(e)
+                    )
+                )
+              )
+            }
+          >
+            <Fingerprint /> {t('Bu cihaza passkey ekle')}
+          </CommandItem>
           <CommandItem value={t('çıkış yap')} onSelect={() => run(signOut)}>
             <LogOut /> {t('Çıkış yap')}
           </CommandItem>

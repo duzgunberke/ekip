@@ -8,7 +8,7 @@ import { UserAuthForm } from './components/user-auth-form'
 const route = getRouteApi('/sign-in')
 
 export function SignIn() {
-  const { redirect } = route.useSearch()
+  const { redirect, enrol } = route.useSearch()
   const t = useT()
   useEffect(() => {
     document.title = `${t('Giriş yap')} · ekip`
@@ -18,10 +18,10 @@ export function SignIn() {
       <Card className='gap-4'>
         <CardHeader>
           <CardTitle className='text-lg tracking-tight'>{t('Giriş yap')}</CardTitle>
-          <CardDescription>{t('Panele erişmek için hub parolasını girin.')}</CardDescription>
+          <CardDescription>{t('Panele erişmek için hub parolasını girin; ardından passkey istenir.')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <UserAuthForm redirectTo={redirect} />
+          <UserAuthForm redirectTo={redirect} enrolCode={enrol} />
         </CardContent>
       </Card>
       <p className='text-center text-xs text-muted-foreground'>

@@ -4,11 +4,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { Auth } from "./auth.js";
+import { Auth, normCode } from "./auth.js";
 import { CodeMap } from "./codemap.js";
 import { releaseInfo } from "./release.js";
 import { hubSetup } from "./setup.js";
 import { openStore, trim } from "./store.js";
+import { WebAuthnError, creationOptions, newChallenge, requestOptions, verifyAuthentication, verifyRegistration } from "./webauthn.js";
 import { Worker } from "./worker.js";
 
 const env = process.env;
@@ -33,6 +34,11 @@ const cfg = {
   workers: Math.min(num(env.EKIP_WORKERS, 2), 16),
   jobTimeoutMin: num(env.EKIP_JOB_TIMEOUT_MIN, 60),
   sessionHours: num(env.EKIP_SESSION_HOURS, 168),
+  // Passkeys: required when this is 1, and always once one is registered. The relying party (the
+  // hub's host name and origin) comes from the request unless these pin it.
+  requirePasskey: env.EKIP_HUB_REQUIRE_PASSKEY === "1",
+  rpId: env.EKIP_HUB_RP_ID || null,
+  origin: stripSlash(env.EKIP_HUB_ORIGIN) || null,
   compactWindow: num(env.EKIP_COMPACT_WINDOW, 100000),
   trustProxy: env.EKIP_TRUST_PROXY === "1",
   allowLocalRepos: env.EKIP_ALLOW_LOCAL_REPOS === "1",
@@ -65,7 +71,7 @@ function serverSecret() {
 }
 
 const store = openStore(DATA);
-const auth = new Auth({ token: cfg.hubToken, password: cfg.hubPassword, secret: serverSecret(), sessionHours: cfg.sessionHours });
+const auth = new Auth({ token: cfg.hubToken, password: cfg.hubPassword, secret: serverSecret(), sessionHours: cfg.sessionHours, passkeys: store.passkeys, requirePasskey: cfg.requirePasskey });
 const worker = new Worker({ cfg, store });
 const codemap = new CodeMap({ githubToken: cfg.githubToken, knowledgeUrl: cfg.knowledgeUrl });
 
@@ -178,6 +184,19 @@ function clientIp(req) {
     if (xff.length) return xff[xff.length - 1];
   }
   return req.socket.remoteAddress ?? "?";
+}
+
+// The WebAuthn relying party: EKIP_HUB_ORIGIN / EKIP_HUB_RP_ID, else what the browser asked for.
+// A Host header cannot be used to phish: the browser signs its real origin and the authenticator
+// only answers for the host name the passkey was made on.
+function relyingParty(req) {
+  const first = (v) => String(v ?? "").split(",")[0].trim();
+  const host = (cfg.trustProxy && first(req.headers["x-forwarded-host"])) || first(req.headers.host);
+  const proto = (cfg.trustProxy && first(req.headers["x-forwarded-proto"])) || (req.socket.encrypted ? "https" : "http");
+  const origin = cfg.origin ?? `${proto}://${host}`;
+  let rpId = cfg.rpId;
+  if (!rpId) { try { rpId = new URL(origin).hostname; } catch { bad("bad host"); } }
+  return { origin, rpId };
 }
 
 // ---- validation ----------------------------------------------------------------------------------
@@ -377,12 +396,47 @@ async function status() {
 
 // ---- routes --------------------------------------------------------------------------------------
 
-async function api(req, res, url) {
+// who: { bearer: true } for the hub token, { session } for a panel login.
+async function api(req, res, url, who) {
   const p = url.pathname;
   const m = req.method;
   let match;
 
-  if (p === "/api/session" && m === "GET") return send(res, 200, { ok: true });
+  if (p === "/api/session" && m === "GET") return send(res, 200, { ok: true, passkey: !!who.session?.pk });
+
+  // ---- passkeys: list and remove with the token or a passkey login; enrolment codes only with the
+  // token (ekip hub passkey add); a passkey login can also register another passkey directly.
+  const viaPasskey = !!who.session?.pk;
+  if (p === "/api/passkeys" && m === "GET") return send(res, 200, { required: auth.passkeyRequired(), passkeys: auth.publicList() });
+  if (p === "/api/passkeys/code" && m === "POST") {
+    if (!who.bearer) return send(res, 403, { error: "enrolment codes need the hub token (ekip hub passkey add)" });
+    const c = auth.newEnrolCode();
+    console.log("passkey enrolment code issued");
+    return send(res, 201, { ...c, path: `/sign-in?enrol=${encodeURIComponent(c.code)}` });
+  }
+  if (p === "/api/passkeys/register/options" && m === "POST") {
+    if (!viaPasskey) return send(res, 403, { error: "sign in with a passkey first, or use an enrolment code" });
+    const { rpId } = relyingParty(req);
+    const challenge = newChallenge();
+    auth.putChallenge(`s:${who.session.n}`, "create", challenge);
+    return send(res, 200, creationOptions({ challenge, rpId, userId: auth.userId, exclude: auth.credentials }));
+  }
+  if (p === "/api/passkeys/register/verify" && m === "POST") {
+    if (!viaPasskey) return send(res, 403, { error: "sign in with a passkey first, or use an enrolment code" });
+    const b = await readJson(req, 100_000);
+    const c = auth.takeChallenge(`s:${who.session.n}`, "create");
+    if (!c) return send(res, 400, { error: "challenge expired, try again" });
+    const cred = registerPasskey(req, b, c.challenge, "session");
+    return send(res, 201, { ok: true, id: cred.id });
+  }
+  if ((match = p.match(/^\/api\/passkeys\/([A-Za-z0-9_-]{4,1400})$/)) && m === "DELETE") {
+    if (!who.bearer && !viaPasskey) return send(res, 403, { error: "only the hub token or a passkey login can remove passkeys" });
+    const gone = auth.removeCredential(match[1]);
+    if (!gone) return send(res, 404, { error: "no such passkey (or the id prefix is ambiguous)" });
+    console.log(`passkey removed: ${gone.name}`);
+    return send(res, 200, { ok: true, id: gone.id, name: gone.name, left: auth.credentials.length });
+  }
+
   if (p === "/api/status" && m === "GET") return send(res, 200, await status());
 
   if (p === "/api/limits" && m === "PUT") {
@@ -609,6 +663,77 @@ async function api(req, res, url) {
   return send(res, 404, { error: "not found" });
 }
 
+const PUBLIC_PATHS = new Set(["/login", "/sign-in"]);
+const notFound = (res) => send(res, 404, "not found");
+
+function registerPasskey(req, b, challenge, via) {
+  const name = str(b.name, 60, "name") ?? `passkey ${auth.credentials.length + 1}`;
+  let cred;
+  try { cred = verifyRegistration(b.credential, { challenge, ...relyingParty(req) }); } catch (e) {
+    if (e instanceof WebAuthnError) throw new HttpError(400, `passkey rejected: ${e.message}`);
+    throw e;
+  }
+  const at = new Date().toISOString();
+  if (!auth.addCredential({ id: cred.id, name, alg: cred.alg, jwk: cred.jwk, signCount: cred.signCount, transports: cred.transports, createdAt: at, lastUsedAt: at, via })) bad("this passkey is already registered");
+  console.log(`passkey registered: ${name} (${via})`);
+  return cred;
+}
+
+// The steps after a correct password (POST /login set the ekip_login ticket):
+//   /login/passkey/options, /login/passkey/verify  sign in with a registered passkey
+//   /login/enrol/options, /login/enrol/verify      register a passkey with a one-time enrolment code
+async function loginStep(req, res, p) {
+  const ip = clientIp(req);
+  const gate = auth.loginAllowed(ip);
+  if (!gate.ok) return send(res, 429, { error: "too many attempts" }, { "retry-after": String(gate.retryAfter) });
+  // proof of the password: the ticket, or (before passkeys are required) a password session
+  const pending = auth.pending(req);
+  const session = pending ? null : auth.session(req);
+  if (!pending && !session) return send(res, 401, { error: "password step missing or expired" });
+  const b = await readJson(req, 100_000);
+  const bind = pending ? `p:${pending.n}` : `s:${session.n}`;
+  const opened = (pk) => send(res, 200, { ok: true }, { "set-cookie": [auth.cookie(auth.newSession(pk), Math.floor(auth.ttl / 1000)), auth.pendingCookie("", 0)] });
+  const rejected = (msg) => { auth.loginFailed(ip); console.error(`login ${p} failed from ${ip}: ${msg}`); return send(res, 401, { error: msg }); };
+
+  if (p === "/login/passkey/options") {
+    if (!auth.credentials.length) return send(res, 409, { error: "no passkey registered yet: use an enrolment code" });
+    const challenge = newChallenge();
+    auth.putChallenge(bind, "get", challenge);
+    return send(res, 200, requestOptions({ challenge, rpId: relyingParty(req).rpId, allow: auth.credentials }));
+  }
+  if (p === "/login/passkey/verify") {
+    const c = auth.takeChallenge(bind, "get");
+    if (!c) return send(res, 400, { error: "challenge expired, try again" });
+    const stored = auth.credentials.find((x) => x.id === b.credential?.id);
+    if (!stored) return rejected("unknown passkey");
+    try {
+      const r = verifyAuthentication(b.credential, stored, { challenge: c.challenge, ...relyingParty(req) });
+      auth.touchCredential(stored.id, r.signCount);
+    } catch (e) {
+      if (e instanceof WebAuthnError) return rejected(`passkey rejected: ${e.message}`);
+      throw e;
+    }
+    auth.loginSucceeded(ip);
+    return opened(stored.id);
+  }
+  if (p === "/login/enrol/options") {
+    if (!auth.enrolCodeValid(b.code)) return rejected("invalid or expired enrolment code");
+    const challenge = newChallenge();
+    auth.putChallenge(bind, "create", challenge, { code: normCode(b.code) });
+    return send(res, 200, creationOptions({ challenge, rpId: relyingParty(req).rpId, userId: auth.userId, exclude: auth.credentials }));
+  }
+  if (p === "/login/enrol/verify") {
+    const c = auth.takeChallenge(bind, "create");
+    if (!c || c.code !== normCode(b.code)) return send(res, 400, { error: "challenge expired, try again" });
+    // spent before the ceremony is checked: a code is good for one attempt only
+    if (!auth.consumeEnrolCode(b.code)) return rejected("invalid or expired enrolment code");
+    const cred = registerPasskey(req, b, c.challenge, "code");
+    auth.loginSucceeded(ip);
+    return opened(cred.id);
+  }
+  return notFound(res);
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, "http://hub");
   const p = url.pathname;
@@ -621,12 +746,13 @@ async function handle(req, res) {
 
   if (p.startsWith("/api/")) {
     const viaBearer = auth.bearerOk(req);
-    const viaCookie = !viaBearer && auth.sessionOk(req);
-    if (!viaBearer && !viaCookie) return send(res, 401, { error: "unauthorized" }, { "www-authenticate": "Bearer" });
+    const session = viaBearer ? null : auth.session(req);
+    // Without credentials the API does not exist: a stranger gets the same 404 as for any path.
+    if (!viaBearer && !session) return notFound(res);
     // Cookie-authenticated writes must carry a custom header, which a cross-site page cannot send
     // without a CORS preflight this server never grants (on top of SameSite=Strict).
-    if (viaCookie && !["GET", "HEAD"].includes(req.method) && req.headers["x-ekip-csrf"] !== "1") return send(res, 403, { error: "missing csrf header" });
-    return api(req, res, url);
+    if (session && !["GET", "HEAD"].includes(req.method) && req.headers["x-ekip-csrf"] !== "1") return send(res, 403, { error: "missing csrf header" });
+    return api(req, res, url, { bearer: viaBearer, session });
   }
 
   if (p === "/login" && req.method === "POST") {
@@ -635,19 +761,28 @@ async function handle(req, res) {
     if (!gate.ok) return send(res, 429, { error: "too many attempts" }, { "retry-after": String(gate.retryAfter) });
     const b = await readJson(req, 10_000);
     if (typeof b.password === "string" && auth.passwordOk(b.password)) {
-      auth.loginSucceeded(ip);
-      return send(res, 200, { ok: true }, { "set-cookie": auth.cookie(auth.newSession(), Math.floor(auth.ttl / 1000)) });
+      if (!auth.passkeyRequired()) {
+        auth.loginSucceeded(ip);
+        return send(res, 200, { ok: true }, { "set-cookie": auth.cookie(auth.newSession(), Math.floor(auth.ttl / 1000)) });
+      }
+      // The password alone opens nothing: it earns a short-lived ticket for the passkey step.
+      return send(res, 200, { ok: true, next: auth.credentials.length ? "passkey" : "enrol" }, { "set-cookie": auth.pendingCookie(auth.newPending()) });
     }
     auth.loginFailed(ip);
     console.error(`login failed from ${ip}`);
     return send(res, 401, { error: "wrong password" });
   }
+  if (p.startsWith("/login/") && req.method === "POST") return loginStep(req, res, p);
   if (p === "/logout" && req.method === "POST") {
-    return send(res, 200, { ok: true }, { "set-cookie": auth.cookie("", 0) });
+    return send(res, 200, { ok: true }, { "set-cookie": [auth.cookie("", 0), auth.pendingCookie("", 0)] });
   }
 
-  if (req.method === "GET" || req.method === "HEAD") return serveStatic(req, res, p);
-  return send(res, 404, "not found");
+  // Signed out, only the sign-in page and its bundle exist; every other path is a bare 404.
+  if (req.method === "GET" || req.method === "HEAD") {
+    if (!PUBLIC_PATHS.has(p) && !p.startsWith("/assets/") && !auth.sessionOk(req)) return notFound(res);
+    return serveStatic(req, res, p);
+  }
+  return notFound(res);
 }
 
 const server = http.createServer((req, res) => {
