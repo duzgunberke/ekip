@@ -1,0 +1,39 @@
+{
+  "about": "Which logo stands for which pool, provider or model family. One list for the web panel (components/provider-logo.tsx) and the terminal (scripts/render-logos.mjs copies it to plugin/assets/logos/logos.json with the rendered PNGs). logo: lobehub:<name> (@lobehub/icons-static-svg, MIT) or simple-icons:<slug> (simple-icons, CC0).",
+  "icons": {
+    "claude": { "title": "Anthropic", "logo": "simple-icons:anthropic" },
+    "anthropic": { "title": "Anthropic", "logo": "simple-icons:anthropic" },
+    "codex": { "title": "OpenAI", "logo": "lobehub:openai" },
+    "openai": { "title": "OpenAI", "logo": "lobehub:openai" },
+    "copilot": { "title": "GitHub Copilot", "logo": "simple-icons:githubcopilot" },
+    "agy": { "title": "Google Antigravity", "logo": "lobehub:antigravity" },
+    "gemini": { "title": "Google Gemini", "logo": "lobehub:gemini" },
+    "google": { "title": "Google AI Studio", "logo": "simple-icons:google" },
+    "qwen": { "title": "Qwen", "logo": "simple-icons:qwen" },
+    "deepseek": { "title": "DeepSeek", "logo": "simple-icons:deepseek" },
+    "nvidia": { "title": "NVIDIA", "logo": "simple-icons:nvidia" },
+    "openrouter": { "title": "OpenRouter", "logo": "simple-icons:openrouter" },
+    "ovh": { "title": "OVHcloud", "logo": "simple-icons:ovh" },
+    "huggingface": { "title": "Hugging Face", "logo": "simple-icons:huggingface" },
+    "cloudflare": { "title": "Cloudflare Workers AI", "logo": "simple-icons:cloudflare" },
+    "modelscope": { "title": "ModelScope", "logo": "simple-icons:modelscope" },
+    "meta": { "title": "Meta Llama", "logo": "simple-icons:meta" },
+    "llama": { "title": "Meta Llama", "logo": "simple-icons:meta" },
+    "kimi": { "title": "Moonshot Kimi", "logo": "simple-icons:kimi" },
+    "moonshot": { "title": "Moonshot Kimi", "logo": "simple-icons:kimi" },
+    "minimax": { "title": "MiniMax", "logo": "simple-icons:minimax" },
+    "opencode": { "title": "OpenCode", "logo": "simple-icons:opencode" },
+    "zhipu": { "title": "Zhipu GLM", "logo": "lobehub:zhipu" },
+    "groq": { "title": "Groq", "logo": "lobehub:groq" },
+    "mistral": { "title": "Mistral", "logo": "lobehub:mistral" },
+    "cohere": { "title": "Cohere", "logo": "lobehub:cohere" },
+    "xai": { "title": "xAI", "logo": "lobehub:xai" },
+    "grok": { "title": "xAI Grok", "logo": "lobehub:xai" },
+    "cerebras": { "title": "Cerebras", "logo": "lobehub:cerebras" }
+  },
+  "families": [
+    ["claude|anthropic", "anthropic"], ["gpt|openai|o[134]-", "openai"], ["gemini|gemma", "gemini"], ["deepseek", "deepseek"],
+    ["qwen|qwq", "qwen"], ["glm|zhipu|chatglm", "zhipu"], ["llama|meta", "meta"], ["kimi|moonshot", "kimi"], ["minimax", "minimax"],
+    ["mistral|mixtral|codestral|devstral", "mistral"], ["command|cohere", "cohere"], ["grok|xai", "xai"], ["nemotron|nvidia", "nvidia"]
+  ]
+}
