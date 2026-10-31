@@ -124,8 +124,10 @@ export async function snapshot() {
 }
 
 export async function push(s) {
-  s ??= await snapshot();
+  // no hub: nothing to send, and no snapshot (it reads the free pool's database, which a machine
+  // without the free pool does not have; that used to end a successful `ekip run` with exit 1)
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) return;
+  s ??= await snapshot();
   await fetch(`${SETTINGS.hubUrl}/api/limits`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${SETTINGS.hubToken}` },
     body: JSON.stringify(s), signal: AbortSignal.timeout(8000) }).catch(() => {});
 }
