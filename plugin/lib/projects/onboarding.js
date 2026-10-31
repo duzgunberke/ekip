@@ -9,6 +9,7 @@ import { detect } from "../core/terminal.js";
 import { t } from "../core/i18n.js";
 import { snoozed } from "../ops/snooze.js";
 import { missingSessions } from "../memory/history.js";
+import { hubExposed } from "../hub/private.js";
 
 const CACHE = path.join(HOME, "onboarding-cache.json");
 const TTL = 10 * 60_000;
@@ -90,6 +91,8 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   if (!env.gitIdentity) gaps.push(gap("git-identity", "Git kimliği tanımlı değil", "işçiler commit atamaz; user.name ve user.email boş", 'git config --global user.name "Ad Soyad" && git config --global user.email you@example.com'));
   if (!env.ghInstalled) gaps.push(gap("gh", "GitHub CLI (gh) kurulu değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "brew install gh && gh auth login", "info"));
   else if (!env.ghAuth) gaps.push(gap("gh-auth", "gh oturumu açık değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "gh auth login"));
+  // a hub linked at a public address while Tailscale private mode is not set (hub/private.js)
+  if (hubExposed(SETTINGS) && !snoozed("hub-private")) gaps.push(gap("hub-private", "Hub internete açık", "panel ve API herkese açık bir adreste; Tailscale ile yalnız kendi cihazlarınızdan açılır, alan adı ve DNS kaydı gerekmez", "ekip hub private", "info"));
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) gaps.push(gap("hub", "Hub bağlı değil", "web paneli ve Mac kapalıyken çalışan iş kuyruğu kullanılamıyor", "ekip hub local (bu bilgisayarda) ya da ekip hub link <url> <token> (VPS)", "info"));
   // panes open in iTerm2, WezTerm and kitty; elsewhere ekip's own terminal is the fix. Outside WezTerm,
   // while WezTerm is not the default, ekip's own terminal is offered at each start until it is set up

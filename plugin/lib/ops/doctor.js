@@ -62,6 +62,14 @@ export async function main(args = []) {
     line(running ? "ok" : "bad", "VPS tüneli", running ? `${REMOTE.ssh} açık` : t("kapalı"));
     if (!running) { problems++; if (fix) { spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${TUNNEL_LABEL}`]); await sleep(4000); line("warn", "", t("tünel yeniden başlatıldı")); fixed.push(t("VPS tüneli yeniden başlatıldı")); } }
   }
+  if (SETTINGS.hubPrivate?.url) { // the hub on the tailnet (ekip hub private): served URL and the old public one
+    const pv = await import("../hub/private.js");
+    const io = pv.realIo();
+    const ok = await pv.answers(io, SETTINGS.hubPrivate.url);
+    line(ok ? "ok" : "bad", "Tailscale hub", ok ? SETTINGS.hubPrivate.url : `${SETTINGS.hubPrivate.url} ${t("erişilemiyor")} → ekip hub private status`);
+    if (!ok) problems++;
+    if (SETTINGS.hubPrivate.publicUrl && await pv.answers(io, SETTINGS.hubPrivate.publicUrl)) line("warn", t("genel adres"), `${SETTINGS.hubPrivate.publicUrl} ${t("hâlâ cevap veriyor")}`);
+  }
   const t0 = Date.now(), free = await healthy(), slow = Date.now() - t0 > 1500;
   line(free ? (slow ? "warn" : "ok") : "bad", "freellmapi", free ? `${keyCounts().length} ${t("sağlayıcı")}${slow ? ` · ${t("yavaş")} (${((Date.now() - t0) / 1000).toFixed(1)} sn)` : ""}` : t("erişilemiyor"));
   if (!free) problems++;

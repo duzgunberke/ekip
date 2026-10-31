@@ -58,6 +58,7 @@ Projects and memory
 VPS hub
   ekip job "task" --project NAME [--via auto|copilot|free] | ls | show ID
   ekip hub link|push|status|open
+  ekip hub private [--ssh H] [--hostname N] [--port P] [--yes] [--keep-route] | status | off
   ekip remote <ssh-host>
   ekip tunnel install|status
   ekip vps add|token|status|sh|apps|deploy|logs|restart
@@ -76,7 +77,7 @@ On first lead start, ekip greets you and suggests missing setup steps. `ekip doc
 
 ### Setup and language
 
-`ekip setup` (`ekip kurulum`) checks every step ekip needs (prerequisites, services, free keys, an embedding provider, worker logins, a project, the project index, ekip's terminal, notifications, the hub) and walks the missing ones: now / later / skip. `--list` prints the list (also what runs without a terminal), `--json` the counts and steps, `--refresh` only re-checks. `ekip setup snooze <id> [days]` silences one reminder (default seven days), `ekip setup unsnooze <id>` brings it back. Step ids: `prereqs services keys embeddings agents project index terminal notify hub`. The full table is in [Install](install.md#guided-setup). `ekip status` ends with the missing steps, the task pane shows one amber line while a required step is missing, WezTerm shows `setup 5/9`.
+`ekip setup` (`ekip kurulum`) checks every step ekip needs (prerequisites, services, free keys, an embedding provider, worker logins, a project, the project index, ekip's terminal, notifications, the hub) and walks the missing ones: now / later / skip. `--list` prints the list (also what runs without a terminal), `--json` the counts and steps, `--refresh` only re-checks. `ekip setup snooze <id> [days]` silences one reminder (default seven days), `ekip setup unsnooze <id>` brings it back. Step ids: `prereqs services keys embeddings agents project index terminal notify hub hub-private`. The full table is in [Install](install.md#guided-setup). `ekip status` ends with the missing steps, the task pane shows one amber line while a required step is missing, WezTerm shows `setup 5/9`.
 
 `ekip lang [tr|en]` (`ekip dil`) shows or sets the language; see [Install](install.md#language). `ekip lead-prompt` prints the lead's system text as the current language makes it.
 

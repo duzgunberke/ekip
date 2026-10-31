@@ -151,6 +151,8 @@ Claude on a normal day of the author's, 58% during the cold setup ([the numbers]
   [How it works](docs/architecture.md#agents-that-talk-to-each-other)
 - **A VPS hub** keeps memory, the free pool and a job queue running while the Mac is off, and serves
   the web panel. [Install](docs/install.md#optional-vps-hub)
+- **A private hub:** `ekip hub private` puts the hub on your Tailscale tailnet, so the panel and API
+  open only from your own devices, with no domain or DNS record. [Install](docs/install.md#private-hub-with-tailscale)
 
 </details>
 

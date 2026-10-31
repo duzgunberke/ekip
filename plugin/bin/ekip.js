@@ -1102,8 +1102,10 @@ async function job(args) {
   console.log(`queued ${j.id ?? JSON.stringify(j)} on ${SETTINGS.hubUrl} (ekip job show ${j.id})`);
 }
 
-async function hub([sub, url, token]) {
-  if (sub === "local") { process.exitCode = await (await import("../lib/hub/local-hub.js")).main([url]); return; }
+async function hub(args) {
+  const [sub, url, token] = args;
+  if (sub === "private") return (await import("../lib/hub/private.js")).main(args.slice(1));
+  if (sub === "local") return (await import("../lib/hub/local-hub.js")).main([url]);
   if (sub === "link") {
     if (!url || !token) die("usage: ekip hub link <https://hub.example.com> <token>");
     saveSettings({ hubUrl: url.replace(/\/$/, ""), hubToken: token, hubLocal: false });
@@ -1131,7 +1133,7 @@ async function hub([sub, url, token]) {
     console.log(`pushed ${projects.length} projects to ${SETTINGS.hubUrl} (${r.count} on the hub)`);
   } else if (sub === "status" || !sub) console.log(JSON.stringify(await hubFetch("/api/status"), null, 2));
   else if (sub === "open") openUrl(SETTINGS.hubUrl ?? die("no hub linked"));
-  else die("usage: ekip hub link <url> <token> | local [up|down|status] | push | status | open");
+  else die("usage: ekip hub link <url> <token> | local [up|down|status] | private [status|off] | push | status | open");
 }
 
 // Runs are reported to the hub (when one is configured) so the panel shows Mac and VPS work together,
@@ -1931,7 +1933,7 @@ ${c.bold("Projects and memory")}
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
   ${c.cyan("ekip job")} ${c.gray('"task" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Setup")}
@@ -1982,7 +1984,7 @@ ${c.bold("Projeler ve hafıza")}
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}
   ${c.cyan("ekip job")} ${c.gray('"iş" --project NAME [--via auto|copilot|free] | ls | show ID')}
-  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
+  ${c.cyan("ekip hub")} ${c.gray("link|push|status|open|private")}    ${c.cyan("ekip remote")} ${c.gray("<ssh-host>")}    ${c.cyan("ekip tunnel")} ${c.gray("install|status")}
   ${c.cyan("ekip vps")} ${c.gray("add|token|status|sh|apps|deploy|logs|restart")}
 
 ${c.bold("Kurulum")}
@@ -2106,7 +2108,7 @@ switch (cmd) {
   }
   case "agents": await agentsMain(rest); break;
   case "job": case "jobs": await job(rest); break;
-  case "hub": await hub(rest); break;
+  case "hub": code = (await hub(rest)) ?? 0; break;
   case "vps": await vpsMain(rest); break;
   case "dev": await (await import("../lib/dev/dev.js")).main(rest); break;
   case "tunnel": tunnel(rest); break;

@@ -46,6 +46,7 @@ export async function facts({ cwd = process.cwd() } = {}) {
     freeUp, memUp, keys: keys.filter(([p]) => !KEYLESS.includes(p)), embeddings: onboarding.embeddingsReady(keys), logged,
     projects, projectGaps: projects.filter((p) => p.path).map((p) => ({ name: p.name, gaps: onboarding.projectGaps(p) })), vectors,
     wezterm: weztermInstalled(), terminal: SETTINGS.terminal ?? null, notifier: has("terminal-notifier"), hub: !!(SETTINGS.hubUrl && SETTINGS.hubToken), cwd,
+    hubExposed: (await import("../hub/private.js")).hubExposed(SETTINGS),
   };
 }
 
@@ -95,6 +96,9 @@ export const STEPS = [
     check: (f) => ({ done: f.notifier }) },
   { id: "hub", level: "optional", title: "Hub (web paneli, Mac kapalıyken iş kuyruğu)", short: "hub", why: "web paneli ve Mac kapalıyken çalışan hafıza, ücretsiz havuz ve iş kuyruğu", command: "ekip hub local",
     check: (f) => ({ done: f.hub }) },
+  // shown only while a VPS hub is linked at a public address; offered once by the wizard
+  { id: "hub-private", level: "optional", once: true, when: (f) => !!f.hubExposed, title: "Hub'ı gizle (Tailscale)", short: "gizli hub", why: "panel ve API yalnız kendi cihazlarınızdan açılır; alan adı, DNS kaydı ve açık port gerekmez", command: "ekip hub private",
+    check: (f) => ({ done: !f.hubExposed }) },
 ];
 
 // a fake result for a step, for tests and demos: EKIP_SETUP_FAKE="keys=done,agents=missing"
@@ -105,11 +109,11 @@ function fakes(env = process.env) {
 /** Runs every check: [{ id, level, title, short, why, command, done, detail, snoozed }]. */
 export function evaluate(f, { steps = STEPS, overrides = {}, env = process.env } = {}) {
   const fake = fakes(env);
-  return steps.filter((s) => !s.only || s.only === f.platform).map((s) => {
+  return steps.filter((s) => (!s.only || s.only === f.platform) && (!s.when || s.when(f))).map((s) => {
     let r;
     try { r = overrides[s.id] ? overrides[s.id](f) : s.check(f); } catch (e) { r = { done: false, detail: e.message }; }
     if (s.id in fake) r = { ...r, done: fake[s.id] };
-    return { id: s.id, level: s.level, title: t(s.title), short: t(s.short), why: t(s.why), command: r.command ?? s.command, done: !!r.done, detail: r.detail ?? null, snoozed: !r.done && snoozed(s.id) };
+    return { id: s.id, level: s.level, once: !!s.once, title: t(s.title), short: t(s.short), why: t(s.why), command: r.command ?? s.command, done: !!r.done, detail: r.detail ?? null, snoozed: !r.done && snoozed(s.id) };
   });
 }
 
@@ -249,6 +253,7 @@ export function actions(step, f, { ask: prompt = ask, secret = askSecret, open =
     case "terminal": return [...(f.wezterm ? [] : [ekip(["terminal", "install"])]), ekip(["terminal", "default", "wezterm"])];
     case "notify": return has("brew") ? [["brew", ["install", "terminal-notifier"]]] : [];
     case "hub": return [ekip(["hub", "local"])];
+    case "hub-private": return [ekip(["hub", "private"])];
     default: return []; // prereqs: printed, the user installs them
   }
 }
@@ -279,6 +284,8 @@ export async function wizard({ io = {}, cwd = process.cwd(), env = process.env, 
   for (const s0 of todo) {
     const s = steps.find((x) => x.id === s0.id);
     if (s.done) continue; // finished by an earlier step (ekip init starts the services too)
+    // offered once (the setup gap stays until it is done or skipped); `ekip setup unsnooze ID:offered` offers it again
+    if (s.once) { if (s.snoozed || snoozed(`${s.id}:offered`)) continue; snooze(`${s.id}:offered`, SKIP_DAYS); }
     const sum = summary(steps);
     console.log(`\n${c.bold(`${t("Kurulum")} ${sum.done}/${sum.total}`)}  ${progress(sum)}`);
     console.log(`  ${c.yellow("●")} ${c.bold(s.title)} ${c.gray(`· ${levelLabel(s.level)}`)}${s.detail ? c.gray(` · ${s.detail}`) : ""}\n    ${s.why}\n    ${c.cyan(s.command)}`);

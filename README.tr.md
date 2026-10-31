@@ -153,6 +153,8 @@ dışında yürüdü, soğuk kurulum sırasında %58 ([rakamlar](docs/architectu
   (`ekip dev`) çalışabilir. [Nasıl çalışır](docs/architecture.md#agents-that-talk-to-each-other)
 - **Bir VPS hub**, Mac kapalıyken belleği, ücretsiz havuzu ve iş kuyruğunu çalışır tutar ve web panelini
   sunar. [Kurulum](docs/install.md#optional-vps-hub)
+- **Gizli hub:** `ekip hub private` hub'ı Tailscale ağınıza alır; panel ve API yalnız kendi
+  cihazlarınızdan açılır, alan adı ve DNS kaydı gerekmez. [Kurulum](docs/install.md#private-hub-with-tailscale)
 
 </details>
 
