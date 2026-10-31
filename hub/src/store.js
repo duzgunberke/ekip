@@ -45,6 +45,8 @@ export function openStore(dir) {
     savings: new Collection(dir, "savings", null),
     // knowledge usage summary pushed by `ekip stats` / `ekip doctor` (lookups, hit rates, skills)
     usage: new Collection(dir, "usage", null),
+    // panel passkeys (WebAuthn public keys, no secrets): the second login factor
+    passkeys: new Collection(dir, "passkeys", []),
   };
   s.flushAll = () => { for (const c of Object.values(s)) if (c instanceof Collection) c.flush(); };
   return s;

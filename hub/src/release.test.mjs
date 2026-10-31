@@ -80,7 +80,7 @@ test("hub serves GET /api/release and keeps task result/ask", async (t) => {
   const base = `http://127.0.0.1:${port}`, auth = { authorization: `Bearer ${token}` };
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${base}/healthz`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 100)); }
 
-  assert.equal((await fetch(`${base}/api/release`)).status, 401, "the release state needs the token");
+  assert.equal((await fetch(`${base}/api/release`)).status, 404, "without the token the release state does not exist");
   const r = await (await fetch(`${base}/api/release`, { headers: auth })).json();
   assert.equal(r.main.sha, MAIN);
   assert.equal(r.testing, true);
