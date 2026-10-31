@@ -7,7 +7,8 @@
 //                                 headless worker; prints its final report (the lead calls this)
 //   ekip key add <platform> <key> add a free-tier provider key to freellmapi (restarts it)
 //   ekip key list                 configured provider keys
-//   ekip setup                    install freellmapi, link ekip on PATH, enable the keyless pool
+//   ekip init                     install freellmapi, link ekip on PATH, enable the keyless pool
+//   ekip setup                    guided setup: what is missing, step by step
 //   ekip team up|down|ls          long-lived workers (agy, free) as hoptell peers in tmux
 //   ekip status | up | down | logs
 import { spawn, spawnSync } from "node:child_process";
@@ -1358,6 +1359,12 @@ const step = (n, t) => console.log(`\n${c.magenta(`━━ ${n}.`)} ${c.bold(t)}`
 async function init({ skipKeys = false, args = [] } = {}) {
   if (process.platform === "darwin" && has("brew") && !has("terminal-notifier")) spawnSync("brew", ["install", "terminal-notifier"], { stdio: "ignore", timeout: 120_000 });
   const self = fs.realpathSync(process.argv[1]);
+  // the language first (default: the system's); ekip's texts, the lead's task titles and the panel follow it
+  if (!SETTINGS.lang && !process.env.EKIP_LANG && process.stdin.isTTY && process.stdout.isTTY && !process.env.CI) {
+    const answer = (await ask(`Dil / Language [tr/en] (${lang}): `)).trim().toLowerCase();
+    saveSettings({ lang: ["tr", "en"].includes(answer) ? answer : lang });
+    if (SETTINGS.lang !== lang) { process.env.EKIP_LANG = SETTINGS.lang; return spawnSync(process.execPath, process.argv.slice(1), { stdio: "inherit", env: process.env }).status; }
+  }
   step(1, "prerequisites");
   const need = ["git", "claude", "sqlite3", "tmux", "docker"];
   const missing = need.filter((b) => !has(b));
@@ -1443,17 +1450,8 @@ async function init({ skipKeys = false, args = [] } = {}) {
   step(7, "worker agent CLIs (each one is another quota)");
   await agentsMain(["install"]);
 
-  if (!skipKeys && process.stdin.isTTY) {
-    step(8, "free-tier keys");
-    await keyWizard();
-    step(9, "agent logins (codex, qwen, opencode, copilot; Enter through any you don't use)");
-    await agentsMain(["login"]);
-    step(10, "your projects");
-    console.log("Registering projects with a commit in the last 30 days (cards, wiki, code graphs, memory):");
-    await (await import("../lib/projects/projects.js")).main(["scan", "--days", "30", "--yes"]);
-  }
   // the web panel: on this computer when no VPS hub is linked (same image the VPS runs)
-  step(11, "web panel");
+  step(8, "web panel");
   try {
     const lh = await import("../lib/hub/local-hub.js");
     if (lh.remoteLinked()) console.log(`ok (linked hub: ${SETTINGS.hubUrl})`);
@@ -1461,12 +1459,14 @@ async function init({ skipKeys = false, args = [] } = {}) {
   } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip hub local`); }
   // macOS: ekip's own terminal, offered once (--yes installs, --no-terminal skips); `ekip` then opens in it
   if (process.platform === "darwin" && !args.includes("--no-terminal")) {
-    step(12, t("ekip'in kendi terminali (WezTerm)"));
+    step(9, t("ekip'in kendi terminali (WezTerm)"));
     try { await (await import("../lib/ops/terminal.js")).initTerminal(args); } catch (e) { console.log(`${c.yellow("skipped")}: ${e.message}; later: ekip terminal install`); }
   }
-  console.log("\nDone. Open a new terminal and run: ekip");
-  const onboarding = await import("../lib/projects/onboarding.js");
-  onboarding.printGaps(await onboarding.setupGaps({ cwd: process.cwd(), refresh: true }), { heading: true });
+  // keys, worker logins, projects and the rest: the guided setup takes over (a list without a terminal)
+  const setup = await import("../lib/ops/setup.js");
+  if (!skipKeys && process.stdin.isTTY && process.stdout.isTTY && !process.env.CI) await setup.wizard({ askLang: false });
+  else setup.printList(await setup.checkSetup({ refresh: true }));
+  console.log(`\n${t("Bitti. Yeni bir terminal açıp çalıştırın: ekip")}`);
 }
 
 // ---- TencentDB Agent Memory ---------------------------------------------------------------------
@@ -2028,7 +2028,10 @@ switch (cmd) {
     break;
   // the work digest; --system: pools, memory, panel and recent runs
   case "status": case "durum": if (rest.includes("--system") || rest.includes("--sistem")) await status(); else code = await (await import("../lib/tasks/digest.js")).main(rest); break;
-  case "init": case "setup": await init({ skipKeys: rest.includes("--no-keys"), args: rest }); break;
+  case "init": await init({ skipKeys: rest.includes("--no-keys"), args: rest }); break;
+  // the guided setup: every step ekip needs, what is missing, and doing it now
+  case "setup": case "kurulum": code = await (await import("../lib/ops/setup.js")).main(rest); break;
+  case "lang": case "dil": code = (await import("../lib/ops/setup.js")).langMain(rest); break;
   case "memory": await memory(rest); break;
   case "team": await team(rest); break;
   case "up": await up(); break;
