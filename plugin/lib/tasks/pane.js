@@ -159,7 +159,7 @@ function cardLine(content, state, width, st) {
 
 /**
  * A task as a card. card: { state, title, project, pct, status, statusState, when, step: { n, total,
- * title, note }, stalled, workers: [{ state, via, label, note }], ask: { question, options }, result }.
+ * title, note }, stalled, workers: [{ state, via, label, note }], ask: { question, options }, review: { state, text }, result }.
  */
 export function card(x, width, st, { compact = false } = {}) {
   const narrow = width < NARROW, inner = width - 2 - 3 - 1;
@@ -217,6 +217,8 @@ export function card(x, width, st, { compact = false } = {}) {
     const parts = fitParts([{ text: w.via, paint: st.bold }, ...(w.label ? [{ text: w.label, shrink: true }] : []), ...(w.note ? [{ text: w.note, paint: (s) => (w.state === "running" ? st.muted(s) : st.state(w.state, s)) }] : [])], inner - 4, "  ");
     lines.push(cardLine(`  ${sym} ${parts.text}`, x.state, width, st));
   }
+  // the automatic review: "inceleniyor (reviewer: claude) · düzeltme turu 1/2" or "review: geçti (kriter 12/12)"
+  if (x.review?.text) lines.push(cardLine(`  ${st.state(x.review.state, `${st.glyph(x.review.state)} ${clip(x.review.text, inner - 4)}`)}`, x.state, width, st));
   if (x.result) lines.push(cardLine(`  ${st.state("done", `${t("Sonuç")}:`)} ${clip(x.result, inner - 2 - cols(t("Sonuç")) - 2)}`, x.state, width, st));
   return lines;
 }

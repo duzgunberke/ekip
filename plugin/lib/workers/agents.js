@@ -321,6 +321,25 @@ export function autoOrder() {
   return all.filter((n) => n !== "claude").map((n, i) => ({ n, i })).sort((a, b) => load(a.n) - load(b.n) || a.i - b.i).map((x) => x.n);
 }
 
+// Model families: a result is reviewed by a pool of another family than the one that wrote it, so the
+// reviewer does not share the writer's blind spots. Copilot counts as its own family (it serves
+// several vendors' models); every free-pool harness shares the "free" family. "poolFamilies" in
+// data/config.json overrides a pool.
+const FAMILY = { agy: "google", gemini: "google", codex: "openai", copilot: "github", claude: "anthropic", qwen: "qwen", opencode: "opencode", grok: "xai" };
+export const family = (via) => SETTINGS.poolFamilies?.[via] ?? (onFreePool(via) ? "free" : FAMILY[via] ?? via);
+
+/**
+ * The pool that reviews a result written on `author`: the first usable pool of the auto order (or
+ * "reviewPools" in data/config.json) from another model family, strong pools first; with
+ * minTier "strong" only a strong one. null when no other family is usable.
+ */
+export function reviewerPool(author, { minTier = null, exclude = [] } = {}) {
+  const fam = family(author);
+  const order = (SETTINGS.reviewPools ?? autoOrder()).filter((v) => v !== author && family(v) !== fam && !exclude.includes(v));
+  const strong = order.filter(isStrong);
+  return minTier === "strong" ? strong[0] ?? null : strong[0] ?? order[0] ?? null;
+}
+
 /** Ready pools with a free slot right now (for `ekip mesai all`): worker CLIs, then claude, then free (when it has keys). */
 export function freePools() {
   const running = runningByPool();

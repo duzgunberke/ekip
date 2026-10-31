@@ -25,6 +25,9 @@ export const pidAlive = (pid) => { if (!pid) return false; try { process.kill(pi
 // no estimate, and the task stays open.
 const HELD = ["blocked", "waiting-user"];
 const OPEN_WORKER = ["running", "queued", "waiting"];
+// Automatic review states (review/auto.js) that keep a task open: its result is not final yet.
+export const REVIEW_OPEN = ["pending", "reviewing", "fixing"];
+const reviewOpen = (t) => REVIEW_OPEN.includes(t?.review?.state);
 
 function update(id, fn) {
   const all = read();
@@ -141,7 +144,7 @@ function autoClose(t) {
   if (t.status !== "running") return;
   const terminal = t.steps.length && t.steps.every((x) => ["done", "skipped", "failed"].includes(x.status));
   const workersDone = t.workers.length && t.workers.every((w) => !OPEN_WORKER.includes(w.status));
-  const open = t.hold || t.steps.some((x) => ["running", "pending", ...HELD].includes(x.status));
+  const open = t.hold || reviewOpen(t) || t.steps.some((x) => ["running", "pending", ...HELD].includes(x.status));
   if (terminal || (workersDone && !open)) {
     const failed = t.steps.some((x) => x.status === "failed");
     Object.assign(t, { status: failed ? "failed" : "done", endedAt: now() });
@@ -204,6 +207,35 @@ export function autoResult(id, report, label) {
   } catch { /* unknown task: ignore */ }
   return { text, links };
 }
+
+/**
+ * The automatic review of the task's last worker result (review/auto.js): { state, author, reviewer,
+ * round, max, met, total, findings, items, pid }. An open review keeps the task from closing; the
+ * pane, `ekip status` and the panel show it as one line (reviewLabel).
+ */
+export function setReview(id, patch, text = null) {
+  try {
+    return update(id, (t) => {
+      t.review = { ...(t.review ?? {}), ...patch, at: now() };
+      if (text) t.notes.push({ at: now(), text });
+      autoClose(t);
+    });
+  } catch { return null; /* unknown task: ignore */ }
+}
+
+/** "inceleniyor (reviewer: claude) · düzeltme turu 1/2", "review: geçti (kriter 12/12)", "review: düştü (3 bulgu)". */
+export function reviewLabel(r) {
+  if (!r?.state) return "";
+  const round = r.round ? tr("düzeltme turu {n}/{max}", { n: r.round, max: r.max ?? 2 }) : "";
+  if (r.state === "pending") return tr("incelemeye gidiyor");
+  if (r.state === "reviewing") return [tr("inceleniyor (reviewer: {pool})", { pool: r.reviewer ?? "?" }), round].filter(Boolean).join(" · ");
+  if (r.state === "fixing") return [round, tr("düzeltiyor: {pool}", { pool: r.author ?? "?" }), r.findings ? tr("{n} bulgu", { n: r.findings }) : ""].filter(Boolean).join(" · ");
+  if (r.state === "passed") return tr("review: geçti (kriter {met}/{total})", { met: r.met ?? "?", total: r.total ?? "?" });
+  if (r.state === "failed") return tr("review: düştü ({n} bulgu)", { n: r.findings ?? 0 });
+  return tr("review: yapılamadı");
+}
+/** The status-style state a review line is painted with. */
+export const reviewState = (r) => (r?.state === "passed" ? "done" : r?.state === "failed" ? "failed" : r?.state === "error" ? "blocked" : "running");
 
 /**
  * ekip task ask ID "question" --option A --option B: the task waits for the user's decision, shown
@@ -299,6 +331,11 @@ export function reapDead() {
     }
     autoClose(x);
   });
+  // a review whose `ekip run` process died will never report: it is closed as not done, held for the lead
+  for (const t of read().filter((x) => x.status === "running" && reviewOpen(x) && x.review.pid && !pidAlive(x.review.pid))) {
+    hold(t.id, "blocked", tr("otomatik inceleme yarıda kaldı; sonucu lead incelemeli"), null, { alert: true });
+    setReview(t.id, { state: "error", why: "process gone" }, tr("otomatik inceleme yarıda kaldı (süreç kayıp); lead incelesin"));
+  }
   // the hub cannot see pids: a task that just became paused (or stopped being) is pushed once, with
   // a note the first time, so the task's history says when its work was left without a process
   for (const t of read().filter((x) => x.status === "running" && !!x.pausedAt !== paused(x))) update(t.id, (x) => {
@@ -316,7 +353,7 @@ export function reapDead() {
  * started in a bare background shell and then forgot looks exactly like this.
  */
 export function orphaned(t, ms = 10 * 60_000) {
-  if (t.status !== "running" || t.hold || !t.steps?.some((s) => s.status === "running")) return false;
+  if (t.status !== "running" || t.hold || reviewOpen(t) || !t.steps?.some((s) => s.status === "running")) return false;
   if ((t.workers ?? []).some((w) => OPEN_WORKER.includes(w.status) && (!w.pid || pidAlive(w.pid)))) return false;
   const lastEnd = Math.max(0, ...(t.workers ?? []).map((w) => Date.parse(w.endedAt ?? w.startedAt ?? 0) || 0));
   const moved = Math.max(...t.steps.filter((s) => s.status === "running").map((s) => Date.parse(s.progressAt ?? s.startedAt ?? 0) || 0));
@@ -465,7 +502,8 @@ function render(t) {
   const asked = t.ask?.options?.length ? [fit(`    ${icon("waiting-user")} ${tr("seçenekler")}: ${t.ask.options.map((o, i) => `${c.cyan(`${String.fromCharCode(65 + i)})`)} ${o}`).join(c.gray("  ·  "))}`)] : [];
   const result = t.status !== "running" && t.result?.text ? [fit(`    ${paint("done", `${tr("Sonuç")}:`)} ${t.result.text}`), ...(t.result.links ?? []).map((l) => fit(`      ${c.under(l)}`))] : [];
   const tail = result.length ? result : last ? [fit(`    ${c.gray(`↳ ${last.text}`)}`)] : [];
-  return [head, line, ...steps, ...asked, ...workers, ...waiting, ...tail].join("\n");
+  const review = t.review?.state ? [fit(`    ${icon(reviewState(t.review))} ${paint(reviewState(t.review), reviewLabel(t.review))}`)] : [];
+  return [head, line, ...steps, ...asked, ...workers, ...waiting, ...review, ...tail].join("\n");
 }
 
 // The pools for the pane's footer (workers/pool-view.js): which pools are connected and their limits
@@ -525,6 +563,7 @@ export function cardOf(t) {
     step: cur ? { n, total: steps.length, title: cur.title, note } : null,
     stalled: stall ? tr("{duration} boyunca ilerleme yok", { duration: fmtDur(stall) }) : null,
     workers, ask, result: t.status !== "running" ? t.result?.text ?? null : null,
+    review: t.review?.state ? { state: reviewState(t.review), text: reviewLabel(t.review) } : null,
   };
 }
 

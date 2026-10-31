@@ -117,6 +117,21 @@ async function orphanNote() {
   } catch { return { ids: new Set(), text: "" }; }
 }
 
+// Review verdicts the lead has not acted on: tasks still open whose automatic review (review/auto.js)
+// passed or failed. They come with every prompt, notifications too, so a result that finished while
+// the lead was busy is not left waiting for hours.
+async function reviewNote() {
+  try {
+    const tasks = await import("../tasks/tasks.js");
+    const list = tasks.active().filter((x) => mine(x) && ["passed", "failed", "error"].includes(x.review?.state));
+    if (!list.length) return "";
+    const line = (x) => `- ${x.id} "${x.title}": ${tasks.reviewLabel(x.review)}${x.review.reviewer ? ` (reviewer ${x.review.reviewer})` : ""}${x.review.items?.length ? `; ${x.review.items.slice(0, 2).join(" ; ")}` : ""}`;
+    return `## Review verdicts waiting for you
+${list.map(line).join("\n")}
+Passed: do a short check of your own, then close the task with its result (and a merge proposal when it is on a branch). Failed or not done: fix it, re-dispatch it, or answer the question on the task.`;
+  } catch { return ""; }
+}
+
 // The lessons of the project this message is about, and the lead's own ones (genel), on every
 // message whatever it is about: the mistakes the user already had to correct once. Newest ten of
 // the project, then the newest general ones, 1,500 characters at most.
@@ -146,7 +161,7 @@ export async function main() {
     ? `## Open tasks that stopped moving (update or close them now, before anything else)\n${stale.map((t) => `- ${t.id} "${t.title}": ${t.steps.filter((x) => x.status !== "done" && x.status !== "skipped").map((x, i) => `${x.title} (${x.status})`).join(", ") || "all steps done"}; last update ${Math.round((Date.now() - lastMove(t)) / 60000)} min ago`).join("\n")}\nIf the work is done: mark the steps and \`ekip task done <id> "<result>"\`. If it goes on: mark the running step or add a note. If it failed: \`ekip task fail <id> "<why>"\`.`
     : "";
   // orphaned tasks first: the context is cut at 6,000 characters and they must never be the part cut
-  let staleNote = [orphans.text, staleText].filter(Boolean).join("\n\n");
+  let staleNote = [orphans.text, await reviewNote(), staleText].filter(Boolean).join("\n\n");
   const emit = (text) => { if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text.slice(0, 6000) } })); };
   // system notifications (finished background tasks, agent results) arrive as prompts too: they are
   // not the user asking anything and only pulled in noise
