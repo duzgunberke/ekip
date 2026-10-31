@@ -190,7 +190,9 @@ const fresh = () => { fs.rmSync(path.join(tmp, "panes"), { recursive: true, forc
   Object.assign(g.panes[0], { zoomed: true, cols: 200 });
   w.openPane("x");
   assert.ok(!g.splits().at(-1).startsWith("1 "), "a zoomed lead is not split");
-  assert.deepEqual(g.calls.at(-1), ["cli", "zoom-pane", "--pane-id", "1", "--zoom"]);
+  assert.deepEqual(g.calls.at(-2), ["cli", "zoom-pane", "--pane-id", "1", "--zoom"]);
+  // the focus goes back to the pane the user was in, never to the new worker pane
+  assert.equal(g.calls.at(-1)[1], "activate-pane");
   assert.equal(g.panes[0].zoomed, true);
   Object.assign(g.panes[0], { cols: saved.cols });
 }

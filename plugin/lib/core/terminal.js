@@ -145,6 +145,9 @@ export function wezterm({ run = run0, env = process.env, home = HOME } = {}) {
       if (inColumn) state.write([...lay.column.map((p) => p.id), id]);
       const zoomed = [lay.me, lay.task, ...lay.column].find((p) => p?.zoomed);
       if (zoomed && !lay.workers.includes(zoomed)) cli(["zoom-pane", "--pane-id", zoomed.id, "--zoom"]);
+      // a new pane takes the focus in WezTerm: give it back to the pane the user was typing in
+      const was = [lay.me, lay.task, ...lay.column].find((p) => p?.active) ?? lay.me;
+      cli(["activate-pane", "--pane-id", was.id]);
       return id;
     },
     paneAlive(id) {
@@ -206,7 +209,7 @@ export function kitty({ run = run0, env = process.env, home = HOME } = {}) {
       const where = below || lay.column.length ? "hsplit" : "vsplit";
       const type = full && !wt ? ["--type=tab", `--tab-title=${WORKERS_TAB}`, `--match=window_id:${lay.me.id}`]
         : ["--type=window", `--location=${where}`, `--next-to=id:${anchor}`, ...(!below && !lay.column.length ? [`--bias=${COLUMN_PCT}`] : [])];
-      const r = k(["launch", ...type, ...(title ? ["--title", title] : []), "--cwd=current", ...paneShell(command)]);
+      const r = k(["launch", ...type, "--keep-focus", ...(title ? ["--title", title] : []), "--cwd=current", ...paneShell(command)]);
       const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
       if (!/^\d+$/.test(id)) return null;
       if (!below && !full) state.write([...lay.column.map((p) => p.id), id]);
