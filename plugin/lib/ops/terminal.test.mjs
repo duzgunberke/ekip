@@ -185,6 +185,29 @@ assert.equal(core.SETTINGS.terminal, undefined);
   assert.ok(luaText.includes('local STATUS = "/x/data/terminal-status.json"'));
   assert.ok(!/tasks\.json/.test(luaText), "the tab bar never parses tasks.json");
   for (const part of ["window_padding", 'font_with_fallback({ "JetBrains Mono", "Menlo"', "show_new_tab_button_in_tab_bar = false", "format-window-title", "set_left_status", "inactive_pane_hsb", "split = C.border", "local function middle", "wezterm.home_dir"]) assert.ok(luaText.includes(part), part);
+  // what an iTerm2 user relies on
+  for (const part of [
+    'bind("Enter", "SHIFT", act.SendString("\\x1b\\r"))',
+    "generalPasteboard.types", '"public.png"', '"public.file-url"', 'act.SendKey({ key = "v", mods = "CTRL" })', 'act.PasteFrom("Clipboard")',
+    'bind("LeftArrow", "OPT", act.SendString("\\x1bb"))', 'bind("RightArrow", "OPT", act.SendString("\\x1bf"))', 'bind("Backspace", "OPT", act.SendString("\\x17"))',
+    'bind("LeftArrow", "CMD", act.SendString("\\x01"))', 'bind("RightArrow", "CMD", act.SendString("\\x05"))', 'bind("Backspace", "CMD", act.SendString("\\x15"))',
+    "send_composed_key_when_left_alt_is_pressed = true",
+    'act.ClearScrollback("ScrollbackAndViewport"), act.SendKey({ key = "L", mods = "CTRL" })',
+    'bind("d", "CMD", act.SplitPane({ direction = "Right" }))', 'bind("d", "CMD|SHIFT", act.SplitPane({ direction = "Down" }))',
+    'act.ActivatePaneDirection("Prev")', 'act.ActivatePaneDirection("Next")', 'bind("w", "CMD", act.CloseCurrentPane({ confirm = true }))',
+    'bind("Enter", "CMD", act.ToggleFullScreen)', "native_macos_fullscreen_mode = true", 'bind("Enter", "CMD|SHIFT", act.TogglePaneZoomState)',
+    'act.CompleteSelection("ClipboardAndPrimarySelection")', 'click("Up", 1, "CMD", act.OpenLinkAtMouseCursor)', "config.mouse_bindings or {}",
+    "wezterm.default_hyperlink_rules()", 'format = "file://$1"',
+    'quote_dropped_files = "Posix"', 'audible_bell = "Disabled"', "config.visual_bell", 'notification_handling = "AlwaysShow"',
+  ]) assert.ok(luaText.includes(part), part);
+  assert.ok(Number(luaText.match(/scrollback_lines = (\d+)/)[1]) >= 20000);
+  assert.ok(!/send_composed_key_when_\w+_alt_is_pressed = false/.test(luaText), "Option keeps typing @ | [ ] { }");
+  assert.ok(!/disable_default_(mouse|key)_bindings/.test(luaText), "WezTerm's defaults stay");
+  // the path rule: absolute paths with an optional :line, never relative ones or URLs
+  const rule = new RegExp(luaText.match(/regex = \[\[(.*?)\]\]/)[1]);
+  assert.equal("see /Users/a/b.js:12:3.".match(rule)?.[1], "/Users/a/b.js");
+  assert.equal("--f=/tmp/x".match(rule)?.[1], "/tmp/x");
+  for (const s of ["./rel/path", "src/x/y", "https://x.com/a/b", "/a"]) assert.equal(s.match(rule), null, s);
   assert.ok(!luaText.includes("—"), "no em dash");
   assert.ok(!/truncate_right/.test(luaText), "names are shortened in the middle, never cut at the end");
   // a real WezTerm loads it (when one is installed here)
@@ -197,6 +220,19 @@ assert.equal(core.SETTINGS.terminal, undefined);
     const r = spawnSync(bin, ["--config-file", path.join(dir, "check.lua"), "ls-fonts", "--text", "a"], { encoding: "utf8", timeout: 20_000 });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/error|stack traceback/i.test(r.stderr ?? ""), r.stderr);
+    // the keys and clicks WezTerm actually registers
+    const k = spawnSync(bin, ["--config-file", path.join(dir, "check.lua"), "show-keys"], { encoding: "utf8", timeout: 20_000 });
+    assert.equal(k.status, 0, k.stderr);
+    assert.ok(!/error|stack traceback/i.test(k.stderr ?? ""), k.stderr);
+    if (process.platform === "darwin") {
+      for (const re of [/SHIFT\s+Enter\s+->\s+SendString/, /SUPER\s+v\s+->\s+EmitEvent/, /SUPER\s+k\s+->\s+Multiple\(\[ClearScrollback\(ScrollbackAndViewport\)/,
+        /\bALT\s+LeftArrow\s+->\s+SendString/, /SUPER\s+LeftArrow\s+->\s+SendString/, /SUPER\s+Backspace\s+->\s+SendString/,
+        /SUPER\s+d\s+->\s+SplitPane\(SplitPane \{ direction: Right/, /SUPER\s+D\s+->\s+SplitPane\(SplitPane \{ direction: Down/,
+        /SUPER\s+\[\s+->\s+ActivatePaneDirection\(Prev\)/, /SUPER\s+w\s+->\s+CloseCurrentPane/, /SUPER\s+Enter\s+->\s+ToggleFullScreen/,
+        /SHIFT \| SUPER\s+Enter\s+->\s+TogglePaneZoomState/, /ALT \| SUPER\s+t\s+->\s+EmitEvent/, /ALT \| SUPER\s+d\s+->\s+SplitPane/,
+        /SUPER\s+Up \{ streak: 1, button: Left \}\s+->\s+OpenLinkAtMouseCursor/, /\n\s+Up \{ streak: 1, button: Left \}\s+->\s+CompleteSelection\(ClipboardAndPrimarySelection\)/,
+        /\n\s+Down \{ streak: 1, button: Middle \}/]) assert.match(k.stdout, re);
+    }
   }
 }
 assert.equal(term.jetbrainsInstalled([path.join(tmp, "no-fonts")]), false);

@@ -199,6 +199,67 @@ function M.apply(config)
   key("e", act.SpawnCommandInNewTab({ args = EKIP }))
   key("z", act.TogglePaneZoomState)
   for _, dir in ipairs({ "Left", "Right", "Up", "Down" }) do key(dir .. "Arrow", act.ActivatePaneDirection(dir)) end
+  local function bind(k, m, action) table.insert(keys, { key = k, mods = m, action = action }) end
+  -- Shift+Enter: a new line in Claude Code instead of sending the prompt
+  bind("Enter", "SHIFT", act.SendString("\\x1b\\r"))
+
+  -- Paths are links too ("/x/y.js", "/x/y.js:12"); the line number stays out of the file:// URL.
+  local rules = wezterm.default_hyperlink_rules()
+  table.insert(rules, { regex = [[(?:^|[\\s"'(\\[<=])((?:/[\\w.@~+-]*[\\w@~+-]){2,})(?::\\d+){0,2}]], format = "file://$1", highlight = 1 })
+  config.hyperlink_rules = rules
+  config.quote_dropped_files = "Posix"
+  config.audible_bell = "Disabled"
+  config.visual_bell = { fade_in_duration_ms = 60, fade_out_duration_ms = 120 }
+  config.colors.visual_bell = C.border
+  -- OSC 9 / OSC 777 notifications (Claude Code, CLIs) show as desktop notifications, as in iTerm2
+  config.notification_handling = "AlwaysShow"
+
+  if wezterm.target_triple:find("darwin") then
+    -- Option types @ | [ ] { } on Turkish and German keyboards: both Option keys stay composed
+    config.send_composed_key_when_left_alt_is_pressed = true
+    config.send_composed_key_when_right_alt_is_pressed = true
+    config.native_macos_fullscreen_mode = true
+
+    -- Cmd+V: an image on the clipboard goes to the program as Ctrl+V (Claude Code reads images
+    -- there); anything else, a copied file and any failed check are a plain text paste. Only the
+    -- pasteboard's type names are read (~0.1 s); "clipboard info" converts the image (~1 s).
+    bind("v", "CMD", wezterm.action_callback(function(window, pane)
+      local ok, success, out = pcall(wezterm.run_child_process, { "/usr/bin/osascript", "-l", "JavaScript", "-e",
+        [[ObjC.import("AppKit"); ObjC.deepUnwrap($.NSPasteboard.generalPasteboard.types).join(" ")]] })
+      local image = ok and success and type(out) == "string" and not out:find("public.file-url", 1, true)
+        and (out:find("public.png", 1, true) or out:find("public.tiff", 1, true) or out:find("public.jpeg", 1, true) or out:find("com.compuserve.gif", 1, true))
+      window:perform_action(image and act.SendKey({ key = "v", mods = "CTRL" }) or act.PasteFrom("Clipboard"), pane)
+    end))
+
+    -- iTerm2's "natural text editing": Option moves by word, Cmd to the line's ends
+    bind("LeftArrow", "OPT", act.SendString("\\x1bb"))
+    bind("RightArrow", "OPT", act.SendString("\\x1bf"))
+    bind("Backspace", "OPT", act.SendString("\\x17"))
+    bind("LeftArrow", "CMD", act.SendString("\\x01"))
+    bind("RightArrow", "CMD", act.SendString("\\x05"))
+    bind("Backspace", "CMD", act.SendString("\\x15"))
+    -- Cmd+K clears the scrollback and the screen; the program redraws its prompt
+    bind("k", "CMD", act.Multiple({ act.ClearScrollback("ScrollbackAndViewport"), act.SendKey({ key = "L", mods = "CTRL" }) }))
+
+    -- iTerm2's panes: Cmd+D right, Cmd+Shift+D down, Cmd+[ ] move, Cmd+W closes the pane,
+    -- Cmd+Shift+Enter maximizes it, Cmd+Enter is full screen
+    bind("d", "CMD", act.SplitPane({ direction = "Right" }))
+    bind("d", "CMD|SHIFT", act.SplitPane({ direction = "Down" }))
+    bind("[", "CMD", act.ActivatePaneDirection("Prev"))
+    bind("]", "CMD", act.ActivatePaneDirection("Next"))
+    bind("w", "CMD", act.CloseCurrentPane({ confirm = true }))
+    bind("Enter", "CMD", act.ToggleFullScreen)
+    bind("Enter", "CMD|SHIFT", act.TogglePaneZoomState)
+
+    -- A selection is copied when the mouse comes up (WezTerm's own default); a plain click no longer
+    -- opens a link, Cmd+click does, as in iTerm2. Other mouse defaults stay: only these are replaced.
+    local mouse = config.mouse_bindings or {}
+    local function click(dir, streak, m, action) table.insert(mouse, { event = { [dir] = { streak = streak, button = "Left" } }, mods = m, action = action }) end
+    for streak = 1, 3 do click("Up", streak, "NONE", act.CompleteSelection("ClipboardAndPrimarySelection")) end
+    click("Up", 1, "CMD", act.OpenLinkAtMouseCursor)
+    click("Down", 1, "CMD", act.Nop)
+    config.mouse_bindings = mouse
+  end
   config.keys = keys
   return config
 end
