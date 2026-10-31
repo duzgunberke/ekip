@@ -556,7 +556,26 @@ const CODE = ["tasks/tasks.js", "tasks/pane.js", "tasks/digest.js", "workers/age
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
+// Keyboard input of the live pane: raw mode, nothing echoed; keys go to onKey.
+let inputHeld = false;
+function holdInput(onKey) {
+  if (!process.stdin.isTTY || inputHeld) return;
+  inputHeld = true;
+  try { process.stdin.setRawMode(true); } catch { inputHeld = false; return; }
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", onKey);
+  process.stdin.resume();
+}
+function releaseInput() {
+  if (!inputHeld) return;
+  inputHeld = false;
+  process.stdin.removeAllListeners("data");
+  try { process.stdin.setRawMode(false); } catch { /* the tty is gone */ }
+  process.stdin.pause();
+}
+
 function restartWatch() {
+  releaseInput(); // the restarted pane takes the keyboard over
   process.stdout.write("\x1b[?25h\x1b[?1049l");
   const child = spawn(process.execPath, process.argv.slice(1), { stdio: "inherit" });
   process.removeAllListeners("SIGINT"); process.removeAllListeners("SIGTERM");
@@ -626,8 +645,12 @@ export async function main([sub = "ls", ...args]) {
     const draw = painter();
     if (!once) {
       process.stdout.write("\x1b[?1049h\x1b[?25l");
-      const restore = () => { process.stdout.write("\x1b[?25h\x1b[?1049l"); process.exit(0); };
+      const restore = () => { releaseInput(); process.stdout.write("\x1b[?25h\x1b[?1049l"); process.exit(0); };
       process.on("SIGINT", restore); process.on("SIGTERM", restore);
+      // The pane reads its own keyboard: a terminal turns the mouse wheel into arrow keys on the alternate
+      // screen (WezTerm, iTerm2), and with the tty in cooked mode they were echoed as ^[[A^[[B over the
+      // frame (31 Oct). Raw mode swallows them; q or Ctrl+C closes the pane.
+      holdInput((key) => { if (key === "\x03" || key === "q") restore(); });
     }
     let wake = null;
     process.stdout.on("resize", () => wake?.());
