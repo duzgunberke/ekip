@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { HOME, REPO, SETTINGS, die } from "../core/core.js";
 import * as mem from "../memory/memory.js";
+import { t } from "../core/i18n.js";
 
 export const REGISTRY = path.join(HOME, "projects.json");
 export const CARDS = path.join(HOME, "projects");
@@ -357,6 +358,16 @@ export async function main(argv) {
     const cfg = await import("./project-config.js");
     if (sub === "lessons" || !args[1]) { console.log(cfg.lessons(p, 100_000) || `(${cfg.lessonsFile(p)})`); return; }
     console.log(cfg.addLesson(p, args.slice(1).join(" ")));
+    // every lesson is also an acceptance criterion: the automatic review checks deliveries against it
+    if (p.path) console.log(t("kabul kriteri olarak da sayılır (ekip project criteria {name})", { name: p.name }));
+  } else if (sub === "criteria" || sub === "criterion") {
+    // ekip project criteria <name>: what every delivery is reviewed against; criterion <name> "text" adds one
+    const p = args[0] && !args[0].startsWith("-") ? getProject(args[0]) : null;
+    if (!p) die(t('kullanım: ekip project criterion <ad> "kriter"  |  ekip project criteria <ad>'));
+    const crit = await import("../review/criteria.js");
+    if (sub === "criteria" || !args[1]) { console.log(crit.listText(p)); return; }
+    const r = crit.addCriterion(p, args.slice(1).join(" "));
+    console.log(r.added ? `${r.file}${r.merged ? `\n${t("{n} eski kriter birleştirildi", { n: r.merged })}` : ""}` : t("zaten var: {text}", { text: r.existing }));
   } else if (sub === "remove" || sub === "rm") {
     // For a project you deleted or no longer work on: registry entry, card and server-side wiki and
     // code graphs go; the project folder itself is never touched.
@@ -386,5 +397,5 @@ export async function main(argv) {
     if (!c.ok) die(`card failed: ${c.error}`);
     updateProject(p.name, { card: c.file, summary: c.summary });
     console.log(c.file);
-  } else die("usage: ekip project add|scan|ls|show|sync|card|config|lesson|lessons ...");
+  } else die("usage: ekip project add|scan|ls|show|sync|card|config|lesson|lessons|criteria|criterion ...");
 }
