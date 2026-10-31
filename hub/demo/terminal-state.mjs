@@ -15,7 +15,7 @@ export function writeDemoState(home, { scene = "busy", pid = process.pid } = {})
   fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ agents: { codex: { ok: true }, copilot: { ok: true } }, autoOrder: ["codex", "copilot"], terminal: "wezterm", lang: "en" }));
   fs.writeFileSync(path.join(home, "projects.json"), JSON.stringify(["payments-api", "ios-app", "docs-site", "data-pipeline", "storefront-web"].map((name) => ({ name, path: path.join(home, "code", name) }))));
   for (const name of ["payments-api", "ios-app", "docs-site", "data-pipeline", "storefront-web", "northwind-storefront-checkout-experience"]) fs.mkdirSync(path.join(home, "code", name), { recursive: true });
-  fs.writeFileSync(path.join(home, "release-status.json"), JSON.stringify({ at: iso(0), version: "1.5.0", latest: "1.5.0", behind: false }));
+  fs.writeFileSync(path.join(home, "release-status.json"), JSON.stringify({ at: iso(0), version: "1.7.0", latest: "1.7.0", behind: false }));
   const runName = (agoMin, via) => `${iso(-min(agoMin)).slice(0, 19).replace(/:/g, "-")}.000Z-${via}.log`;
   const run = (name, via, project, label, taskId, lines) => {
     fs.writeFileSync(path.join(home, "runs", name), `cwd: ~/code/${project}\nproject: ${project}\nlabel: ${label}\ntaskId: ${taskId}\npid: ${pid}\ntask:\n${label}\n\n[ekip pool ${via}]\n${lines.join("\n")}\n`);

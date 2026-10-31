@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 const dir = process.argv[2]; if (!dir) { console.error('usage: node seed.mjs DATA_DIR'); process.exit(2); }
 fs.mkdirSync(dir,{recursive:true});
 const now=Date.now(), iso=(ms)=>new Date(now+ms).toISOString(), ago=(m)=>iso(-m*60000), id=(p,n)=>`${p}-${String(n).padStart(4,'0')}`;
@@ -39,4 +40,14 @@ const order=['agy','codex','copilot','qwen','opencode','grok','free'];
 const limits={at:ago(3),host:'northwind-dev-mbp',receivedAt:ago(2),workers,free,route:{order,worker:'codex',skipped:['agy'],profiles:{auto:{next:['google/gemini-2.5-flash','groq/openai/gpt-oss-120b','cerebras/qwen-3-32b'],models:7,cooling:1},'auto:memory':{next:['nvidia/nemotron-3-ultra','ovh/Qwen3.5-397B','google/gemini-3-flash-preview'],models:5,cooling:0},'auto:translate':{next:['zhipu/glm-4.7-flash','openrouter/deepseek-v4-flash:free','google/gemini-2.5-flash'],models:6,cooling:0}}}};
 const savings={days:14,rows:Array.from({length:14},(_,i)=>{const day=new Date();day.setUTCDate(day.getUTCDate()-(13-i));const early=i<3;const claude=early?240000-i*45000:32000+i*1300;const other=early?45000+i*8000:190000+i*5000;return{day:day.toISOString().slice(0,10),claude,other,pools:{agy:Math.round(other*.24),codex:Math.round(other*.25),copilot:Math.round(other*.16),free:Math.round(other*.35)},unmeasured:0}}),totals:{claude:0,other:0,outsidePercent:0,unmeasured:0},claudeWithoutOtherWouldBe:0,note:'Input-equivalent tokens; Anthropic price ratios, not an exact measure of subscription limits.'};savings.totals.claude=savings.rows.reduce((a,r)=>a+r.claude,0);savings.totals.other=savings.rows.reduce((a,r)=>a+r.other,0);savings.totals.outsidePercent=Math.round(savings.totals.other/(savings.totals.claude+savings.totals.other)*100);savings.claudeWithoutOtherWouldBe=savings.totals.other;
 for(const [n,v] of Object.entries({projects,tasks,runs,jobs,limits,savings,clients:{'demo-mac':{client:'demo-mac',host:'northwind-dev-mbp',agents:['Claude Code','Codex'],lastSeen:ago(1)}}}))fs.writeFileSync(path.join(dir,`${n}.json`),JSON.stringify(v,null,1));
+// ekip's release line on the task page: main's last commit passed its test, the hub runs it, the
+// newest release tag comes from a tiny bare mirror (hub/src/release.js reads ci/ like the VPS CI writes it)
+const ci=path.join(dir,'ci'),mainSha='abc1234'+'0'.repeat(33);fs.rmSync(ci,{recursive:true,force:true});fs.mkdirSync(ci,{recursive:true});
+fs.writeFileSync(path.join(ci,'last-sha'),mainSha+'\n');
+fs.writeFileSync(path.join(ci,'result.json'),JSON.stringify({status:'pass',step:null,sha:mainSha,startedAt:ago(34),finishedAt:ago(18)},null,1));
+const git=(...a)=>spawnSync('git',['-c','user.name=ekip demo','-c','user.email=demo@example.com',...a],{encoding:'utf8',input:'',env:{...process.env,GIT_AUTHOR_DATE:'2026-10-31T09:00:00Z',GIT_COMMITTER_DATE:'2026-10-31T09:00:00Z'}});
+const mirror=path.join(ci,'mirror.git');git('init','-q','--bare',mirror);
+const tree=git('--git-dir',mirror,'mktree').stdout.trim();
+const commit=git('--git-dir',mirror,'commit-tree',tree,'-m','demo release').stdout.trim();
+if(commit)git('--git-dir',mirror,'tag','v1.7.0',commit);
 console.log(`Seeded ${dir}: ${projects.length} projects, ${tasks.length} tasks, ${runs.length} runs`);

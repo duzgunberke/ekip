@@ -43,41 +43,58 @@ or `ekip lang tr` sets the language. New releases install themselves.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <b>A team on other quotas.</b> Claude splits the request and hands the parts to Antigravity, Codex, Copilot, Qwen, OpenCode, grok and about 60 free models. <code>ekip mesai on</code> keeps every connected pool busy at once.<br><br>
-      <img src="docs/screenshots/terminal-wezterm-layout.png" alt="ekip in WezTerm: the lead, two workers on the right, the task pane below with a card per task">
+      <img src="docs/screenshots/terminal-wezterm-hero.png" alt="ekip in WezTerm: the lead on the left, two workers on the right, the task pane below with a card per task"><br><br>
+      <b>A team on other quotas.</b> Claude splits each request and hands the parts to Antigravity, Codex, Copilot, Qwen, OpenCode, grok and about 60 free models. <code>ekip mesai on</code> keeps every pool busy.
     </td>
     <td width="50%" valign="top">
-      <b>Everything in sight.</b> Each request is a task with live steps, in a pane under the session and on the web panel. Questions for you sit on top in red, stuck work in orange.<br><br>
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/panel-tasks-light.png">
-        <img src="docs/screenshots/panel-tasks-dark.png" alt="The panel's task page: a digest card with waiting for you, stuck, running and finished, above the live tasks">
-      </picture>
+      <img src="docs/screenshots/panel-tasks-dark.png" alt="The panel's task page: a digest card with waiting for you, stuck, running and finished, above the live tasks"><br><br>
+      <b>Everything in sight.</b> Each request is a task with live steps, in a pane under the session and on the web panel. Questions for you sit on top in red, stuck work in orange.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <b>One answer to "what is going on?"</b> <code>ekip durum</code> (<code>ekip status</code>) shows what runs, what waits for you, what is stuck and what finished, with results and links.<br><br>
-      <img src="docs/demo/terminal-status.gif" alt="ekip status: running now, waiting for you, stuck, finished with results and links, and the release line">
+      <img src="docs/demo/terminal-status.gif" alt="ekip status: running now, waiting for you, stuck, finished with results and links, and the release line"><br><br>
+      <b>One answer to "what is going on?"</b> <code>ekip status</code> shows what runs, what waits for you, what is stuck and what finished, with results, links and the release line.
     </td>
     <td width="50%" valign="top">
-      <b>Built not to get stuck.</b> Watchdogs, a reaper for dead workers, pool fallback, queues (<code>--after</code>, <code>--when</code>), <code>--resume</code>, and <code>ekip track</code> for long uploads and renders.<br><br>
-      <img src="docs/demo/terminal-track.gif" alt="ekip track: an upload with percent, speed and finish time that ends done, and a copy that warns it is slower than expected">
+      <img src="docs/demo/terminal-track.gif" alt="ekip track: an upload with percent, speed and finish time that ends done, and a copy that warns it is slower than expected"><br><br>
+      <b>Built not to get stuck.</b> Watchdogs, a reaper for dead workers, pool fallback, queues (<code>--after</code>, <code>--when</code>), <code>--resume</code>, and <code>ekip track</code> for long uploads and renders.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <b>Memory per project.</b> Past Claude sessions in a vector store, a wiki from the docs, a code graph and lessons. Mention a project, even with a typo, and the relevant facts arrive in about a second.<br><br>
-      <img src="docs/screenshots/panel-codemap-dark.png" alt="The panel's code map: a project's files and symbols as a graph">
+      <img src="docs/screenshots/panel-codemap-dark.png" alt="The panel's code map: a project's repositories, folders and the symbols of one file"><br><br>
+      <b>Memory per project.</b> Past sessions in a vector database, an LLM wiki from the docs, a code graph, skills and lessons. Mention a project and its facts arrive in a second. <a href="#memory-that-follows-your-message">More ↓</a>
     </td>
     <td width="50%" valign="top">
-      <b>Skills it learns.</b> Work that repeats in a project becomes a <code>SKILL.md</code> you approve, and every later worker brief in that project uses it. <a href="#skills-that-come-from-your-own-work">How it works ↓</a><br><br>
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
-        <img src="docs/assets/skill-loop-dark.svg" alt="The skill loop, small">
-      </picture>
+      <img src="docs/assets/skill-loop-mini.svg" alt="The skill loop, small: runs logged, repeats grouped, skill learn, you accept, .claude/skills, every brief; lessons on top of every brief and the lead"><br><br>
+      <b>Skills it learns.</b> Work that repeats in a project becomes a <code>SKILL.md</code> you approve, and every later worker brief in that project uses it. <a href="#skills-that-come-from-your-own-work">How it works ↓</a>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <img src="docs/demo/panel-demo.gif" alt="The ekip web panel in dark mode: the status digest above live tasks, the command menu, the code map, runs across projects, project cards and worker pools with their quotas" width="100%"><br><br>
+      <b>The web panel.</b> With a hub linked, the same tasks, runs across projects, worker pools with their quotas and each project's code map open in the browser, from any device. <a href="docs/demo/panel-demo.mp4">MP4</a> · <a href="docs/architecture.md#seeing-what-is-going-on">More</a>
     </td>
   </tr>
 </table>
+
+## Memory that follows your message
+
+Every registered project gets its own memory, built once and kept current, and every worker starts
+from it instead of from zero:
+
+- **A vector database** of past Claude sessions, decisions and worker reports, searched by meaning.
+- **An LLM wiki** written from the project's docs, and **a code graph** of its files and symbols.
+- **Skills** learned from its own work, and **lessons** from the mistakes you corrected.
+
+Mention a project, even misspelled, and ekip adds what matters to Claude's context in about a second.
+`ekip stats` shows whether that knowledge is really used: lookups, hit rate, the skills workers opened.
+
+<p align="center"><img src="docs/assets/memory-follows.svg" alt="You write about ios-ap with a typo; ekip finds the ios-app project, searches its memory in about a second and adds the relevant facts and skills to Claude's context" width="100%"></p>
+
+How memory works and why vectors matter, in depth: [docs/memory.md](docs/memory.md) and the author's
+2023 article [Vektörel Database nedir, ne işe yarar?](https://medium.com/@duzgunberke/vekt%C3%B6rel-database-nedir-ne-i%C5%9Fe-yarar-f832b30421ac) (in Turkish).
 
 ## Skills that come from your own work
 
@@ -85,10 +102,7 @@ Every project has procedures nobody wrote down: how it releases, which check cat
 the one flag that must never be forgotten. ekip finds them in the work you already did and turns them
 into plain Claude Code skills.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/skill-loop-light.svg">
-  <img src="docs/assets/skill-loop-dark.svg" alt="The skill loop: runs are logged, repeats are grouped, ekip skill learn drafts a SKILL.md, you accept it, it lives in .claude/skills, every later brief uses it; corrected mistakes become lessons on top of every brief" width="100%">
-</picture>
+<p align="center"><img src="docs/assets/skill-loop.svg" alt="The skill loop: runs are logged, repeats are grouped, ekip skill learn drafts a SKILL.md, you accept it, it lives in .claude/skills, every later worker brief and the lead use it; corrected mistakes become lessons on top of every brief and the lead's context" width="100%"></p>
 
 - **From real runs.** Every worker brief and report is logged per project. Runs with the same label or
   overlapping briefs are grouped; a group of three or more gets a drafted `SKILL.md` with the
@@ -122,7 +136,7 @@ More: [docs/skills.md](docs/skills.md) (the loop step by step, lessons, project 
 You talk to one Claude session. It creates a task, routes each part to the pool with quota and the
 best recent record, and reviews what comes back with `ekip review`. Claude's limit goes to deciding;
 reading and typing run elsewhere. `ekip savings` measures the share: 81% of the work ran outside
-Claude on a normal day of the author's.
+Claude on a normal day of the author's, 58% during the cold setup ([the numbers](docs/architecture.md#why)).
 
 <details>
 <summary><b>More, in short</b></summary>

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" role="img" aria-label="The skill loop, per project: runs are logged, repeats are grouped, ekip skill learn drafts a SKILL.md, you accept it with ekip skill accept, it lives in .claude/skills, and every later worker brief and the lead use it, which feeds the next runs. Below: when you correct a mistake, ekip project lesson writes it down and it goes on top of every brief and the lead's context.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141821"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB45C"/><stop offset="1" stop-color="#F07B3F"/></linearGradient>
+    <radialGradient id="core" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#2DD4BF" stop-opacity=".30"/><stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/></radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1" fill="#fff" fill-opacity=".045"/></pattern>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#5EEAD4"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#FFA95E"/></marker>
+  </defs>
+  <style>
+    .t{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+    .h{font-weight:700;fill:#F3F4F6}.s{fill:#98A1B0}.m{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+  </style>
+  <rect width="1200" height="660" rx="24" fill="url(#bg)"/>
+  <rect width="1200" height="660" rx="24" fill="url(#dots)"/>
+  <text x="48" y="50" class="t s" font-size="13" letter-spacing="1.5">THE SKILL LOOP · PER PROJECT, FROM REAL WORK</text>
+
+  <!-- the project at the centre -->
+  <circle cx="600" cy="268" r="150" fill="url(#core)"/>
+  <ellipse cx="600" cy="268" rx="418" ry="168" fill="none" stroke="#2DD4BF" stroke-opacity=".10" stroke-width="1.5"/>
+  <circle cx="600" cy="268" r="98" fill="none" stroke="#2DD4BF" stroke-opacity=".28" stroke-width="1.5"/>
+  <circle cx="600" cy="268" r="62" fill="#10302B" stroke="#5EEAD4" stroke-width="2"/>
+  <g class="t" text-anchor="middle">
+    <text x="600" y="264" class="h" font-size="17">your project</text>
+    <text x="600" y="286" fill="#CCFBF1" font-size="13">its own skills</text>
+  </g>
+
+  <!-- the loop -->
+  <g fill="none" stroke-width="2.5" stroke-linecap="round">
+    <linearGradient id="w1" gradientUnits="userSpaceOnUse" x1="525" y1="103" x2="669" y2="102"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M525.3 102.7 A418 168 0 0 1 669.0 102.3" stroke="url(#w1)" marker-end="url(#arr)"/>
+    <linearGradient id="w2" gradientUnits="userSpaceOnUse" x1="943" y1="172" x2="990" y2="208"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M943.2 172.1 A418 168 0 0 1 990.2 207.8" stroke="url(#w2)" marker-end="url(#arr)"/>
+    <linearGradient id="w3" gradientUnits="userSpaceOnUse" x1="996" y1="322" x2="949" y2="360"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M995.7 322.1 A418 168 0 0 1 949.4 360.2" stroke="url(#w3)" marker-end="url(#arr)"/>
+    <linearGradient id="w4" gradientUnits="userSpaceOnUse" x1="675" y1="433" x2="531" y2="434"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M674.7 433.3 A418 168 0 0 1 531.0 433.7" stroke="url(#w4)" marker-end="url(#arr)"/>
+    <linearGradient id="w5" gradientUnits="userSpaceOnUse" x1="257" y1="364" x2="210" y2="328"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M256.8 363.9 A418 168 0 0 1 209.8 328.2" stroke="url(#w5)" marker-end="url(#arr)"/>
+    <linearGradient id="w6" gradientUnits="userSpaceOnUse" x1="204" y1="214" x2="251" y2="176"><stop offset="0" stop-color="#F07B3F"/><stop offset="1" stop-color="#2DD4BF"/></linearGradient>
+    <path d="M204.3 213.9 A418 168 0 0 1 250.6 175.8" stroke="url(#w6)" marker-end="url(#arr)"/>
+  </g>
+  <text x="204" y="178" class="t s" font-size="13" text-anchor="end">the next runs</text>
+  <text x="204" y="196" class="t s" font-size="13" text-anchor="end">feed the loop</text>
+  <text x="976" y="358" class="t s" font-size="13">waits as a candidate</text>
+  <!-- steps -->
+  <g class="t">
+    <g transform="translate(265 77)"><rect width="252" height="92" rx="16" fill="#0F2A27" stroke="#1F5D55"/><text x="20" y="28" fill="#5EEAD4" font-size="11.5" letter-spacing="1.4">1 · WORK IS LOGGED</text><text x="20" y="56" class="h" font-size="17">Runs are logged</text><text x="20" y="78" class="s" font-size="13">each brief and report, per project</text></g>
+    <g transform="translate(683 77)"><rect width="252" height="92" rx="16" fill="#0F2A27" stroke="#1F5D55"/><text x="20" y="28" fill="#5EEAD4" font-size="11.5" letter-spacing="1.4">2 · REPEATS ARE GROUPED</text><text x="20" y="56" class="h" font-size="17">Repeats cluster</text><text x="20" y="78" class="s" font-size="13">same label or overlapping briefs, 3+</text></g>
+    <g transform="translate(892 222)"><rect width="252" height="92" rx="16" fill="#0F2A27" stroke="#1F5D55"/><text x="20" y="28" fill="#5EEAD4" font-size="11.5" letter-spacing="1.4">3 · A DRAFT IS WRITTEN</text><text x="20" y="56" class="m" font-size="16.5" font-weight="700" fill="#CCFBF1">ekip skill learn</text><text x="20" y="78" class="s" font-size="13">drafts SKILL.md from runs and docs</text></g>
+    <g transform="translate(683 367)"><rect width="252" height="92" rx="16" fill="#1E222B" stroke="#E5E7EB" stroke-opacity=".7" stroke-width="1.5"/><circle cx="224" cy="24" r="5" fill="#F3F4F6"/><path d="M215 39 a9 7 0 0 1 18 0" fill="#F3F4F6"/><text x="20" y="28" fill="#E5E7EB" font-size="11.5" letter-spacing="1.4" font-weight="600">4 · YOU DECIDE</text><text x="20" y="56" class="m" font-size="17" font-weight="700" fill="#FFFFFF">ekip skill accept</text><text x="20" y="78" class="s" font-size="13">a rejected idea is not proposed again</text></g>
+    <g transform="translate(265 367)"><rect width="252" height="92" rx="16" fill="#0F2A27" stroke="#1F5D55"/><text x="20" y="28" fill="#5EEAD4" font-size="11.5" letter-spacing="1.4">5 · IT LIVES IN THE REPO</text><text x="20" y="56" class="m" font-size="16.5" font-weight="700" fill="#CCFBF1">.claude/skills/&lt;name&gt;</text><text x="20" y="78" class="s" font-size="13">a plain skill, committed with the code</text></g>
+    <g transform="translate(56 222)"><rect width="252" height="92" rx="16" fill="#0F2A27" stroke="#1F5D55"/><text x="20" y="28" fill="#5EEAD4" font-size="11.5" letter-spacing="1.4">6 · EVERY BRIEF USES IT</text><text x="20" y="54" class="h" font-size="17">Matched to each task</text><rect x="20" y="64" width="104" height="20" rx="6" fill="#10302B" stroke="#1F5D55"/><text x="72" y="78" text-anchor="middle" fill="#CCFBF1" font-size="12">worker briefs</text><rect x="132" y="64" width="100" height="20" rx="6" fill="#24180F" stroke="#F07B3F" stroke-opacity=".7"/><text x="182" y="78" text-anchor="middle" fill="#FFC58A" font-size="12">the lead</text></g>
+  </g>
+
+  <!-- lessons -->
+  <g class="t">
+    <rect x="48" y="508" width="1104" height="116" rx="16" fill="#151A22" stroke="#2A303B"/>
+    <text x="74" y="540" class="s" font-size="13" letter-spacing="1.5">LESSONS · WHEN YOU CORRECT A MISTAKE</text>
+    <rect x="74" y="556" width="200" height="44" rx="12" fill="#1E222B" stroke="#E5E7EB" stroke-opacity=".55"/>
+    <text x="174" y="583" text-anchor="middle" fill="#F3F4F6" font-size="14">you correct a mistake</text>
+    <rect x="320" y="556" width="250" height="44" rx="12" fill="#0F2A27" stroke="#1F5D55"/>
+    <text x="445" y="583" text-anchor="middle" class="m" fill="#CCFBF1" font-size="14" font-weight="700">ekip project lesson</text>
+    <rect x="616" y="556" width="190" height="44" rx="12" fill="#0F2A27" stroke="#1F5D55"/>
+    <text x="711" y="583" text-anchor="middle" class="m" fill="#CCFBF1" font-size="14">.ekip/lessons.md</text>
+    <rect x="852" y="552" width="276" height="22" rx="7" fill="#10302B" stroke="#1F5D55"/>
+    <text x="866" y="567" fill="#CCFBF1" font-size="12.5">on top of every worker brief</text>
+    <rect x="852" y="582" width="276" height="22" rx="7" fill="#24180F" stroke="#F07B3F" stroke-opacity=".7"/>
+    <text x="866" y="597" fill="#FFC58A" font-size="12.5">on top of the lead's context, every message</text>
+  </g>
+  <g fill="none" stroke-width="2.5">
+    <path d="M276 578 H314" stroke="#5EEAD4" marker-end="url(#arr)"/>
+    <path d="M572 578 H610" stroke="#5EEAD4" marker-end="url(#arr)"/>
+    <path d="M808 578 C826 578 828 563 846 563" stroke="#5EEAD4" marker-end="url(#arr)"/>
+    <path d="M808 578 C826 578 828 593 846 593" stroke="#FFA95E" marker-end="url(#arrA)"/>
+  </g>
+</svg>

@@ -4,10 +4,7 @@ How a project's repeated work becomes a skill, how corrections become lessons, a
 
 [README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · **Skills** · [Reliability](reliability.md) · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="assets/skill-loop-light.svg">
-  <img src="assets/skill-loop-dark.svg" alt="The skill loop: runs are logged, repeats are grouped, ekip skill learn drafts a SKILL.md, you accept it, it lives in .claude/skills, every later brief uses it; corrected mistakes become lessons on top of every brief" width="100%">
-</picture>
+<p align="center"><img src="assets/skill-loop.svg" alt="The skill loop: runs are logged, repeats are grouped, ekip skill learn drafts a SKILL.md, you accept it, it lives in .claude/skills, every later worker brief and the lead use it; corrected mistakes become lessons on top of every brief and the lead's context" width="100%"></p>
 
 ## Two kinds of project skill
 

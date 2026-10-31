@@ -43,8 +43,9 @@ running while the Mac is off, and serves the web panel.
 - ekip may be running from this checkout: give workers that edit it `ekip run --worktree`, so a
   half-finished edit cannot break the running lead, panes or hooks.
 - Update `README.md`, `README.tr.md` and `docs/` when behaviour changes. The README is a short
-  front page (about 170 lines: hero, quick start, "What you get" grid, skills, how it works, links);
-  details go to the matching `docs/` page, not into the README. Both READMEs keep the same structure
-  and images.
+  front page (about 185 lines: hero, quick start, "What you get" grid with the web panel, memory,
+  skills, how it works, links); details go to the matching `docs/` page, not into the README. Both
+  READMEs keep the same structure and images: dark only (no light variants), 16:10 in the grid,
+  diagrams in the style of `docs/assets/how-it-works.svg`.
 - Work on a branch (`feat/…`, `fix/…`), merge into `main` when `bash scripts/smoke.sh`, `bash scripts/ci/linux-smoke.sh` and the privacy check pass; a passing merge is
   released automatically (see `CONTRIBUTING.md`). Never tag or bump versions by hand.

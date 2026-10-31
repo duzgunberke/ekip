@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Still screenshots of the panel for the docs, from the demo workspace. Needs the demo server
-// (`sh hub/demo/run.sh`) on DEMO_URL; writes docs/screenshots/panel-<page>-<theme>.png.
+// (`sh hub/demo/run.sh`, or `--capture` runs it) on DEMO_URL; writes docs/screenshots/panel-<page>-<theme>.png.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,7 +12,8 @@ const chrome = process.env.CHROME || '/Applications/Google Chrome.app/Contents/M
 const port = process.env.CDP_PORT || '9223';
 const base = process.env.DEMO_URL || 'http://127.0.0.1:7790';
 const out = path.join(root, 'docs/screenshots');
-const shots = [['tasks', 'dark'], ['tasks', 'light'], ['overview', 'dark'], ['overview', 'light'], ['projects', 'dark'], ['runs', 'dark'], ['pools', 'dark']];
+// dark only: every panel image in the README and docs is the dark theme, one consistent look
+const shots = [['tasks', 'dark'], ['overview', 'dark'], ['projects', 'dark'], ['runs', 'dark'], ['pools', 'dark']];
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ekip-shots-'));
 const proc = spawn(chrome, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--disable-gpu', '--hide-scrollbars'], { stdio: 'ignore' });
