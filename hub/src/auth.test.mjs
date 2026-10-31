@@ -175,7 +175,7 @@ const bearer = (base) => (p, init = {}) => fetch(`${base}${p}`, { ...init, heade
 
 test("hub: strangers get a bare 404 everywhere but the sign-in page", async (t) => {
   const { base } = await startHub(t);
-  for (const [method, p] of [["GET", "/"], ["GET", "/tasks"], ["GET", "/api/status"], ["GET", "/api/session"], ["GET", "/favicon.svg"], ["GET", "/index.html"], ["POST", "/api/jobs"], ["DELETE", "/api/passkeys/abcd"], ["PUT", "/anything"]]) {
+  for (const [method, p] of [["GET", "/"], ["GET", "/tasks"], ["GET", "/api/status"], ["GET", "/api/session"], ["GET", "/favicon.svg"], ["GET", "/index.html"], ["POST", "/api/jobs"], ["DELETE", "/api/passkeys/abcd"], ["PUT", "/anything"], ["POST", "/logout"]]) {
     const r = await fetch(`${base}${p}`, { method, headers: { authorization: "Bearer wrong-token-0123456789" } });
     const text = await r.text();
     assert.equal(r.status, 404, `${method} ${p}`);

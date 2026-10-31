@@ -893,7 +893,10 @@ async function handle(req, res) {
   }
   if (p.startsWith("/login/") && req.method === "POST") return loginStep(req, res, p);
   if (p === "/logout" && req.method === "POST") {
-    return send(res, 200, { ok: true }, { "set-cookie": [auth.cookie("", 0), auth.pendingCookie("", 0)] });
+    // signed out it is one more unknown path: a bare 404 (the cookies are cleared either way)
+    const signedIn = auth.sessionOk(req);
+    return signedIn ? send(res, 200, { ok: true }, { "set-cookie": [auth.cookie("", 0), auth.pendingCookie("", 0)] })
+      : send(res, 404, "not found", { "set-cookie": [auth.cookie("", 0), auth.pendingCookie("", 0)] });
   }
 
   // Signed out, only the sign-in page and its bundle exist; every other path is a bare 404.

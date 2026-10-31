@@ -39,11 +39,22 @@ function latestRelease() {
 
 // Updates go to the newest release tag, not to the tip of main: main gets merges before their
 // fresh-install test passes, a tag only after (scripts/ci/release.sh).
+// When the project rewrote its history (a public repo cleaned of personal data), a fast-forward is
+// impossible: the old commits are kept on a backup branch and the checkout moves to the release.
+// update() refuses a dirty tree first, so nothing uncommitted is ever lost.
 function toRelease() {
-  const f = git("fetch", "--quiet", "--tags", "origin");
+  // --force: a release tag moved by a rewrite replaces the old one instead of failing the fetch
+  const f = git("fetch", "--quiet", "--tags", "--force", "origin");
   if (f.status !== 0) return f;
   const tag = git("tag", "--list", "v*", "--sort=-v:refname").stdout.split("\n")[0]?.trim();
-  return tag ? git("merge", "--ff-only", "--quiet", `refs/tags/${tag}`) : git("pull", "--ff-only", "--quiet");
+  if (!tag) return git("pull", "--ff-only", "--quiet");
+  const ff = git("merge", "--ff-only", "--quiet", `refs/tags/${tag}`);
+  if (ff.status === 0 || git("merge-base", "--is-ancestor", `refs/tags/${tag}`, "HEAD").status === 0) return ff;
+  const backup = `ekip-before-${tag}-${new Date().toISOString().slice(0, 10)}`;
+  git("branch", "--force", backup, "HEAD");
+  const r = git("reset", "--hard", "--quiet", `refs/tags/${tag}`);
+  if (r.status === 0) console.log(lang === "en" ? `  the project's history was rewritten; your previous commits are kept on branch ${backup}` : `  projenin geçmişi yeniden yazılmış; önceki commit'lerin ${backup} dalında duruyor`);
+  return r;
 }
 
 /**
