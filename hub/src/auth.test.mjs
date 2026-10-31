@@ -298,3 +298,17 @@ test("hub: EKIP_HUB_REQUIRE_PASSKEY=1 with no passkey: the password opens nothin
   assert.match(bad.json.error, /origin/);
   assert.equal(c.jar.has("ekip_session"), false);
 });
+
+test("hub: the Mac inbox (phone messages) answers the hub token only, not a panel session", async (t) => {
+  const { base } = await startHub(t);
+  const panel = client(base);
+  assert.equal((await panel.call("/login", { method: "POST", body: { password: PASSWORD } })).json.ok, true);
+  assert.equal((await panel.call("/api/session")).status, 200, "a signed-in panel session");
+  for (const [method, p] of [["GET", "/api/inbox"], ["POST", "/api/inbox/ack"], ["POST", "/api/inbox/sync"], ["GET", "/api/inbox/files/0123456789ab"]]) {
+    assert.equal((await panel.call(p, { method, ...(method === "POST" ? { body: {} } : {}) })).status, 403, `${method} ${p} with a panel session`);
+  }
+  assert.equal((await fetch(`${base}/api/inbox`)).status, 404, "no credentials: a bare 404");
+  const r = await bearer(base)("/api/inbox");
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { items: [] });
+});

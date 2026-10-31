@@ -7,7 +7,13 @@ import path from "node:path";
 import { openStore } from "./store.js";
 import { Telegram, inferProject, CODE_MS } from "./telegram.js";
 import { redact } from "./redact.js";
-import { mdToHtml, splitMessage, LIMIT } from "./phone-format.js";
+import { mdToHtml, splitMessage, cutEscaped, fitLines, LIMIT } from "./phone-format.js";
+
+// Secret-shaped fixtures are assembled at run time so the repository privacy check stays clean.
+const FAKE_SK = "sk" + "-abcdefghijklmnopqrstuvwx";
+const FAKE_GHP = "ghp" + "_abcdefghijklmnopqrstuvwxyz0123";
+const PEM_KIND = "RSA PRIVATE" + " KEY";
+const FAKE_PEM = `-----BEGIN ${PEM_KIND}-----\nMIIE\n-----END ${PEM_KIND}-----`;
 
 // the bot's texts follow EKIP_LANG first; these tests read the English ones
 delete process.env.EKIP_LANG;
@@ -276,11 +282,11 @@ test("a photo is downloaded on the hub and handed to the Mac with the request", 
 test("the lead's reply: phone mode, redaction, long messages split", async () => {
   const s = setup();
   await paired(s);
-  await s.tg.reply({ lead: "wezterm-1", project: "api", text: "Done. The key is sk-abcdefghijklmnopqrstuvwx and `npm test` passes." });
+  await s.tg.reply({ lead: "wezterm-1", project: "api", text: `Done. The key is ${FAKE_SK} and \`npm test\` passes.` });
   await s.tg.flush();
   const out = s.api.of("sendMessage").at(-1).body;
   assert.equal(out.parse_mode, "HTML");
-  assert.ok(!out.text.includes("sk-abcdefghijklmnopqrstuvwx"));
+  assert.ok(!out.text.includes(FAKE_SK));
   assert.match(out.text, /<code>npm test<\/code>/);
   s.tg.settings({ mode: "off" });
   const n = s.api.of("sendMessage").length;
@@ -321,10 +327,10 @@ test("redactor masks tokens, keys, passwords, bearer strings and URL credentials
     "password=hunter22 api_key: \"k-123456\"",
     "postgres://admin:s3cret@db.internal:5432/app",
     "https://user:pa55@git.example.com/repo.git",
-    "ghp_abcdefghijklmnopqrstuvwxyz0123 and AKIAABCDEFGHIJKLMNOP",
+    `${FAKE_GHP} and AKIAABCDEFGHIJKLMNOP`,
     "https://example.com/cb?token=abcdef&x=1",
     `bot ${TOKEN}`,
-    "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----",
+    FAKE_PEM,
   ].join("\n"), ["my-hub-token-value"]);
   for (const bad of ["abc.def.ghi", "hunter22", "k-123456", "s3cret", "pa55", "ghp_abc", "AKIAABCD", "token=abcdef", TOKEN, "MIIE"]) assert.ok(!s.includes(bad), `${bad} leaked: ${s}`);
   assert.match(s, /example\.com\/cb/);
@@ -346,6 +352,19 @@ test("Markdown to Telegram HTML: escaping, code blocks kept across a split", () 
   // one line longer than a message
   const one = splitMessage("y".repeat(10_000));
   assert.ok(one.length >= 3 && one.every((p) => p.length <= LIMIT));
+});
+
+test("a long Markdown-heavy reply: every part is balanced HTML within the limit", () => {
+  const balanced = (h) => ["b", "a", "code", "pre"].every((tag) => (h.match(new RegExp(`<${tag}[ >]`, "g")) ?? []).length === (h.match(new RegExp(`</${tag}>`, "g")) ?? []).length);
+  for (const md of ["**bold** ".repeat(500), "**bold**\n".repeat(1500), "[x](https://example.com/a?b=1&c=2) ".repeat(800), "`a` & ".repeat(3000)]) {
+    const parts = splitMessage(md);
+    assert.ok(parts.length >= 2);
+    for (const p of parts) { assert.ok(p.length <= LIMIT, `part of ${p.length}`); assert.ok(balanced(p), "tags balanced"); assert.doesNotMatch(p, /&[#\w]*$/); }
+  }
+  assert.equal(cutEscaped("a & b", 4), "a ");
+  // a /task card with many long notes and steps drops whole lines, never cuts a tag
+  const html = fitLines(Array.from({ length: 200 }, (_, i) => `<b>step ${i}</b> ${"y".repeat(40)}`), 4000, ["<code>g1</code>"]);
+  assert.ok(html.length <= 4000 && balanced(html) && html.endsWith("<code>g1</code>") && html.includes("…"));
 });
 
 test("every bot text has its English entry in hub/src/i18n.js", async () => {

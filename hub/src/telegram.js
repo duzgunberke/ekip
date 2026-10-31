@@ -12,7 +12,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { bar, esc, splitMessage } from "./phone-format.js";
+import { bar, esc, fitLines, splitMessage } from "./phone-format.js";
 import { redact } from "./redact.js";
 import { setLang, t } from "./i18n.js";
 
@@ -540,8 +540,7 @@ export class Telegram {
     const notes = (x.notes ?? []).slice(-3);
     if (notes.length) { lines.push("", `<b>${esc(t("Son notlar"))}</b>`); for (const n of notes) lines.push(`• ${this.R(clip(n.text, 300))}`); }
     if (x.result?.text || x.result?.links?.length) { lines.push("", `<b>${esc(t("Sonuç"))}</b>: ${this.R(clip(x.result.text ?? "", 600))}`); for (const l of x.result.links ?? []) lines.push(this.R(l)); }
-    lines.push(`<code>${esc(x.id)}</code>`);
-    return lines.join("\n").slice(0, 4000);
+    return fitLines(lines, 4000, [`<code>${esc(x.id)}</code>`]);
   }
 
   async onCallback(q) {

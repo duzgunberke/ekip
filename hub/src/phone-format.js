@@ -33,8 +33,28 @@ export function mdToHtml(md) {
 }
 const pre = (lang, lines) => `<pre><code${lang ? ` class="language-${attr(lang)}"` : ""}>${esc(lines.join("\n"))}</code></pre>`;
 
-// Telegram counts the text after its entities are parsed; the escaped length is an upper bound.
-const cost = (line) => esc(line).length + 1;
+// Size of a line once rendered: the HTML it becomes (tags included) is never shorter than the text
+// Telegram counts, and never shorter than the escaped code-block form, so it is a safe upper bound.
+const cost = (line) => inline(line).length + 1;
+
+/** Escaped text cut to `max` characters without leaving half an entity (`&am`) at the end. */
+export const cutEscaped = (s, max) => esc(s).slice(0, max).replace(/&[#\w]*$/, "");
+
+/**
+ * Joins lines that are each complete HTML into one message of at most `max` characters, dropping
+ * whole lines (never cutting inside a tag) and marking the gap with "…". `keep` lines always stay
+ * at the end.
+ */
+export function fitLines(lines, max = LIMIT, keep = []) {
+  const tail = keep.join("\n");
+  let room = max - (tail ? tail.length + 1 : 0) - 2;
+  const out = [];
+  for (const l of lines) {
+    if (l.length + 1 > room) { out.push("…"); break; }
+    out.push(l); room -= l.length + 1;
+  }
+  return [...out, ...keep].join("\n");
+}
 
 /**
  * Markdown → HTML messages of at most `max` characters each. Splits between lines (a single line
@@ -68,7 +88,9 @@ export function splitMessage(md, max = LIMIT) {
     if (f) fence = fence === null ? f[1] : null;
   }
   if (cur.length && !(cur.length === 1 && fence !== null && cur[0].startsWith("```") && chunks.length)) chunks.push(cur);
-  return chunks.map((c) => mdToHtml(c.join("\n")).trim()).filter(Boolean).map((h) => (h.length > max ? h.slice(0, max) : h));
+  // A chunk is sized from its rendered HTML, so it fits; should one still not, it goes as plain
+  // escaped text rather than HTML cut inside a tag (Telegram rejects unbalanced tags).
+  return chunks.map((c) => { const md = c.join("\n"); const h = mdToHtml(md).trim(); return h.length > max ? cutEscaped(md, max).trim() : h; }).filter(Boolean);
 }
 
 /** "▰▰▰▰▱▱▱▱▱▱ 40%" */

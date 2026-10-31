@@ -34,6 +34,16 @@ export function writeState(patch) { const s = { ...readState(), ...patch }; writ
 export const linked = () => readState().linked === true;
 const hubOk = () => !!(SETTINGS.hubUrl && SETTINGS.hubToken);
 
+// A test or a worker with its own EKIP_HOME may still carry the lead's WEZTERM_PANE & co. from the
+// environment it inherited: it must never type into, interrupt or open a tab in the user's window
+// (the same guard as ensureTaskPane in core/terminal.js). A back end with an injected `run` is a test
+// double that records calls and touches no terminal, so it is allowed.
+export const testHome = (env = process.env) => !!env.EKIP_HOME && path.resolve(env.EKIP_HOME) !== path.resolve(ROOT, "data");
+function termBackend(kind, run, env = process.env) {
+  if (!run && testHome(env)) return null;
+  return backendOf(kind, run ? { run } : {});
+}
+
 /** A lead session ekip started (not a worker it runs, not a plain `claude`). */
 export const isLead = (env = process.env) => env.EKIP_LEAD === "1" && !(Number(env.EKIP_RUN_DEPTH ?? 0) > 0);
 export function paneOf(env = process.env) {
@@ -68,7 +78,7 @@ export function liveLeads({ run } = {}) {
   const out = [];
   const panes = new Map(); // terminal kind -> Set of open pane ids, or null for "could not ask"
   const open = (kind) => {
-    if (!panes.has(kind)) { const list = backendOf(kind, { ...(run ? { run } : {}) })?.listPanes() ?? null; panes.set(kind, list ? new Set(list.map((p) => String(p.id))) : null); }
+    if (!panes.has(kind)) { const list = termBackend(kind, run)?.listPanes() ?? null; panes.set(kind, list ? new Set(list.map((p) => String(p.id))) : null); }
     return panes.get(kind);
   };
   for (const rec of leads()) {
@@ -138,7 +148,7 @@ export function pump(id, { run } = {}) {
     if (!rec || !idle(rec)) return false;
     const q = readQueue(id);
     if (!q.length) return false;
-    const b = backendOf(rec.term, { ...(run ? { run } : {}) });
+    const b = termBackend(rec.term, run);
     if (!b?.sendText) return false;
     if (!b.sendText(rec.pane, q[0].text)) return false;
     q.shift();
@@ -151,7 +161,7 @@ export function pump(id, { run } = {}) {
 
 /** The phone pressed /stop: Escape into the lead's pane interrupts the running turn. */
 export function stopLead(rec, { run } = {}) {
-  const b = rec ? backendOf(rec.term, { ...(run ? { run } : {}) }) : null;
+  const b = rec ? termBackend(rec.term, run) : null;
   if (!b?.sendKey || !b.sendKey(rec.pane, "escape")) return false;
   // an interrupted turn gets no Stop hook: it is at the prompt again
   writeLead({ ...rec, state: "idle", idleAt: now(), phoneTurn: false });
@@ -259,7 +269,7 @@ function newLead(project, { run } = {}) {
   if (!p?.path) return false;
   const open = liveLeads({ run }).find((l) => l.term && l.term !== "none");
   const kind = open?.term ?? detect();
-  const b = backendOf(kind, { ...(run ? { run } : {}) });
+  const b = termBackend(kind, run);
   if (!b?.spawnLead) return false;
   const cmd = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(ROOT, "plugin/bin/ekip.js"))} --here`;
   const id = b.spawnLead(p.path, cmd, { near: open?.pane ?? null });

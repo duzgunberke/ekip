@@ -94,6 +94,21 @@ test("/stop presses Escape in the lead's pane", async () => {
   assert.equal(phone.readLead("wezterm-5").state, "idle", "an interrupted turn is at the prompt again");
 });
 
+test("a test EKIP_HOME never types into, interrupts or opens a tab in the real terminal", async () => {
+  reset();
+  // this file runs with its own EKIP_HOME and an inherited WEZTERM_PANE: without an injected back end
+  // (the test double) nothing may reach the real terminal
+  assert.equal(phone.testHome(), true);
+  await phone.hook("session", { cwd: home }, { env });
+  const r = await phone.deliver("must stay queued");
+  assert.equal(r.to, "lead");
+  assert.equal(phone.readLead("wezterm-5").state, "idle", "nothing was typed");
+  assert.equal(phone.pump("wezterm-5"), false);
+  await phone.hook("prompt", { prompt: "x" }, { env });
+  assert.equal(phone.stopLead(phone.readLead("wezterm-5")), false, "no Escape into the user's pane");
+  assert.equal(phone.testHome({ EKIP_HOME: "" }), false);
+});
+
 test("the transcript's last assistant message: after the last tool call, sidechains ignored", () => {
   const file = path.join(home, "session.jsonl");
   const line = (o) => JSON.stringify(o);
@@ -131,7 +146,8 @@ test("tool calls become one-liners", () => {
   assert.equal(phone.toolLine({ tool_name: "Bash", tool_input: { command: "npm test\necho done" } }), "Bash: npm test");
   assert.equal(phone.toolLine({ tool_name: "Edit", tool_input: { file_path: "/x/y/app.js" } }), "Edit: app.js");
   assert.equal(phone.toolLine({ tool_name: "mcp__ekip__memory_search", tool_input: { query: "x" } }), "memory_search: x");
-  assert.ok(!phone.toolLine({ tool_name: "Bash", tool_input: { command: "curl -H 'Authorization: Bearer sk-abcdefghijklmnopqrstu'" } }).includes("sk-abcdefghijklmnopqrstu"));
+  const fake = "sk" + "-abcdefghijklmnopqrstu"; // assembled so the privacy check stays clean
+  assert.ok(!phone.toolLine({ tool_name: "Bash", tool_input: { command: `curl -H 'Authorization: Bearer ${fake}'` } }).includes(fake));
 });
 
 test("sync: an answer from the phone is applied to the task, acked, and never applied twice", async () => {

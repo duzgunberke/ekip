@@ -711,7 +711,11 @@ async function api(req, res, url, who) {
     const job = await phone.toJob(b.chat ?? null, str(b.text, 50_000, "text", { required: true }), { project: str(b.project, 64, "project") ?? null, why: "nolead" });
     return send(res, 200, { ok: true, job: job?.id ? publicJob(job) : null });
   }
-  if (p === "/api/inbox" && m === "GET") return send(res, 200, { items: phone.inbox(url.searchParams.get("client")) });
+  if (p === "/api/inbox" && m === "GET") {
+    // the Mac's inbox (phone messages, lead paths): machines only, not a panel session
+    if (!who.bearer) return send(res, 403, { error: "bearer only" });
+    return send(res, 200, { items: phone.inbox(url.searchParams.get("client")) });
+  }
   if (p === "/api/inbox/ack" && m === "POST") {
     if (!who.bearer) return send(res, 403, { error: "bearer only" });
     const b = await readJson(req, 100_000);
