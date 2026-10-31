@@ -34,6 +34,7 @@ grep -q 'Running now' "$tmp/status.en"; grep -q '^Setup [0-9]' "$tmp/status.en";
 grep -q 'short English title' "$tmp/lead.en"; grep -q 'short Turkish title' "$tmp/lead.tr"; grep -q 'language they write in' "$tmp/lead.en"
 grep -q 'Setup gaps' "$tmp/hook.en"; grep -q 'Kurulum eksikleri' "$tmp/hook.tr"
 if grep -q 'Ücretsiz model anahtarları\|Kurulum eksikleri' "$tmp/setup.en" "$tmp/hook.en"; then echo 'Turkish text in English output'; exit 1; fi
+echo "== ekip.app and one WezTerm GUI =="; node plugin/lib/ops/terminal-app.test.mjs
 echo '== terminal install --dry-run (WezTerm missing) =='
 out=$(XDG_CONFIG_HOME="$tmp/xdg" EKIP_WEZTERM="$tmp/no-wezterm" node plugin/bin/ekip.js terminal install --dry-run 2>&1); printf '%s\n' "$out"
 grep -q 'wezterm' <<<"$out"; grep -q 'ekip.lua' <<<"$out"; [[ ! -e "$tmp/xdg" ]]

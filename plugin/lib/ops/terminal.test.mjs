@@ -57,12 +57,16 @@ assert.ok(argv.at(-1).startsWith('EKIP_HOME="/x/home" ') && argv.at(-1).includes
 
 // ---- handoff: verifies the window before closing anything --------------------------------------
 const pane = (id) => ({ window_id: 0, tab_id: 0, pane_id: id, title: "zsh", cwd: "", top_row: 0, left_col: 0, is_active: true });
-function fake({ appearAfter = 0, panes = [pane(1)], tty = "/dev/ttys004" } = {}) {
+function fake({ appearAfter = 0, panes = [pane(1)], tty = "/dev/ttys004", spawnStatus = 0, ps = "" } = {}) {
   const launched = [];
   let lists = 0;
   const run = (bin, args) => {
     if (bin === "tty") return { status: 0, stdout: `${tty}\n` };
-    assert.deepEqual(args.slice(0, 3), ["cli", "--no-auto-start", "list"], "only --no-auto-start list is asked");
+    if (bin === "ps") return { status: 0, stdout: ps };
+    assert.deepEqual(args.slice(0, 2), ["cli", "--no-auto-start"], "wezterm cli never auto-starts a server");
+    // a running GUI gets the new window over `wezterm cli spawn`
+    if (args[2] === "spawn") { launched.push([bin, args]); return { status: spawnStatus, stdout: "99\n" }; }
+    assert.equal(args[2], "list");
     lists++;
     const open = launched.some(([b]) => b !== "osascript") && appearAfter >= 0 && lists > appearAfter + 1;
     return { status: 0, stdout: JSON.stringify(open ? [...panes, pane(99)] : panes) };
@@ -79,6 +83,7 @@ const wezEnv = { ...iterm, EKIP_WEZTERM: path.join(tmp, "wezterm"), XDG_CONFIG_H
   assert.equal(await ho([], { env: wezEnv, cwd: "/p", run: f.run, launch: f.launch, sleep, platform: "darwin" }), true);
   assert.equal(f.launched.length, 2);
   assert.equal(f.launched[0][0], wezEnv.EKIP_WEZTERM);
+  assert.deepEqual(f.launched[0][1].slice(0, 6), ["cli", "--no-auto-start", "spawn", "--new-window", "--cwd", "/p"], "WezTerm runs: a window in it, no second GUI");
   assert.deepEqual(f.launched[1][0], "osascript");
   assert.equal(f.launched[1][1].at(-1), term.itermCloseScript(iterm.ITERM_SESSION_ID));
 }
@@ -89,7 +94,23 @@ const wezEnv = { ...iterm, EKIP_WEZTERM: path.join(tmp, "wezterm"), XDG_CONFIG_H
 }
 { // `wezterm start` throws: nothing is closed
   const f = fake();
-  assert.equal(await ho([], { env: wezEnv, run: f.run, launch: () => { throw new Error("ENOENT"); }, sleep, platform: "darwin" }), false);
+  const run = (bin, args) => (args?.[2] === "list" ? { status: 1, stdout: "" } : f.run(bin, args));
+  assert.equal(await ho([], { env: wezEnv, run, launch: () => { throw new Error("ENOENT"); }, sleep, platform: "darwin" }), false);
+}
+{ // `cli spawn` fails: falls back to `wezterm start`
+  const f = fake({ spawnStatus: 1 });
+  assert.equal(await ho([], { env: wezEnv, cwd: "/p", run: f.run, launch: f.launch, sleep, platform: "darwin" }), true);
+  assert.equal(f.launched[0][1][0], "cli");
+  assert.deepEqual(f.launched[1][1].slice(0, 3), ["start", "--cwd", "/p"]);
+}
+{ // the running GUI is brought forward by its own .app
+  const f = fake({ ps: "/sbin/launchd\n/Users/x/Applications/ekip.app/Contents/MacOS/wezterm-gui\n" });
+  assert.equal(term.launchLead(["--free"], { env: wezEnv, cwd: "/p", run: f.run, launch: f.launch, panes: ["1"], platform: "darwin" }), "spawn");
+  assert.deepEqual(f.launched.at(-1), ["open", ["-a", "/Users/x/Applications/ekip.app"]]);
+  assert.ok(f.launched[0][1].at(-1).includes('"--free"'));
+  const g = fake();
+  assert.equal(term.launchLead([], { env: wezEnv, cwd: "/p", run: g.run, launch: g.launch, panes: null, platform: "darwin" }), "start", "no GUI: start one");
+  assert.deepEqual(g.launched[0][1].slice(0, 3), ["start", "--cwd", "/p"]);
 }
 { // a WezTerm that was not running (list fails before) still counts once its pane shows up
   const f = fake({ appearAfter: 0 });

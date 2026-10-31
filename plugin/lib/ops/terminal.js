@@ -11,6 +11,7 @@ import { TASK_TITLE, detect, paneShell, parseWeztermList, weztermBin } from "../
 import { c } from "../core/ui.js";
 import { writeTerminalStatus } from "../tasks/tasks.js";
 import { t } from "../core/i18n.js";
+import { appLine, appState, appWezterm, ensureApp, launchMode, runningGuiApp, spawnArgv } from "./terminal-app.js";
 
 export const configDir = (env = process.env) => path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "wezterm");
 // WezTerm reads the first of these that exists
@@ -336,6 +337,7 @@ export function install(args, env = process.env, { run = spawnSync, brew = has("
     step(t("{file} sizin; ekip ona dokunmaz. ekip'in ayarlarını istiyorsanız 'return config' satırından önce ekleyin:", { file: user.file }));
     console.log(c.gray(`      package.path = ${lua(dir)} .. "/?.lua;" .. package.path\n      require("ekip").apply(config)`));
   }
+  if (platform === "darwin" && (dry || weztermInstalled(env))) ensureApp(env, { run, dry, step, platform, force: args.includes("--rebuild-app") });
   if (!dry) {
     saveSettings({ terminal: "wezterm" });
     // the tab bar reads its counts and project names from this file: write it once now
@@ -352,9 +354,12 @@ export function startArgv(args, { env = process.env, cwd = process.cwd() } = {})
   const start = path.join(configDir(env), "ekip-start.lua");
   // a user config without ekip.lua: this window still gets ekip's settings
   const cfg = user.state === "own" && fs.existsSync(start) ? ["--config-file", start] : [];
+  return [...cfg, "start", "--cwd", cwd, "--", ...leadShell(args, env)];
+}
+export function leadShell(args, env = process.env) {
   const keep = Object.entries(env).filter(([k]) => (k.startsWith("EKIP_") && k !== "EKIP_TERMINAL") || k === "CLAUDE_CONFIG_DIR");
   const prefix = keep.map(([k, v]) => `${k}=${JSON.stringify(v)} `).join("");
-  return [...cfg, "start", "--cwd", cwd, "--", "/bin/zsh", "-lc", `${prefix}${ekipCmd(args)}`];
+  return ["/bin/zsh", "-lc", `${prefix}${ekipCmd(args)}`];
 }
 const childEnvOf = (env) => {
   const out = { ...env };
@@ -362,12 +367,39 @@ const childEnvOf = (env) => {
   return out;
 };
 
+const detached = (env) => (bin, argv) => spawn(bin, argv, { detached: true, stdio: "ignore", env: childEnvOf(env) }).unref();
+
+/**
+ * Opens a lead window with ekip.app's WezTerm (WezTerm's own without it): a new window in the GUI
+ * that is already running, so the Dock keeps one icon; a new GUI only when none runs.
+ */
+export function launchLead(args, { env = process.env, cwd = process.cwd(), run = spawnSync, launch = detached(env), panes = paneIds(run, env), platform = process.platform } = {}) {
+  const bin = appWezterm(env) ?? weztermBin(env);
+  if (launchMode(panes) === "spawn") {
+    const r = run(bin, spawnArgv(leadShell(args, env), cwd), { encoding: "utf8", timeout: 5000, env: childEnvOf(env) });
+    if (r.status === 0 && !r.error) {
+      // bring the running WezTerm forward (`open -a` on a running app only activates it)
+      const app = platform === "darwin" ? runningGuiApp(run("ps", ["-axo", "comm="], { encoding: "utf8" }).stdout) : null;
+      if (app) launch("open", ["-a", app]);
+      return "spawn";
+    }
+  }
+  launch(bin, startArgv(args, { env, cwd }));
+  return "start";
+}
+
 function open(args, env = process.env) {
   const dry = args.includes("--dry-run");
   if (!weztermInstalled(env)) die(t("WezTerm kurulu değil: ekip terminal install"));
-  const argv = startArgv(args.filter((a) => a !== "--dry-run"), { env });
-  if (dry) { console.log(`${weztermBin(env)} ${argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`); return 0; }
-  spawn(weztermBin(env), argv, { detached: true, stdio: "ignore", env: childEnvOf(env) }).unref();
+  const rest = args.filter((a) => a !== "--dry-run");
+  if (dry) {
+    const bin = appWezterm(env) ?? weztermBin(env);
+    const panes = paneIds(spawnSync, env);
+    const argv = launchMode(panes) === "spawn" ? spawnArgv(leadShell(rest, env), process.cwd()) : startArgv(rest, { env });
+    console.log(`${bin} ${argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
+    return 0;
+  }
+  launchLead(rest, { env });
   console.log(t("ekip WezTerm'de açılıyor"));
   return 0;
 }
@@ -451,11 +483,10 @@ const paneIds = (run, env) => {
  * exits); false when WezTerm did not open (nothing is closed, the lead starts here).
  */
 export async function handoff(args, { env = process.env, cwd = process.cwd(), run = spawnSync, launch, wait = 10_000, step = 250, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), platform = process.platform } = {}) {
-  const before = new Set(paneIds(run, env) ?? []);
-  const argv = startArgv(args, { env, cwd });
+  const panes = paneIds(run, env);
+  const before = new Set(panes ?? []);
   try {
-    if (launch) launch(weztermBin(env), argv);
-    else spawn(weztermBin(env), argv, { detached: true, stdio: "ignore", env: childEnvOf(env) }).unref();
+    launchLead(args, { env, cwd, run, launch: launch ?? detached(env), panes, platform });
   } catch (e) {
     console.log(c.yellow(t("WezTerm açılamadı ({why}); lead bu terminalde açılıyor", { why: e.message })));
     return false;
@@ -507,6 +538,8 @@ function status(env = process.env) {
   const pref = preference(env, SETTINGS);
   console.log(`  ${t("ekip açılınca")}: ${pref === "wezterm" ? c.bold(t("WezTerm'e geçer")) : c.bold(t("bu terminalde kalır"))}${env.EKIP_TERMINAL ? c.gray(" (EKIP_TERMINAL)") : ""}  ${c.gray("· ekip terminal default wezterm|current")}`);
   console.log(`  WezTerm: ${weztermInstalled(env) ? c.green(t("kurulu")) : c.gray(t("kurulu değil"))}`);
+  const app = appLine(appState(env));
+  if (app) console.log(`  ekip.app: ${app[0] === "ok" ? c.green(app[1]) : c.yellow(app[1])}`);
   console.log(`  ekip.lua: ${fs.existsSync(path.join(configDir(env), "ekip.lua")) ? c.green(t("yazılmış")) : c.gray(t("yok (ekip terminal install)"))}  ·  ${user.file}: ${user.state === "linked" ? c.green(t("ekip.lua'yı yüklüyor")) : user.state === "own" ? c.yellow(t("ekip.lua'yı yüklemiyor")) : c.gray(t("yok"))}`);
   return 0;
 }
@@ -517,5 +550,5 @@ export async function main([sub = "status", ...args]) {
   if (sub === "open") return open(args);
   if (sub === "status") return status();
   if (sub === "config") { process.stdout.write(ekipLua()); return 0; }
-  die("usage: ekip terminal install [--dry-run] | open [--dry-run] [ekip args] | default wezterm|current | status | config");
+  die("usage: ekip terminal install [--dry-run] [--rebuild-app] | open [--dry-run] [ekip args] | default wezterm|current | status | config");
 }

@@ -7,6 +7,7 @@ import path from "node:path";
 import { HOME, ROOT, SETTINGS, die } from "../core/core.js";
 import { c } from "../core/ui.js";
 import { lang } from "../core/i18n.js";
+import { appState, ensureApp } from "./terminal-app.js";
 
 const STATE = path.join(HOME, "update-check.json");
 const git = (...args) => spawnSync("git", ["-C", ROOT, ...args], { encoding: "utf8", timeout: 8000 });
@@ -114,6 +115,12 @@ export function updateContext() {
     : `## ekip güncellemesi\nekip ${u.latest} çıktı; bu kurulum ${u.local}. Kullanıcıya bir kez, tek kısa cümleyle sor ("Yeni ekip sürümü çıktı, güncelleyeyim mi?"). Kabul ederse \`ekip update\` çalıştır ve neyin değiştiğini söyle (değişiklik listesini yazdırır). Hayır derse tekrar sorma.`;
 }
 
+// WezTerm upgraded by Homebrew since ekip.app was built: build it again from the new WezTerm.app
+function refreshTerminalApp() {
+  const s = appState();
+  if (s.state === "stale") ensureApp(process.env, { step: (m) => console.log(`  ${m}`) });
+}
+
 /** ekip update: fast-forward the checkout to the newest release and show what changed. */
 export function update() {
   const dirty = git("status", "--porcelain", "--untracked-files=no").stdout.trim();
@@ -125,6 +132,7 @@ export function update() {
   const after = git("rev-parse", "HEAD").stdout.trim();
   const to = localVersion();
   writeState({ ...readState(), at: 0 });
+  refreshTerminalApp();
   if (before === after) { console.log(lang === "en" ? `ekip is up to date (${to})` : `ekip güncel (${to})`); return 0; }
   console.log(`${c.bold("ekip")} ${from} → ${c.green(to)}\n`);
   console.log(git("log", "--no-merges", "--format=  · %s", `${before}..${after}`).stdout.split("\n").slice(0, 40).join("\n"));

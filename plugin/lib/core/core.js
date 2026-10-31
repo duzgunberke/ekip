@@ -54,7 +54,12 @@ export const has = (bin) => spawnSync("sh", ["-c", `command -v ${bin}`], { stdio
 // notifications go out in the name of a tiny "ekip" app bundle that carries the logo (-sender).
 export const NOTIFIER_APP = path.join(os.homedir(), "Applications/ekip.app");
 const NOTIFIER_ID = "io.ekip.notifier";
+// `ekip terminal install` puts ekip's terminal (WezTerm under ekip's name and icon) at the same path;
+// notifications then go out in its name, and clicking one brings the ekip terminal forward.
+export const TERMINAL_APP_ID = "io.ekip.terminal";
+const terminalApp = () => fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/ekip.icns"));
 export function ensureNotifierApp() {
+  if (process.platform === "darwin" && terminalApp()) return true;
   if (process.platform !== "darwin" || fs.existsSync(path.join(NOTIFIER_APP, "Contents/Resources/applet.icns"))) return fs.existsSync(NOTIFIER_APP);
   const png = path.join(ROOT, "plugin/assets/ekip-icon.png");
   if (!fs.existsSync(png)) return false;
@@ -90,7 +95,7 @@ export function notify(title, message, { subtitle = "", group = "ekip", open = "
   // a separate data dir means a test or a throwaway instance: no notifications unless asked for
   if (process.env.EKIP_HOME && !process.env.EKIP_NOTIFY) return;
   const icon = path.join(ROOT, "plugin/assets/ekip-icon.png");
-  const sender = ensureNotifierApp() ? ["-sender", NOTIFIER_ID] : ["-appIcon", icon];
+  const sender = ensureNotifierApp() ? ["-sender", terminalApp() ? TERMINAL_APP_ID : NOTIFIER_ID] : ["-appIcon", icon];
   if (has("terminal-notifier")) spawnSync("terminal-notifier", ["-title", title, ...(subtitle ? ["-subtitle", subtitle] : []), "-message", message || title, ...sender, "-group", group, ...(open ? ["-open", open] : [])], { stdio: "ignore", timeout: 3000 });
   else spawnSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)} sound name "Glass"`], { stdio: "ignore", timeout: 1000 });
 }
