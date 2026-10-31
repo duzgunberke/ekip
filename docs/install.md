@@ -46,14 +46,24 @@ non-interactive run never asks). It runs the same steps as:
 
 ```bash
 ekip terminal install --dry-run   # what it would do
-ekip terminal install             # brew install --cask wezterm, then ~/.config/wezterm/ekip.lua
+ekip terminal install             # brew install --cask wezterm, ~/.config/wezterm/ekip.lua, ~/Applications/ekip.app
 ekip terminal open                # start the lead in WezTerm
 ```
+
+On macOS the install also builds `~/Applications/ekip.app`: WezTerm under ekip's name and logo, so
+the Dock shows one ekip icon instead of WezTerm's. It is an APFS clone of `/Applications/WezTerm.app`
+(almost no extra disk until files change) with its own `Info.plist` (`io.ekip.terminal`) and icon,
+signed ad hoc and registered with LaunchServices. A small app that only starts WezTerm's binary would
+still show WezTerm's icon, because macOS takes the icon from the bundle the running program lives
+in. After `brew upgrade --cask wezterm` the copy is out of date: `ekip terminal status` and
+`ekip doctor` say so, and `ekip update` or `ekip terminal install` builds it again. ekip's
+notifications use the same app, so they carry the logo too.
 
 Both save `"terminal": "wezterm"` in `data/config.json`. From then on `ekip` typed in iTerm2 or
 Terminal.app starts the lead in a new WezTerm window (same folder, ekip's variables), waits up to
 10 seconds for its pane to show up in `wezterm cli list`, then closes only the session or tab it was
-typed in. Other terminals are not closed. If the window does not appear, nothing is closed and the
+typed in. When WezTerm is already running the window opens in it (`wezterm cli spawn`) instead of a
+second WezTerm process, so the Dock keeps one icon. Other terminals are not closed. If the window does not appear, nothing is closed and the
 lead starts in the current terminal with the reason. `ekip --here` or `EKIP_TERMINAL=current` stays
 put for one start; `ekip terminal default current` turns it off, `ekip terminal default wezterm` back
 on; `ekip terminal status` shows the setting. Subcommands, worker panes and hooks never switch.
