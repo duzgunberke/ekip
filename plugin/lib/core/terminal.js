@@ -43,14 +43,15 @@ export function paneShell(command, { title = "", role = "" } = {}) {
 
 // ---- WezTerm ------------------------------------------------------------------------------------
 
-/** `wezterm cli list --format json` → [{ id, tab, window, title, tabTitle, cwd, top, left, active, vars }]. */
+/** `wezterm cli list --format json` → [{ id, tab, window, title, tabTitle, cwd, top, left, cols, rows, active, zoomed, vars }]. */
 export function parseWeztermList(text) {
   let rows;
   try { rows = JSON.parse(text); } catch { return null; }
   if (!Array.isArray(rows)) return null;
   return rows.map((p) => ({
     id: String(p.pane_id), tab: String(p.tab_id), window: String(p.window_id), title: p.title ?? "", tabTitle: p.tab_title ?? "",
-    cwd: p.cwd ?? "", top: p.top_row ?? 0, left: p.left_col ?? 0, active: !!p.is_active, vars: p.user_vars ?? {},
+    cwd: p.cwd ?? "", top: p.top_row ?? 0, left: p.left_col ?? 0, cols: p.size?.cols ?? 0, rows: p.size?.rows ?? 0,
+    active: !!p.is_active, zoomed: !!p.is_zoomed, vars: p.user_vars ?? {},
   }));
 }
 
@@ -60,11 +61,29 @@ export function weztermBin(env = process.env) {
   return "wezterm";
 }
 
-export function wezterm({ run = run0, env = process.env } = {}) {
+// The worker column: one stack right of the lead, at most COLUMN_MAX panes (shorter ones would be
+// unreadable); the lead keeps (100 - COLUMN_PCT)% of the width. Further panes open in a tab of the
+// lead's window titled WORKERS_TAB.
+export const COLUMN_MAX = 4;
+export const COLUMN_PCT = 37;
+export const WORKERS_TAB = "ekip · işçiler";
+
+// The column ekip opened for one lead, kept in a small file (`panes/<terminal>-<lead>.json`): a pane's
+// title belongs to the program running in it (claude, agy rename theirs) and WezTerm's `cli list`
+// may not report user variables at all, so neither can say which panes are ekip's.
+function columnState(home, key) {
+  const file = path.join(home, "panes", `${key}.json`);
+  const read = () => { try { const v = JSON.parse(fs.readFileSync(file, "utf8")); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
+  const write = (ids) => { try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(ids)); } catch { /* the geometry still finds the column */ } };
+  return { file, read, write };
+}
+
+export function wezterm({ run = run0, env = process.env, home = HOME } = {}) {
   const bin = weztermBin(env);
   // --no-auto-start: outside a running WezTerm, `wezterm cli` would start a background mux server
   const cli = (args) => run(bin, ["cli", "--no-auto-start", ...args], { timeout: 5000, env });
   const lead = env.WEZTERM_PANE != null ? String(env.WEZTERM_PANE) : null;
+  const state = columnState(home, `wezterm-${lead}`);
   const self = {
     name: "wezterm",
     // null means "could not ask": callers then assume the panes are still open (never a duplicate)
@@ -73,25 +92,50 @@ export function wezterm({ run = run0, env = process.env } = {}) {
       if (r.status !== 0 || r.error) return null;
       return parseWeztermList(r.stdout ?? "");
     },
-    // Panes of the lead's tab: the lead, its column (ekip-titled panes), the task pane.
+    // Panes of the lead's tab: the lead, its column, the task pane, and the workers tab (if any). A
+    // column pane is one ekip recorded opening, or one that lies right of the lead's right edge; titles
+    // and user variables are only a hint. A zoomed tab reports the zoomed pane full size, so the
+    // recorded ids are what keep the column known then.
     layout(panes = self.listPanes()) {
       if (!panes) return null;
       const me = panes.find((p) => p.id === lead);
       const tab = me ? panes.filter((p) => p.tab === me.tab) : [];
       const task = tab.find((p) => p.title === TASK_TITLE || p.vars.ekip_role === "tasks") ?? null;
-      const column = tab.filter((p) => p !== me && p !== task && (p.vars.ekip_role === "pane" || p.title.startsWith("ekip · "))).sort((a, b) => a.top - b.top);
-      return { me, task, column };
+      const known = new Set(state.read());
+      const right = me ? me.left + me.cols : Infinity;
+      const column = tab.filter((p) => p !== me && p !== task
+        && (known.has(p.id) || (me.cols > 0 && p.left >= right) || p.vars.ekip_role === "pane" || p.title.startsWith("ekip · ")))
+        .sort((a, b) => a.top - b.top);
+      const workers = me ? panes.filter((p) => p.window === me.window && p.tab !== me.tab && p.tabTitle === WORKERS_TAB) : [];
+      return { me, task, column, workers, width: Math.max(0, ...tab.map((p) => p.left + p.cols)) };
     },
+    // Worker panes: the first splits the lead to the right (COLUMN_PCT%), the next ones split the
+    // column's tallest pane (the lowest on a tie) downwards, so the column stays one stack and the
+    // lead never narrows. A full column opens a WORKERS_TAB tab, and then splits that one. `below`
+    // (the task pane) splits the lead downwards. A zoomed pane (Cmd+Alt+Z) is zoomed again after the
+    // split, which unzooms it.
     openPane(command, { below = false, title = "" } = {}) {
       const shell = paneShell(command, { title, role: below ? "tasks" : "pane" });
       const lay = self.layout();
       if (!lay?.me) return null;
       const split = (anchor, side, pct) => cli(["split-pane", "--pane-id", anchor, side, "--percent", String(pct), "--", ...shell]);
-      const r = below ? split(lay.me.id, "--bottom", 30)
-        : lay.column.length >= 5 ? cli(["spawn", "--pane-id", lay.me.id, "--", ...shell])
-          : lay.column.length ? split(lay.column.at(-1).id, "--bottom", 50) : split(lay.me.id, "--right", 40);
+      const tallest = (ps) => ps.reduce((a, b) => (b.rows >= a.rows ? b : a));
+      let r, inColumn = false;
+      if (below) r = split(lay.me.id, "--bottom", 30);
+      else if (lay.column.length >= COLUMN_MAX) {
+        if (lay.workers.length && lay.workers.length < COLUMN_MAX) r = split(tallest([...lay.workers].sort((a, b) => a.top - b.top)).id, "--bottom", 50);
+        else {
+          r = cli(["spawn", "--pane-id", lay.me.id, "--", ...shell]);
+          const tabPane = r.status === 0 ? (r.stdout ?? "").trim() : "";
+          if (/^\d+$/.test(tabPane)) cli(["set-tab-title", "--pane-id", tabPane, WORKERS_TAB]);
+        }
+      } else { inColumn = true; r = lay.column.length ? split(tallest(lay.column).id, "--bottom", 50) : split(lay.me.id, "--right", COLUMN_PCT); }
       const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
-      return /^\d+$/.test(id) ? id : null;
+      if (!/^\d+$/.test(id)) return null;
+      if (inColumn) state.write([...lay.column.map((p) => p.id), id]);
+      const zoomed = [lay.me, lay.task, ...lay.column].find((p) => p?.zoomed);
+      if (zoomed && !lay.workers.includes(zoomed)) cli(["zoom-pane", "--pane-id", zoomed.id, "--zoom"]);
+      return id;
     },
     paneAlive(id) {
       if (id == null || id === "") return false;
@@ -119,28 +163,39 @@ export function parseKittyLs(text) {
   }))));
 }
 
-export function kitty({ run = run0, env = process.env } = {}) {
+export function kitty({ run = run0, env = process.env, home = HOME } = {}) {
   const k = (args) => run("kitty", ["@", ...args], { timeout: 5000, env });
   const lead = env.KITTY_WINDOW_ID ? String(env.KITTY_WINDOW_ID) : null;
+  const state = columnState(home, `kitty-${lead}`);
   const self = {
     name: "kitty",
     listPanes() { const r = k(["ls"]); return r.status !== 0 || r.error ? null : parseKittyLs(r.stdout ?? ""); },
+    // `kitty @ ls` has no geometry: the column is the windows ekip recorded opening (titles change).
     layout(panes = self.listPanes()) {
       if (!panes) return null;
       const me = panes.find((p) => p.id === lead);
       const tab = me ? panes.filter((p) => p.tab === me.tab) : [];
       const task = tab.find((p) => p.title === TASK_TITLE) ?? null;
-      return { me, task, column: tab.filter((p) => p !== me && p !== task && p.title.startsWith("ekip · ")) };
+      const known = state.read();
+      const column = tab.filter((p) => p !== me && p !== task && (known.includes(p.id) || p.title.startsWith("ekip · ")))
+        .sort((a, b) => (known.indexOf(a.id) + 1 || Infinity) - (known.indexOf(b.id) + 1 || Infinity));
+      return { me, task, column };
     },
+    // The same column as in WezTerm: the first window splits the lead (the new one gets COLUMN_PCT%),
+    // the next ones split the last one downwards, a full column opens a tab.
     openPane(command, { below = false, title = "" } = {}) {
       const lay = self.layout();
       if (!lay?.me) return null;
       const anchor = below || !lay.column.length ? lay.me.id : lay.column.at(-1).id;
       const where = below || lay.column.length ? "hsplit" : "vsplit";
-      const type = !below && lay.column.length >= 5 ? ["--type=tab"] : ["--type=window", `--location=${where}`, `--match=id:${anchor}`];
+      const tab = !below && lay.column.length >= COLUMN_MAX;
+      const type = tab ? ["--type=tab", `--tab-title=${WORKERS_TAB}`]
+        : ["--type=window", `--location=${where}`, `--match=id:${anchor}`, ...(!below && !lay.column.length ? [`--bias=${COLUMN_PCT}`] : [])];
       const r = k(["launch", ...type, ...(title ? ["--title", title] : []), "--cwd=current", ...paneShell(command)]);
       const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
-      return /^\d+$/.test(id) ? id : null;
+      if (!/^\d+$/.test(id)) return null;
+      if (!below && !tab) state.write([...lay.column.map((p) => p.id), id]);
+      return id;
     },
     paneAlive(id) { if (!id) return false; const panes = self.listPanes(); return panes ? panes.some((p) => p.id === String(id)) : true; },
     focus(id) { return k(["focus-window", `--match=id:${id}`]).status === 0; },

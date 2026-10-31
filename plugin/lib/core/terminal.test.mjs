@@ -51,25 +51,143 @@ function fakeWez(panes, { fail = false } = {}) {
 }
 const env = { WEZTERM_PANE: "1", TERM_PROGRAM: "WezTerm", EKIP_WEZTERM: "wezterm" };
 
-{ // column: first pane splits the lead to the right, the next goes under it, past five a new tab
+{ // the pane command sets its title and role first, then runs the command
   const f = fakeWez([pane(1, 0, "claude")]);
-  const w = term.wezterm({ run: f.run, env });
-  assert.equal(w.openPane("tail -F a.log", { title: "ekip · codex" }), "10");
-  assert.deepEqual(f.calls.at(-1).slice(0, 6), ["cli", "split-pane", "--pane-id", "1", "--right", "--percent"]);
-  assert.equal(w.openPane("tail -F b.log", { title: "ekip · qwen" }), "11");
-  assert.deepEqual(f.calls.at(-1).slice(0, 5), ["cli", "split-pane", "--pane-id", "10", "--bottom"]);
-  for (let i = 0; i < 3; i++) w.openPane("x", { title: `ekip · w${i}` });
-  w.openPane("x", { title: "ekip · sixth" });
-  assert.equal(f.calls.at(-1)[1], "spawn");
-  // the pane command sets its title and role first, then runs the command
+  term.wezterm({ run: f.run, env, home: tmp }).openPane("tail -F a.log", { title: "ekip · codex" });
   const shell = f.calls.find((a) => a[1] === "split-pane").slice(-3);
   assert.equal(shell[0], "/bin/zsh");
   assert.match(shell[2], /\\033\]2;%s\\007' 'ekip · codex'; .*SetUserVar=%s=%s.*ekip_role 'cGFuZQ=='; tail -F a\.log$/);
 }
 
+// A fake WezTerm with geometry: split-pane shares the anchor's cells like WezTerm does (one cell for
+// the divider), close() gives a pane's rows back to its neighbour in the stack, rename() is what
+// claude / agy do to the title once they run. No user variables in the list (WezTerm 20240203 prints
+// none), so only ekip's record and the geometry can find the column.
+function wezGeo({ task = false } = {}) {
+  const W = 200, H = 50;
+  const panes = [{ id: 1, tab: 0, title: "claude", left: 0, top: 0, cols: W, rows: H, tabTitle: "", zoomed: false }];
+  if (task) { panes[0].rows = 34; panes.push({ id: 2, tab: 0, title: "ekip · görevler", left: 0, top: 35, cols: W, rows: 15, tabTitle: "", zoomed: false }); }
+  const calls = [];
+  let next = 10, nextTab = 1;
+  const json = () => JSON.stringify(panes.map((p) => ({ window_id: 0, tab_id: p.tab, pane_id: p.id, title: p.title, tab_title: p.tabTitle,
+    size: { cols: p.cols, rows: p.rows }, left_col: p.left, top_row: p.top, is_zoomed: p.zoomed, is_active: p.id === 1, cwd: "file:///tmp/" })));
+  const run = (bin, args) => {
+    args = [args[0], ...args.slice(2)];
+    calls.push(args);
+    const at = (flag) => args[args.indexOf(flag) + 1];
+    if (args[1] === "list") return { status: 0, stdout: json() };
+    if (args[1] === "split-pane") {
+      const a = panes.find((p) => String(p.id) === at("--pane-id"));
+      const pct = Number(at("--percent")) / 100;
+      const n = { id: next++, tab: a.tab, title: "zsh", tabTitle: a.tabTitle, zoomed: false };
+      if (args.includes("--right")) { n.cols = Math.round(a.cols * pct); a.cols -= n.cols + 1; Object.assign(n, { left: a.left + a.cols + 1, top: a.top, rows: a.rows }); }
+      else { n.rows = Math.round(a.rows * pct); a.rows -= n.rows + 1; Object.assign(n, { top: a.top + a.rows + 1, left: a.left, cols: a.cols }); }
+      for (const p of panes) p.zoomed = false; // a split unzooms the tab
+      panes.push(n);
+      return { status: 0, stdout: `${n.id}\n` };
+    }
+    if (args[1] === "spawn") { const n = { id: next++, tab: 100 + nextTab++, title: "zsh", left: 0, top: 0, cols: W, rows: H, tabTitle: "", zoomed: false }; panes.push(n); return { status: 0, stdout: `${n.id}\n` }; }
+    if (args[1] === "set-tab-title") { const t = panes.find((p) => String(p.id) === at("--pane-id")).tab; for (const p of panes) if (p.tab === t) p.tabTitle = args.at(-1); }
+    if (args[1] === "zoom-pane") panes.find((p) => String(p.id) === at("--pane-id")).zoomed = true;
+    return { status: 0, stdout: "" };
+  };
+  const close = (id) => {
+    const i = panes.findIndex((p) => p.id === id), c = panes[i];
+    panes.splice(i, 1);
+    const above = panes.filter((p) => p.tab === c.tab && p.left === c.left && p.top + p.rows + 1 === c.top)[0];
+    const below = panes.filter((p) => p.tab === c.tab && p.left === c.left && c.top + c.rows + 1 === p.top)[0];
+    if (above) above.rows += c.rows + 1; else if (below) { below.top = c.top; below.rows += c.rows + 1; }
+  };
+  const rename = () => { for (const p of panes) if (p.id >= 10) p.title = `✳ worker ${p.id}`; };
+  const share = () => { const tab = panes.filter((p) => p.tab === 0); return panes[0].cols / Math.max(...tab.map((p) => p.left + p.cols)); };
+  const splits = () => calls.filter((a) => a[1] === "split-pane" || a[1] === "spawn").map((a) => (a[1] === "spawn" ? "spawn" : `${a[3]} ${a[4]}`));
+  return { run, calls, panes, close, rename, share, splits };
+}
+const fresh = () => { fs.rmSync(path.join(tmp, "panes"), { recursive: true, force: true }); };
+
+{ // 1..6 panes, each renamed by its program: one column right of the lead, then a workers tab
+  fresh();
+  const g = wezGeo();
+  const w = term.wezterm({ run: g.run, env, home: tmp });
+  for (let i = 1; i <= 6; i++) {
+    assert.ok(w.openPane(`agent ${i}`, { title: `ekip · w${i}` }));
+    g.rename();
+    assert.ok(g.share() >= 0.62, `lead keeps ${g.share()} of the width after ${i} panes`);
+  }
+  const s = g.splits();
+  assert.equal(s[0], "1 --right");
+  assert.deepEqual(g.calls.find((a) => a[1] === "split-pane").slice(5, 7), ["--percent", "37"]);
+  assert.ok(s.slice(1, 4).every((x) => x.endsWith("--bottom") && !x.startsWith("1 ")), `column splits: ${s}`);
+  assert.equal(s[4], "spawn", "the fifth pane opens the workers tab");
+  assert.ok(g.panes.filter((p) => p.tab !== 0).every((p) => p.tabTitle === term.WORKERS_TAB));
+  assert.ok(s[5].endsWith("--bottom") && !s[5].startsWith("1 "), "the sixth goes into the workers tab");
+  assert.equal(g.panes.filter((p) => p.tab !== 0).length, 2);
+  // the column is one stack, its panes equally tall
+  const col = g.panes.filter((p) => p.tab === 0 && p.id !== 1);
+  assert.equal(new Set(col.map((p) => p.left)).size, 1);
+  assert.ok(Math.max(...col.map((p) => p.rows)) - Math.min(...col.map((p) => p.rows)) <= 2, col.map((p) => p.rows).join(","));
+  assert.equal(w.layout().column.length, 4);
+}
+
+{ // with the task pane under the lead: it stays the task pane, never a column pane, never split
+  fresh();
+  const g = wezGeo({ task: true });
+  const w = term.wezterm({ run: g.run, env, home: tmp });
+  assert.equal(w.findTaskPane(), "2");
+  for (let i = 1; i <= 3; i++) { w.openPane("x", { title: `ekip · w${i}` }); g.rename(); }
+  const lay = w.layout();
+  assert.equal(lay.task.id, "2");
+  assert.deepEqual(lay.column.map((p) => p.id).sort(), ["10", "11", "12"]);
+  assert.ok(g.splits().every((x) => !x.startsWith("2 ")));
+  assert.ok(g.splits().slice(1).every((x) => !x.startsWith("1 ")));
+  assert.ok(g.share() >= 0.62);
+}
+
+{ // a pane closed in the middle: the next one fills the column again, the lead does not move
+  fresh();
+  const g = wezGeo();
+  const w = term.wezterm({ run: g.run, env, home: tmp });
+  for (let i = 1; i <= 3; i++) { w.openPane("x", { title: `ekip · w${i}` }); g.rename(); }
+  const width = g.panes[0].cols;
+  const mid = w.layout().column[1].id;
+  g.close(Number(mid));
+  assert.equal(w.layout().column.length, 2);
+  w.openPane("x", { title: "ekip · w4" }); g.rename();
+  assert.ok(!g.splits().at(-1).startsWith("1 "), "split the column, not the lead");
+  assert.equal(g.panes[0].cols, width);
+  assert.equal(w.layout().column.length, 3);
+  assert.ok(!JSON.parse(fs.readFileSync(path.join(tmp, "panes", "wezterm-1.json"), "utf8")).includes(mid), "closed pane pruned from the record");
+}
+
+{ // the record lost: the geometry alone still finds the column
+  fresh();
+  const g = wezGeo();
+  const w = term.wezterm({ run: g.run, env, home: tmp });
+  w.openPane("x"); w.openPane("x"); g.rename();
+  fresh();
+  w.openPane("x");
+  assert.ok(!g.splits().at(-1).startsWith("1 "));
+  assert.ok(g.share() >= 0.62);
+}
+
+{ // a zoomed lead (Cmd+Alt+Z): the list shows it full width, the record still knows the column; the
+  // split unzooms the tab, so ekip zooms the lead again
+  fresh();
+  const g = wezGeo();
+  const w = term.wezterm({ run: g.run, env, home: tmp });
+  w.openPane("x"); g.rename();
+  const saved = { ...g.panes[0] };
+  Object.assign(g.panes[0], { zoomed: true, cols: 200 });
+  w.openPane("x");
+  assert.ok(!g.splits().at(-1).startsWith("1 "), "a zoomed lead is not split");
+  assert.deepEqual(g.calls.at(-1), ["cli", "zoom-pane", "--pane-id", "1", "--zoom"]);
+  assert.equal(g.panes[0].zoomed, true);
+  Object.assign(g.panes[0], { cols: saved.cols });
+}
+
 { // one task pane per lead, found in the pane list (no flag file needed)
   const f = fakeWez([pane(1, 0, "claude")]);
-  const w = term.wezterm({ run: f.run, env });
+  const w = term.wezterm({ run: f.run, env, home: tmp });
   assert.equal(w.findTaskPane(), "");
   term.ensureTaskPane({ term: w, env, home: tmp });
   term.ensureTaskPane({ term: w, env, home: tmp });
@@ -81,20 +199,20 @@ const env = { WEZTERM_PANE: "1", TERM_PROGRAM: "WezTerm", EKIP_WEZTERM: "wezterm
   assert.equal(w.findTaskPane(), "10");
   // a task pane in another lead's tab does not count for this lead
   const g = fakeWez([pane(1, 0, "claude"), pane(2, 5, "ekip · görevler")]);
-  term.ensureTaskPane({ term: term.wezterm({ run: g.run, env }), env, home: tmp });
+  term.ensureTaskPane({ term: term.wezterm({ run: g.run, env, home: tmp }), env, home: tmp });
   assert.equal(g.calls.filter((a) => a[1] === "split-pane").length, 1);
 }
 
 { // wezterm cli failing (mux busy, socket gone) = unknown: nothing opens, panes count as alive
   const f = fakeWez([], { fail: true });
-  const w = term.wezterm({ run: f.run, env });
+  const w = term.wezterm({ run: f.run, env, home: tmp });
   assert.equal(w.listPanes(), null);
   assert.equal(w.findTaskPane(), null);
   assert.equal(w.paneAlive("4"), true);
   term.ensureTaskPane({ term: w, env, home: tmp });
   assert.equal(f.calls.filter((a) => a[1] === "split-pane").length, 0);
   const ok = fakeWez([pane(1, 0, "claude")]);
-  const w2 = term.wezterm({ run: ok.run, env });
+  const w2 = term.wezterm({ run: ok.run, env, home: tmp });
   assert.equal(w2.paneAlive("1"), true);
   assert.equal(w2.paneAlive("99"), false);
   w2.setTitle("1", "ekip · demo");
@@ -108,6 +226,25 @@ const env = { WEZTERM_PANE: "1", TERM_PROGRAM: "WezTerm", EKIP_WEZTERM: "wezterm
   const k = term.kitty({ run: () => ({ status: 0, stdout: JSON.stringify(ls) }), env: { KITTY_WINDOW_ID: "3" } });
   assert.equal(k.findTaskPane(), "4");
   assert.deepEqual(term.parseKittyLs(JSON.stringify(ls)).map((p) => p.id), ["3", "4"]);
+}
+
+{ // kitty: the column is what ekip recorded, whatever the windows are titled now; past four, a tab
+  fresh();
+  const wins = [{ id: 3, title: "claude" }];
+  const calls = [];
+  let next = 10;
+  const run = (cmd, args) => {
+    calls.push(args);
+    if (args[1] === "ls") return { status: 0, stdout: JSON.stringify([{ id: 1, tabs: [{ id: 2, title: "t", windows: wins }] }]) };
+    if (args[1] === "launch") { const id = next++; if (!args.includes("--type=tab")) wins.push({ id, title: "✳ renamed" }); return { status: 0, stdout: `${id}\n` }; }
+    return { status: 0, stdout: "" };
+  };
+  const k = term.kitty({ run, env: { KITTY_WINDOW_ID: "3" }, home: tmp });
+  for (let i = 0; i < 5; i++) k.openPane("x", { title: `ekip · w${i}` });
+  const launches = calls.filter((a) => a[1] === "launch");
+  assert.ok(launches[0].includes("--location=vsplit") && launches[0].includes("--match=id:3") && launches[0].includes("--bias=37"));
+  assert.ok(launches.slice(1, 4).every((a, i) => a.includes("--location=hsplit") && a.includes(`--match=id:${10 + i}`)), "column splits follow the last column window");
+  assert.ok(launches[4].includes("--type=tab") && launches[4].includes(`--tab-title=${term.WORKERS_TAB}`));
 }
 
 if (process.platform === "darwin") { // iTerm2: the same AppleScript layout as before the move

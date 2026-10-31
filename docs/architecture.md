@@ -147,9 +147,11 @@ Panes go through `plugin/lib/core/terminal.js`, one small interface per terminal
 | Back end | How | Task pane stays single by |
 |---|---|---|
 | iTerm2 | AppleScript (`osascript`); worker panes in a column right of the lead, past five as tabs | a flag file with the session id, checked against the open sessions; an osascript timeout counts as "still open" |
-| WezTerm | `wezterm cli --no-auto-start` `list --format json`, `split-pane`, `spawn`, `set-tab-title`, `activate-pane` | its title (`ekip · görevler`, set by the pane's shell) and an `ekip_role` user variable in the lead's tab of the pane list; a failed list opens nothing |
+| WezTerm | `wezterm cli --no-auto-start` `list --format json`, `split-pane`, `spawn`, `set-tab-title`, `activate-pane`, `zoom-pane` | its title (`ekip · görevler`, set by the pane's shell) and an `ekip_role` user variable in the lead's tab of the pane list; a failed list opens nothing |
 | kitty | `kitty @ ls`, `launch`, `focus-window`, `set-tab-title` (needs `allow_remote_control` and the splits layout) | its title in `kitty @ ls` |
 | other | a new Terminal.app window | no task pane |
+
+Worker panes in WezTerm and kitty form one column right of the lead: the first pane takes 37% of the width, each next one splits the column's tallest pane downwards, so the lead keeps about 63% however many workers run. With four panes in the column, further ones open in a tab of the lead's window titled `ekip · işçiler`. The column is found from `data/panes/<terminal>-<lead>.json` (the pane ids ekip opened, pruned against the live list) and, in WezTerm, from geometry (panes right of the lead's right edge); never from titles, which the programs in the panes rename. A zoomed pane (Cmd+Alt+Z) is zoomed again after a split.
 
 Each lead records its own id on its tasks (`terminal.js` `leadId()`: the iTerm2 session, `wezterm-<pane>`, `kitty-<window>`), so a lead sees only its own tasks. `ekip terminal install` writes WezTerm's `ekip.lua`, which reads `data/terminal-status.json` (the waiting / stuck / running counts and the registered projects, rewritten by `tasks.js` when a task changes and by the task pane) at most once a second for the tab bar; it never starts ekip itself.
 
