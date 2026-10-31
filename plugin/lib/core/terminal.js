@@ -78,6 +78,15 @@ function columnState(home, key) {
   return { file, read, write };
 }
 
+// Where a pane past the full column goes: the newest WORKERS_TAB tab while it holds fewer than
+// COLUMN_MAX panes (its panes, oldest first), otherwise null, meaning "open another such tab".
+function workersTarget(workers) {
+  if (!workers.length) return null;
+  const newest = workers.reduce((a, b) => (Number(b.tab) > Number(a.tab) ? b : a)).tab;
+  const ps = workers.filter((p) => p.tab === newest).sort((a, b) => a.top - b.top || Number(a.id) - Number(b.id));
+  return ps.length < COLUMN_MAX ? ps : null;
+}
+
 export function wezterm({ run = run0, env = process.env, home = HOME } = {}) {
   const bin = weztermBin(env);
   // --no-auto-start: outside a running WezTerm, `wezterm cli` would start a background mux server
@@ -123,7 +132,8 @@ export function wezterm({ run = run0, env = process.env, home = HOME } = {}) {
       let r, inColumn = false;
       if (below) r = split(lay.me.id, "--bottom", 30);
       else if (lay.column.length >= COLUMN_MAX) {
-        if (lay.workers.length && lay.workers.length < COLUMN_MAX) r = split(tallest([...lay.workers].sort((a, b) => a.top - b.top)).id, "--bottom", 50);
+        const wt = workersTarget(lay.workers);
+        if (wt) r = split(tallest(wt).id, "--bottom", 50);
         else {
           r = cli(["spawn", "--pane-id", lay.me.id, "--", ...shell]);
           const tabPane = r.status === 0 ? (r.stdout ?? "").trim() : "";
@@ -171,6 +181,7 @@ export function kitty({ run = run0, env = process.env, home = HOME } = {}) {
     name: "kitty",
     listPanes() { const r = k(["ls"]); return r.status !== 0 || r.error ? null : parseKittyLs(r.stdout ?? ""); },
     // `kitty @ ls` has no geometry: the column is the windows ekip recorded opening (titles change).
+    // Workers are the windows of WORKERS_TAB tabs in the lead's OS window.
     layout(panes = self.listPanes()) {
       if (!panes) return null;
       const me = panes.find((p) => p.id === lead);
@@ -179,22 +190,26 @@ export function kitty({ run = run0, env = process.env, home = HOME } = {}) {
       const known = state.read();
       const column = tab.filter((p) => p !== me && p !== task && (known.includes(p.id) || p.title.startsWith("ekip · ")))
         .sort((a, b) => (known.indexOf(a.id) + 1 || Infinity) - (known.indexOf(b.id) + 1 || Infinity));
-      return { me, task, column };
+      const workers = me ? panes.filter((p) => p.window === me.window && p.tab !== me.tab && p.tabTitle === WORKERS_TAB) : [];
+      return { me, task, column, workers };
     },
     // The same column as in WezTerm: the first window splits the lead (the new one gets COLUMN_PCT%),
-    // the next ones split the last one downwards, a full column opens a tab.
+    // the next ones split the last one downwards. A full column opens a WORKERS_TAB tab in the lead's
+    // OS window, whose last window the next ones split, up to COLUMN_MAX a tab. `--next-to` names the
+    // window to split (`--match` would name a tab).
     openPane(command, { below = false, title = "" } = {}) {
       const lay = self.layout();
       if (!lay?.me) return null;
-      const anchor = below || !lay.column.length ? lay.me.id : lay.column.at(-1).id;
+      const full = !below && lay.column.length >= COLUMN_MAX;
+      const wt = full ? workersTarget(lay.workers) : null;
+      const anchor = below || !lay.column.length ? lay.me.id : (wt ?? lay.column).at(-1).id;
       const where = below || lay.column.length ? "hsplit" : "vsplit";
-      const tab = !below && lay.column.length >= COLUMN_MAX;
-      const type = tab ? ["--type=tab", `--tab-title=${WORKERS_TAB}`]
-        : ["--type=window", `--location=${where}`, `--match=id:${anchor}`, ...(!below && !lay.column.length ? [`--bias=${COLUMN_PCT}`] : [])];
+      const type = full && !wt ? ["--type=tab", `--tab-title=${WORKERS_TAB}`, `--match=window_id:${lay.me.id}`]
+        : ["--type=window", `--location=${where}`, `--next-to=id:${anchor}`, ...(!below && !lay.column.length ? [`--bias=${COLUMN_PCT}`] : [])];
       const r = k(["launch", ...type, ...(title ? ["--title", title] : []), "--cwd=current", ...paneShell(command)]);
       const id = r.status === 0 ? (r.stdout ?? "").trim() : "";
       if (!/^\d+$/.test(id)) return null;
-      if (!below && !tab) state.write([...lay.column.map((p) => p.id), id]);
+      if (!below && !full) state.write([...lay.column.map((p) => p.id), id]);
       return id;
     },
     paneAlive(id) { if (!id) return false; const panes = self.listPanes(); return panes ? panes.some((p) => p.id === String(id)) : true; },

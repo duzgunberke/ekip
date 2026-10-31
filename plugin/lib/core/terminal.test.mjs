@@ -127,6 +127,16 @@ const fresh = () => { fs.rmSync(path.join(tmp, "panes"), { recursive: true, forc
   assert.equal(new Set(col.map((p) => p.left)).size, 1);
   assert.ok(Math.max(...col.map((p) => p.rows)) - Math.min(...col.map((p) => p.rows)) <= 2, col.map((p) => p.rows).join(","));
   assert.equal(w.layout().column.length, 4);
+  // panes 7-8 fill the workers tab, the ninth opens a second one, the tenth splits that
+  for (let i = 7; i <= 10; i++) { assert.ok(w.openPane(`agent ${i}`, { title: `ekip · w${i}` })); g.rename(); }
+  const s2 = g.splits();
+  assert.ok(s2.slice(6, 8).every((x) => x.endsWith("--bottom") && !x.startsWith("1 ")));
+  assert.equal(s2[8], "spawn", "a full workers tab opens another one");
+  assert.ok(s2[9].endsWith("--bottom") && s2[9].startsWith(`${g.panes.at(-2).id} `), `the tenth splits the newest workers tab: ${s2[9]}`);
+  const byTab = {};
+  for (const p of g.panes.filter((x) => x.tab !== 0)) byTab[p.tab] = (byTab[p.tab] ?? 0) + 1;
+  assert.deepEqual(Object.values(byTab), [4, 2]);
+  assert.ok(g.share() >= 0.62);
 }
 
 { // with the task pane under the lead: it stays the task pane, never a column pane, never split
@@ -228,23 +238,49 @@ const fresh = () => { fs.rmSync(path.join(tmp, "panes"), { recursive: true, forc
   assert.deepEqual(term.parseKittyLs(JSON.stringify(ls)).map((p) => p.id), ["3", "4"]);
 }
 
-{ // kitty: the column is what ekip recorded, whatever the windows are titled now; past four, a tab
+{ // kitty: the column is what ekip recorded, whatever the windows are titled now; past four, a
+  // workers tab whose last window the next ones split, a new workers tab every four
   fresh();
-  const wins = [{ id: 3, title: "claude" }];
+  const tabs = [{ id: 2, title: "t", windows: [{ id: 3, title: "claude" }] }];
   const calls = [];
-  let next = 10;
+  let next = 10, nextTab = 50;
   const run = (cmd, args) => {
     calls.push(args);
-    if (args[1] === "ls") return { status: 0, stdout: JSON.stringify([{ id: 1, tabs: [{ id: 2, title: "t", windows: wins }] }]) };
-    if (args[1] === "launch") { const id = next++; if (!args.includes("--type=tab")) wins.push({ id, title: "✳ renamed" }); return { status: 0, stdout: `${id}\n` }; }
+    if (args[1] === "ls") return { status: 0, stdout: JSON.stringify([{ id: 1, tabs }, { id: 7, tabs: [{ id: 8, title: term.WORKERS_TAB, windows: [{ id: 9, title: "other" }] }] }]) };
+    if (args[1] === "launch") {
+      const id = next++;
+      const opt = (name) => args.find((x) => x.startsWith(`--${name}=`))?.slice(name.length + 3);
+      if (args.includes("--type=tab")) tabs.push({ id: nextTab++, title: opt("tab-title"), windows: [{ id, title: "zsh" }] });
+      else tabs.find((t) => t.windows.some((w) => `id:${w.id}` === opt("next-to"))).windows.push({ id, title: "zsh" });
+      for (const t of tabs) for (const w of t.windows) if (w.id >= 10) w.title = `✳ worker ${w.id}`;
+      return { status: 0, stdout: `${id}\n` };
+    }
     return { status: 0, stdout: "" };
   };
   const k = term.kitty({ run, env: { KITTY_WINDOW_ID: "3" }, home: tmp });
-  for (let i = 0; i < 5; i++) k.openPane("x", { title: `ekip · w${i}` });
+  for (let i = 1; i <= 10; i++) assert.ok(k.openPane("x", { title: `ekip · w${i}` }));
   const launches = calls.filter((a) => a[1] === "launch");
-  assert.ok(launches[0].includes("--location=vsplit") && launches[0].includes("--match=id:3") && launches[0].includes("--bias=37"));
-  assert.ok(launches.slice(1, 4).every((a, i) => a.includes("--location=hsplit") && a.includes(`--match=id:${10 + i}`)), "column splits follow the last column window");
-  assert.ok(launches[4].includes("--type=tab") && launches[4].includes(`--tab-title=${term.WORKERS_TAB}`));
+  assert.ok(launches[0].includes("--location=vsplit") && launches[0].includes("--next-to=id:3") && launches[0].includes("--bias=37"));
+  assert.ok(launches.slice(1, 4).every((a, i) => a.includes("--location=hsplit") && a.includes(`--next-to=id:${10 + i}`)), "column splits follow the last column window");
+  assert.ok(launches.slice(1).every((a) => !a.includes("--next-to=id:3")), "the lead is split only once");
+  assert.ok(launches[4].includes("--type=tab") && launches[4].includes(`--tab-title=${term.WORKERS_TAB}`) && launches[4].includes("--match=window_id:3"));
+  assert.ok(launches.slice(5, 8).every((a, i) => a.includes("--type=window") && a.includes("--location=hsplit") && a.includes(`--next-to=id:${14 + i}`)), "panes 6-8 split the workers tab");
+  assert.ok(launches[8].includes("--type=tab"), "a full workers tab opens another one");
+  assert.ok(launches[9].includes(`--next-to=id:18`), "the tenth splits the newest workers tab");
+  assert.deepEqual(tabs.map((t) => t.windows.length), [5, 4, 2]);
+  assert.ok(tabs.slice(1).every((t) => t.title === term.WORKERS_TAB));
+  const lay = k.layout();
+  assert.equal(lay.column.length, 4);
+  assert.equal(lay.workers.length, 6, "another OS window's workers tab is not this lead's");
+  // a window closed in the column: the next pane goes back into the column, under its last window
+  tabs[0].windows.splice(2, 1);
+  k.openPane("x");
+  assert.ok(calls.at(-1).includes("--next-to=id:13") && calls.at(-1).includes("--location=hsplit"));
+  assert.equal(k.layout().column.length, 4);
+  // the task pane splits the lead downwards and is never counted in the column
+  tabs[0].windows.push({ id: 99, title: term.TASK_TITLE });
+  assert.equal(k.findTaskPane(), "99");
+  assert.equal(k.layout().column.length, 4);
 }
 
 if (process.platform === "darwin") { // iTerm2: the same AppleScript layout as before the move
