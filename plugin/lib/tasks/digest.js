@@ -219,12 +219,23 @@ export function render(d, rel) {
   return `${out.join("\n")}\n`;
 }
 
+/** "Havuzlar": the same chips as the task pane (pool-view.js), wrapped to the terminal. */
+export async function poolsSection(stream = process.stdout) {
+  const [{ currentView }, pv, { styleFor }] = await Promise.all([import("../workers/limits.js"), import("../workers/pool-view.js"), import("./pane.js")]);
+  const st = styleFor(stream);
+  const width = Math.max(40, stream.columns || Number(process.env.COLUMNS) || 100);
+  const lines = pv.chipLines(currentView(), width, st, { proto: pv.imageProtocol(stream, process.env, SETTINGS.poolLogos), logos: SETTINGS.poolLogos ?? "auto", label: "" });
+  return [`\n${c.bold(t("Havuzlar"))}`, ...(lines.length ? lines : [c.gray(`  ${t("bağlı havuz yok → ekip setup")}`)])].join("\n");
+}
+
 export async function main(args = []) {
   const d = await collect();
   if (args.includes("--json")) { console.log(JSON.stringify({ ...d, release: await release() }, null, 2)); return 0; }
   const rel = args.includes("--offline") ? cachedRelease(Infinity) : await release();
   process.stdout.write(render(d, rel));
-  // at the bottom: what setup still misses, with the command for each (cached check, ekip setup)
-  try { const s = await import("../ops/setup.js"); process.stdout.write(`${s.statusSection(await s.checkSetup())}\n`); } catch { /* never fail the digest for it */ }
+  // the pools as connected, the work behind the tasks, and at the bottom what setup still misses
+  try { process.stdout.write(`${await poolsSection()}\n`); } catch { /* never fail the digest for it */ }
+  try { const b = await import("../ops/background.js"); process.stdout.write(`${b.statusSection(b.backgroundJobs())}\n`); } catch { /* idem */ }
+  try { const s = await import("../ops/setup.js"); process.stdout.write(`${s.statusSection(await s.checkSetup())}\n`); } catch { /* idem */ }
   return 0;
 }

@@ -9,6 +9,8 @@ import { asciiOnly, bar as stateBar, colorMode, glyph, paint } from "../core/sta
 import { CHEVRON, FAN } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
 import { stripText } from "../ops/setup.js";
+import { chipLines, imageProtocol } from "../workers/pool-view.js";
+import { backgroundLine } from "../ops/background.js";
 
 export const NARROW = 60;
 const HEX = {
@@ -47,7 +49,9 @@ export function styleFor(stream = process.stdout, env = process.env) {
 
 // ---- text width and shortening -------------------------------------------------------------------
 
-export const strip = (s) => String(s).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+// an inline image (iTerm2/WezTerm OSC 1337, kitty graphics) takes the two cells it asks for
+const IMAGE = /\x1b\]1337;File=[^\x07]*\x07|\x1b_G[^\x1b]*\x1b\\/g;
+export const strip = (s) => String(s).replace(IMAGE, "  ").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 const wide = (cp) => (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) || (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1faff);
 /** Columns a string takes on screen (escape codes do not count; CJK and emoji take two). */
 export function cols(s) {
@@ -219,7 +223,9 @@ export function card(x, width, st, { compact = false } = {}) {
 // ---- footer: pools -------------------------------------------------------------------------------
 
 /** Pools as small dots (teal: work running, amber: full, grey: idle), wrapped over as many lines as needed. */
-export function poolLines(pools = [], width, st, { mesai = false } = {}) {
+export function poolLines(pools = [], width, st, { mesai = false, proto = null, logos = "auto" } = {}) {
+  // the pools as the user connected them, with their state and icon (workers/pool-view.js)
+  if (!Array.isArray(pools)) return chipLines(pools, width, st, { proto, logos, label: `${t("havuzlar")}${mesai ? ` (${t("mesai")})` : ""}` });
   if (!pools.length) return [];
   const label = `${t("havuzlar")}${mesai ? ` (${t("mesai")})` : ""}`;
   const items = pools.map((p) => {
@@ -285,7 +291,9 @@ export function renderPane(m, { width = 100, height = 30, stream = process.stdou
   const st = styleFor(stream, env);
   width = Math.max(20, width);
   const top = [header(m, width, st), ...setupLine(m.setup, width, st), ""];
-  const foot = poolLines(m.pools, width, st, { mesai: m.mesai });
+  // background work (embeddings, imports, reindexing) on one line over the pools, only when there is some
+  const bg = m.background ? backgroundLine(m.background, width, st) : [];
+  const foot = [...bg, ...poolLines(m.pools, width, st, { mesai: m.mesai, proto: imageProtocol(stream, env, m.logos), logos: m.logos ?? "auto" })];
   const loose = (m.loose ?? []).map((r) => {
     const parts = fitParts([{ text: r.via, paint: st.bold }, { text: r.label, shrink: true }, ...(r.note ? [{ text: r.note, paint: st.muted }] : [])], width - 5, "  ");
     return ` ${st.state(r.state, st.glyph(r.state))} ${parts.text}`;
@@ -325,8 +333,9 @@ export function renderPane(m, { width = 100, height = 30, stream = process.stdou
 // Last guard: an escape-aware cut for a line that still overflows (never expected, never mid-escape).
 function fitLine(s, n) {
   let out = "", used = 0;
-  for (const part of String(s).split(/(\x1b\[[0-9;?]*[A-Za-z])/g)) {
+  for (const part of String(s).split(/(\x1b\[[0-9;?]*[A-Za-z]|\x1b\]1337;File=[^\x07]*\x07|\x1b_G[^\x1b]*\x1b\\)/g)) {
     if (part.startsWith("\x1b[")) { out += part; continue; }
+    if (part.startsWith("\x1b]") || part.startsWith("\x1b_")) { if (used + 2 > n) return `${out}\x1b[0m`; out += part; used += 2; continue; }
     for (const ch of part) { const w = cols(ch); if (used + w > n) return `${out}\x1b[0m`; out += ch; used += w; }
   }
   return out;

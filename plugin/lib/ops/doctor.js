@@ -79,6 +79,12 @@ export async function main(args = []) {
     return { p, graphs, wiki, hits: Array.isArray(hits) ? hits.length : 0 };
   });
   const repairs = [];
+  // wiki ingests and code graphs still in progress or failed, for the pane's background line
+  try {
+    const index = rows.map((r) => ({ name: r.p.name, graphs: r.graphs.filter((x) => !["ready", "failed", "error"].includes(x.s.status)).length, wiki: ["processing", "queued", "pending"].includes(r.wiki?.status) ? `${r.wiki.status === "processing" ? t("işleniyor") : r.wiki.status}${r.wiki.progress?.percent != null ? ` %${r.wiki.progress.percent}` : ""}` : null, failed: r.graphs.some((x) => x.s.status === "failed") || r.wiki?.status === "failed" }))
+      .map((x) => ({ ...x, busy: !!(x.graphs || x.wiki) }));
+    fs.writeFileSync(path.join(HOME, "index-status.json"), JSON.stringify({ at: Date.now(), projects: index.filter((x) => x.busy || x.failed) }));
+  } catch { /* best effort */ }
   for (const r of rows) {
     const ready = r.graphs.filter((x) => x.s.status === "ready").length;
     // "failed" is a real failure to repair; "error" means the status could not be read right now
@@ -111,7 +117,8 @@ export async function main(args = []) {
   else if (bf) { line(running ? "warn" : "bad", t("vektörler"), `${bf.layer} ${bf.done}/${bf.total} (%${Math.round((bf.done / Math.max(1, bf.total)) * 100)})${running ? ` · ${t("dolduruluyor")}` : ` · ${t("durdu")}`}`); if (!running) { problems++; if (fix) { spawnSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "memory", "reindex"], { stdio: "inherit" }); fixed.push(t("durmuş vektör doldurma yeniden başlatıldı")); } } }
   else line("warn", t("vektörler"), t("doldurma hiç çalışmadı (ekip memory reindex)"));
   // for the setup gaps shown at the lead start (onboarding.js reads it without a network call)
-  try { fs.writeFileSync(path.join(HOME, "vectors-status.json"), JSON.stringify({ at: Date.now(), missing: bf?.layer === "done" ? 0 : bf ? (running ? 0 : Math.max(0, bf.total - bf.done)) : 0, never: !bf })); } catch { /* best effort */ }
+  // layer/done/total/running/queue: the background line of the task pane and ekip durum (ops/background.js)
+  try { fs.writeFileSync(path.join(HOME, "vectors-status.json"), JSON.stringify({ at: Date.now(), missing: bf?.layer === "done" ? 0 : bf ? (running ? 0 : Math.max(0, bf.total - bf.done)) : 0, never: !bf, ...(bf ? { layer: bf.layer, done: bf.done, total: bf.total, running, queue: bf.layer === "done" ? 0 : Math.max(0, bf.total - bf.done) } : {}) })); } catch { /* best effort */ }
 
   console.log(title(t("Geçmiş oturumlar")));
   let done = 0;

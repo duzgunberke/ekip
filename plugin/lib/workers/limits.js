@@ -6,7 +6,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AGENTS, autoOrder, lastQuotaHit, poolLoad, poolScore } from "./agents.js";
+import { AGENTS, autoOrder, freeReady, lastQuotaHit, poolLoad, poolScore } from "./agents.js";
+import { freeProviders, freeServing, poolView } from "./pool-view.js";
 import { spawnSync } from "node:child_process";
 import { HOME, REMOTE, ROOT, RUNS, SETTINGS, URL_ROOT, has, unifiedKey, FREE_CONTAINER_SH } from "../core/core.js";
 import { c, dot, title, fit } from "../core/ui.js";
@@ -49,6 +50,20 @@ function routingState() {
   } catch {
     try { const prev = JSON.parse(fs.readFileSync(last, "utf8")); return { ...prev.rs, stale: true, staleSince: prev.at }; } catch { return { platforms: {}, profiles: {}, unknown: true }; }
   }
+}
+
+/** The last routing snapshot read (data/freellmapi-routing-last.json), without asking freellmapi. */
+export function cachedRouting() {
+  try { const j = JSON.parse(fs.readFileSync(path.join(HOME, "freellmapi-routing-last.json"), "utf8")); return { ...j.rs, at: j.at }; } catch { return null; }
+}
+
+/** The pools as the user sees them (pool-view.js), from worker states, running counts and the free pool. */
+export function currentView({ workers = workerPools(), load = poolLoad(), rs = cachedRouting() } = {}) {
+  return poolView({
+    workers: workers.map((w) => ({ ...w, running: load[w.name]?.running ?? w.running, capacity: load[w.name]?.capacity ?? w.capacity })),
+    free: { keys: freeReady(), running: load.free?.running ?? 0, capacity: load.free?.capacity ?? 0, providers: freeProviders(rs) },
+    claude: load.claude, disabled: SETTINGS.disabledPools ?? [],
+  });
 }
 
 /** A provider's state from its real requests: serving, failing more than serving, at its limit, or idle. */
@@ -99,7 +114,13 @@ export async function snapshot() {
   const route = routing(workers, rs);
   // running/capacity of the pools outside the worker list too (free pool, headless claude)
   const load = poolLoad();
-  return { at: new Date().toISOString(), host: os.hostname(), workers, free, route, mesai: !!SETTINGS.mesai, load: { free: load.free, claude: load.claude } };
+  // for the panel: the same pool view as the terminal, the work behind the tasks, the setup
+  // checklist (cached check) and the language the user chose
+  const view = currentView({ workers, load, rs });
+  const background = await import("../ops/background.js").then((b) => b.backgroundJobs({ routing: rs })).catch(() => []);
+  const setup = await import("../ops/setup.js").then((m) => m.cachedSetup()?.steps ?? null).catch(() => null);
+  return { at: new Date().toISOString(), host: os.hostname(), workers, free, route, mesai: !!SETTINGS.mesai, load: { free: load.free, claude: load.claude },
+    view, serving: freeServing(rs), embeddings: rs.embeddings ?? null, background, setup, lang };
 }
 
 export async function push(s) {
@@ -138,6 +159,9 @@ export function render(s, args = []) {
 }
 
 export async function main(args = []) {
+  // --refresh: only re-read freellmapi's routing state into data/freellmapi-routing-last.json (the pane
+  // starts this in the background while a free-pool worker runs)
+  if (args.includes("--refresh")) { routingState(); return; }
   const demoAt = args.indexOf("--demo");
   if (demoAt >= 0) {
     const file = args[demoAt + 1];
