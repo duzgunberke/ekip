@@ -129,6 +129,12 @@ export async function main([sub, ...rest] = []) {
           console.log(`${new Date().toISOString()} ${x.name} ${sessionId} (from home): ${JSON.stringify(r)}`);
         }
       }
+      // sessions that ended without a Stop (closed window, crash) or predate the hook: a bounded catch-up
+      // once an hour from a lead's session, never from a worker's (it would race the other workers)
+      if (!(Number(process.env.EKIP_RUN_DEPTH ?? 0) > 0)) {
+        const r = await (await import("./history.js")).catchUpIfDue();
+        if (r.sessions || r.error) console.log(`${new Date().toISOString()} catch-up: ${JSON.stringify(r)}`);
+      }
     }
   } catch (e) { logErr(e); }
   return 0;

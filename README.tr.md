@@ -262,7 +262,9 @@ ekip                             # lideri başlatın; ne isterseniz sorun
 ekip ilk açılışta sizi karşılar ve her açılışta neyin eksik kaldığına bakar: daha yeni bir ekip
 sürümü, indekslenmemiş bir proje, eksik kod grafiği ya da wiki, belleğe aktarılmamış Claude
 geçmişi, vektörsüz kayıtlar, bağlanmamış worker havuzları ya da ücretsiz model anahtarları. Claude
-en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni sürümler kendiliğinden kurulur: sürüm çıktığında ve kurulumunuzda yerel değişiklik yoksa ekip
+en faydalı adımı bir kez, tek cümleyle önerir ve "evet" derseniz yapar. Yeni Claude oturumları
+belleğe kendiliğinden girer (her turdan sonra, turu yarım kalanlar için saatte bir telafi adımıyla);
+ekip'in kendi worker oturumları eksik geçmiş sayılmaz. Yeni sürümler kendiliğinden kurulur: sürüm çıktığında ve kurulumunuzda yerel değişiklik yoksa ekip
 kendini günceller ve bir kez haber verir (`data/config.json` içinde `"autoUpdate": false` kapatır,
 `ekip update` elle yapar).
 

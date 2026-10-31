@@ -42,7 +42,7 @@ Development environment
 Projects and memory
   ekip project add|remove|move|scan|ls|show|sync|card
   ekip project lesson NAME|genel "lesson"   a corrected mistake, added to every worker brief (genel: the lead's own)
-  ekip memory search|remember|ingest|import-history|reindex|up|down|status|open
+  ekip memory search|remember|ingest|import-history|catch-up|reindex|up|down|status|open
   ekip skill ls|search|show|learn|prune|candidates|accept|reject
   ekip stats [project] [--days N] [--json]   how memory, wiki, skills and code graph are used
   ekip tasks [--watch|--all]

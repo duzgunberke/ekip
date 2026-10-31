@@ -24,7 +24,7 @@ description: Use when adding, discovering, refreshing, relocating, or removing a
 8. Removal cleans the registration and associated generated project context,
    including card, code graph, wiki, and memory linkage; it may also clear
    project-specific Claude history paths.
-9. Memory can import Claude session history with `ekip memory import-history`.
+9. Memory can import Claude session history with `ekip memory import-history`; new sessions arrive on their own (Stop hook, hourly catch-up), `ekip memory catch-up` sends the missing ones by hand.
    The default import window is 30 days and the default per-session cap is 200
    MB.
 10. Change import sizing with `--days`, `--max-mb`, or `--all`; the `--max-mb`

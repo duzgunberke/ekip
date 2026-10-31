@@ -1652,6 +1652,18 @@ async function importHistory(args = []) {
   }
 }
 
+// ekip memory catch-up: sessions that no import or live capture took (and captured ones written to
+// since) go to memory through the live capture; the Stop hook runs the same step, bounded, once an hour.
+async function catchUpHistory(args = []) {
+  const all = args.includes("--all");
+  const i = args.indexOf("--max");
+  const { catchUp } = await import("../lib/memory/history.js");
+  const r = await catchUp({ force: true, idleMs: 0, maxSessions: all ? Infinity : Number(i >= 0 ? args[i + 1] : 50) || 50, maxMb: all ? 0 : 200 });
+  if (r.deferred) die(t("başka bir içe aktarma sürüyor ({why}); bitince tekrar dene", { why: r.deferred }));
+  console.log(t("{n} oturum hafızaya gönderildi ({m} mesaj)", { n: r.sessions, m: r.sent }) + (r.left ? ` · ${t("{n} oturum sonraya kaldı (hepsi için: --all)", { n: r.left })}` : ""));
+  if (r.error) { console.error(`${t("hafıza hatası")}: ${r.error}`); process.exitCode = 1; }
+}
+
 // ekip memory reindex: (re)start the vector backfill inside memory-core (resumable; only records
 // without a vector are embedded). Runs where the memory stack runs: the VPS hub or local Docker.
 function reindex() {
@@ -1686,6 +1698,7 @@ echo "memory-core restarted; its first start rebuilds the vector tables per proj
 
 async function memory([sub = "status", ...rest]) {
   if (sub === "import-history") return importHistory(rest);
+  if (sub === "catch-up") return catchUpHistory(rest);
   if (sub === "reindex") return reindex();
   if (sub === "compact") { process.exitCode = compact(); return; }
   if (!["up", "down", "status", "open"].includes(sub)) return (await import("../lib/memory/memory.js")).main([sub, ...rest]);
@@ -1848,7 +1861,7 @@ ${c.bold("Development environment")}
 ${c.bold("Projects and memory")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip project lesson")} ${c.gray('NAME "lesson"')}    a corrected mistake, added to every worker brief
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|catch-up|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} project procedures
 
 ${c.bold("VPS hub")} ${c.gray("(works while your Mac is off)")}
@@ -1897,7 +1910,7 @@ ${c.bold("Geliştirme ortamı")}
 ${c.bold("Projeler ve hafıza")}
   ${c.cyan("ekip project")} ${c.gray("add|remove|move|config|scan|ls|show|sync|card")}
   ${c.cyan("ekip project lesson")} ${c.gray('NAME "ders"')}      düzeltilen bir hata, her işçi brief'ine eklenir
-  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|reindex|compact|up|down|status|open")}
+  ${c.cyan("ekip memory")} ${c.gray("search|remember|ingest|import-history|catch-up|reindex|compact|up|down|status|open")}
   ${c.cyan("ekip skill")} ${c.gray("ls|search|show|learn|prune|candidates|accept|reject")} proje prosedürleri
 
 ${c.bold("VPS hub")} ${c.gray("(Mac kapalıyken de çalışır)")}

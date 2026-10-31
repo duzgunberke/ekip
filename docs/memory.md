@@ -89,6 +89,19 @@ ekip memory import-history --days 90 --max-mb 500
 ekip memory import-history --all
 ```
 
+### New sessions
+
+After each turn the Stop hook sends the new lines of the session to its project's memory (the live
+capture, `data/memory-state/capture/`). Sessions that never got there (a closed window, a crash, a
+session older than the hook) are sent by a catch-up step: the same hook runs it at most once an hour
+from a lead session, for sessions idle for 30 minutes, at most 10 sessions or 40 MB per run (a larger
+session goes alone), one run at a time, not while an import runs or the machine is busy. `ekip memory
+catch-up` runs it by hand (`--max N`, `--all` for no limits).
+
+The setup check counts a session as missing only when no import, live capture or worker run record
+took it: ekip's own worker sessions (`claude -p`, an ekip worker brief) are recorded as runs, and
+sessions from the last day are left to the catch-up. The gap names how many sessions are missing.
+
 ## What is stored, and what is not
 
 Memory keeps conversation text, worker reports, and facts extracted from them. Lean import is enabled by default: tool output such as file dumps, command output, and logs is not imported. Model reasoning is not stored either; the assistant's reply contains the useful conclusion. Set `TDAI_IMPORT_LEAN=0` only if you explicitly need full tool traffic.
