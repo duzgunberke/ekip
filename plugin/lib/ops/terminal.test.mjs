@@ -220,8 +220,9 @@ assert.equal(core.SETTINGS.terminal, undefined);
   for (const s of ["./rel/path", "src/x/y", "https://x.com/a/b", "/a"]) assert.equal(s.match(rule), null, s);
   assert.ok(!luaText.includes("—"), "no em dash");
   assert.ok(!/truncate_right/.test(luaText), "names are shortened in the middle, never cut at the end");
-  // a real WezTerm loads it (when one is installed here)
-  const bin = ["/opt/homebrew/bin/wezterm", "/usr/local/bin/wezterm", "/Applications/WezTerm.app/Contents/MacOS/wezterm"].find((p) => fs.existsSync(p));
+  // a real WezTerm loads it (when one is installed here). macOS only: in an OrbStack Linux machine
+  // /usr/local/bin/wezterm is the Mac's binary, which cannot see the machine's /tmp (31 Oct).
+  const bin = process.platform === "darwin" ? ["/opt/homebrew/bin/wezterm", "/usr/local/bin/wezterm", "/Applications/WezTerm.app/Contents/MacOS/wezterm"].find((p) => fs.existsSync(p)) : null;
   if (bin) {
     const dir = path.join(tmp, "lua-check");
     fs.mkdirSync(dir, { recursive: true });
