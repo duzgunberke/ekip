@@ -4,7 +4,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { HOME, ROOT as REPO_ROOT } from "../core/core.js";
-import { lang } from "../core/i18n.js";
+import { lang, t } from "../core/i18n.js";
+import { setupBadge } from "../ops/setup.js";
 import { findProject } from "../projects/projects.js";
 import { setupGaps } from "../projects/onboarding.js";
 
@@ -30,11 +31,35 @@ const logErr = (e) => {
   try { fs.mkdirSync(path.join(HOME, "logs"), { recursive: true }); fs.appendFileSync(path.join(HOME, "logs/hooks.log"), `${new Date().toISOString()} ${e?.stack ?? e}\n`); } catch { /* ignore */ }
 };
 
+// Which gap to offer first: what breaks work now, then what saves the most, then the rest.
+const PRIORITY = ["memory", "no-workers", "keys", "agents", "embeddings", "project", "graph", "wiki", "card", "local-graph", "history", "vectors", "update", "git-identity", "gh-auth", "gh", "terminal", "pane", "hub"];
+export const mostUseful = (gaps) => [...gaps].sort((a, b) => ((PRIORITY.indexOf(a.id) + 1) || 99) - ((PRIORITY.indexOf(b.id) + 1) || 99))[0] ?? null;
+
+// "kurulum 5/9" from the cached setup check (ekip setup), when a required step is missing
+function setupLine() {
+  try { const b = setupBadge({ spawnRefresh: false }); return b?.missing.length ? `${t("kurulum")} ${b.done}/${b.total} → ekip setup` : ""; } catch { return ""; }
+}
+
+/**
+ * The line shown once when a lead starts (Claude Code clears what `ekip` printed): the single most
+ * useful missing step, ekip's own terminal when the lead runs elsewhere, and the setup counter.
+ */
+export function startupMessage(gaps, setup = setupLine()) {
+  const top = mostUseful(gaps.filter((g) => g.severity !== "info"));
+  const term = gaps.find((g) => g.id === "terminal" || g.id === "pane");
+  const items = [...(top ? [`${top.title} → ${top.command}`] : []), ...(term ? [`${term.title}: ${term.command} (${t("susturmak için: ekip setup snooze terminal")})`] : []), ...(setup ? [setup] : [])];
+  return items.length ? `ekip · ${items.join(" · ")}` : undefined;
+}
+
 export async function sessionStartContext(cwd) {
   const p = findProject(cwd);
   const parts = p ? [`# ekip ${lang === "en" ? "project" : "projesi"}: ${p.name} (${p.path})`] : [`# ekip ${lang === "en" ? "project setup" : "proje kurulumu"}`];
   const gaps = await setupGaps({ cwd });
-  if (gaps.length) parts.push(`# ${lang === "en" ? "Setup gaps" : "Kurulum eksikleri"}\n${gaps.map((g) => `- ${g.title} — ${g.why} — ${g.command}`).join("\n")}\nOffer the most useful one to the user once, in a single short sentence, at a natural moment (start of the session or when it is relevant to their request), e.g. 'Bu projeyi henüz indekslemedik, işçiler bağlamı bilerek başlasın diye şimdi yapayım mı?'. If they say yes, run it and track it as a task. Do not repeat an offer they declined in this session; do not block their request for it.`);
+  if (gaps.length) {
+    const top = mostUseful(gaps);
+    const setup = setupLine();
+    parts.push(`# ${t("Kurulum eksikleri")}${setup ? ` (${setup})` : ""}\n${gaps.map((g) => `- ${g.title} — ${g.why} — ${g.command}`).join("\n")}\n${top ? `The most useful one now: "${top.title}" (${top.command}). ` : ""}Offer only that one to the user, once, in a single short sentence in the user's language, at a natural moment (start of the session or when it is relevant to their request), e.g. ${lang === "en" ? "'This project is not indexed yet; shall I index it now so workers start with its context?'" : "'Bu projeyi henüz indekslemedik, işçiler bağlamı bilerek başlasın diye şimdi yapayım mı?'"}. If they say yes, run it and track it as a task. Do not repeat an offer they declined in this session; do not block their request for it. The full list, step by step: \`ekip setup\`.`);
+  }
   if (p?.card && fs.existsSync(p.card)) {
     const lines = fs.readFileSync(p.card, "utf8").trim().split("\n");
     parts.push(lines.slice(0, CARD_LINES).join("\n") + (lines.length > CARD_LINES ? `\n…(${lang === "en" ? "card trimmed; full card: project_card tool or" : "kart kısaltıldı; tümü için project_card aracı veya"} ${p.card})` : ""));
@@ -58,8 +83,7 @@ export async function main([sub, ...rest] = []) {
       const ctx = await sessionStartContext(input.cwd || process.cwd());
       // Claude Code clears the screen when it starts, so what `ekip` printed before is gone: the gaps
       // are repeated inside the session, where the user sees them (only at startup, not every resume)
-      const gaps = input.source === "startup" ? (await setupGaps({ cwd: input.cwd || process.cwd() })).filter((g) => g.severity !== "info") : [];
-      const systemMessage = gaps.length ? `ekip · ${lang === "en" ? "missing" : "eksik"}: ${gaps.map((g) => `${g.title} → ${g.command}`).join(" · ")}` : undefined;
+      const systemMessage = input.source === "startup" ? startupMessage(await setupGaps({ cwd: input.cwd || process.cwd() })) : undefined;
       if (ctx) process.stdout.write(JSON.stringify({ ...(systemMessage ? { systemMessage } : {}), hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
     } else if (sub === "stop") {
       const input = await readStdin();

@@ -123,10 +123,43 @@ export type LimitsProfile = {
   cooling: number
 }
 
+/** One pool as the terminal shows it (plugin/lib/workers/pool-view.js): only connected pools. */
+export type PoolViewEntry = {
+  name: string
+  state: 'running' | 'ready' | 'limited'
+  running: number
+  capacity: number
+  full: boolean
+  resetAt: string | null
+  providers?: { id: string; name: string; state: 'ready' | 'resting' | 'error'; minutes: number | null; error: string | null }[]
+}
+export type PoolView = { pools: PoolViewEntry[]; hidden: number }
+
+export type BackgroundJob = { id: string; label: string; state: 'running' | 'error' | 'ok'; detail: string | null }
+
+/** A setup step (plugin/lib/ops/setup.js), already in the Mac's language. */
+export type SetupStep = {
+  id: string
+  level: 'required' | 'recommended' | 'optional'
+  title: string
+  short?: string
+  why: string
+  command: string
+  done: boolean
+  detail: string | null
+  snoozed?: boolean
+}
+
 export type LimitsSnapshot = {
   at: string
   host: string
   receivedAt: string
+  /** sent by newer Macs: the same pool view as the terminal, the background work, the setup checklist, the language */
+  view?: PoolView
+  serving?: string | null
+  background?: BackgroundJob[]
+  setup?: SetupStep[] | null
+  lang?: 'tr' | 'en'
   workers?: LimitsWorker[]
   free?: LimitsProvider[] | { error: string }
   route?: {
@@ -168,6 +201,8 @@ export type Status = {
   workers: WorkerSlot[]
   links: { name: string; url: string }[]
   clients: Client[]
+  /** the hub's own setup gaps (hub/src/setup.js); Turkish source titles */
+  setup?: { id: string; title: string; why: string; command: string; done: boolean }[]
 }
 
 export type CodeGraphRef = { repo: string; id: string; branch?: string | null; private?: boolean | null; status?: string | null }

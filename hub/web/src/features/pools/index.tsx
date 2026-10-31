@@ -1,3 +1,5 @@
+import { PoolChips } from '@/components/pool-chips'
+import { BackgroundList } from './background'
 import { Brain, GitPullRequest, KeyRound, ServerCog } from 'lucide-react'
 import { poolLabel, shortTime } from '@/lib/format'
 import { poolProviders } from '@/lib/pools'
@@ -64,6 +66,25 @@ export function Pools() {
         <PageTitle title={t('Havuzlar')} description={t('Model sağlayıcıları, hafıza proxysi ve GitHub erişimi.')} />
         {status.isError && <QueryError className='mb-4' error={status.error} onRetry={() => status.refetch()} />}
         {limits.isError && <QueryError className='mb-4' error={limits.error} onRetry={() => limits.refetch()} />}
+
+        {snapshot?.view && (
+          <div className='mb-4 grid gap-4 lg:grid-cols-2'>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('Bağlı havuzlar')}</CardTitle>
+                <CardDescription>{t('Terminaldeki görünümün aynısı: yalnız bağladığın havuzlar ve durumları')}</CardDescription>
+              </CardHeader>
+              <CardContent><PoolChips view={snapshot.view} serving={snapshot.serving} /></CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('Arka plan')}</CardTitle>
+                <CardDescription>{t('Vektörleme, içe aktarma ve yeniden indeksleme')}</CardDescription>
+              </CardHeader>
+              <CardContent><BackgroundList jobs={snapshot.background ?? []} /></CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className='grid gap-4 lg:grid-cols-2'>
           <Card>

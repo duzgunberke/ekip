@@ -4,6 +4,55 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 export type Language = 'en' | 'tr'
 
 const en: Record<string, string> = Object.fromEntries([
+  // guided setup, connected pools, background work
+  ["Kurulum", "Setup"],
+  ["Mac’te adım adım: ekip setup", "Step by step on the Mac: ekip setup"],
+  ["önerilen", "recommended"],
+  ["isteğe bağlı", "optional"],
+  ["Hub", "Hub"],
+  ["bağlı havuz yok → ekip setup", "no pool connected → ekip setup"],
+  ["{n}/{cap} dolu", "{n}/{cap} full"],
+  ["dinleniyor", "resting"],
+  ["{n} dk", "{n} min"],
+  ["hata", "failed"],
+  ["+{n} kapalı", "+{n} off"],
+  ["arka planda iş yok", "nothing running in the background"],
+  ["Arka plan", "Background"],
+  ["Bağlı havuzlar", "Connected pools"],
+  ["Terminaldeki görünümün aynısı: yalnız bağladığın havuzlar ve durumları", "The same view as in the terminal: only the pools you connected, with their state"],
+  ["Vektörleme, içe aktarma ve yeniden indeksleme", "Embeddings, imports and reindexing"],
+  ["vektörleme", "embeddings"],
+  ["vektör doldurma", "vector backfill"],
+  ["konuşma içe aktarma", "history import"],
+  ["indeksleme", "indexing"],
+  ["CI klasörü bağlı", "CI folder linked"],
+  ["sıfırdan kurulum testinin sonucu ve yayın durumu panelde görünür", "the fresh-install test result and release state show on the panel"],
+  ["Hub sürümü biliniyor (EKIP_HUB_COMMIT)", "Hub version known (EKIP_HUB_COMMIT)"],
+  ["panel hub'ın yayınlanan kodla çalışıp çalışmadığını söyleyebilir", "the panel can tell whether the hub runs the released code"],
+  ["Ücretsiz havuz bağlı (FREELLMAPI_URL)", "Free pool linked (FREELLMAPI_URL)"],
+  ["hub işleri ve hafıza ücretsiz modellerle çalışır", "hub jobs and memory run on free models"],
+  ["Hafıza bağlı (TDAI_PROXY_URL)", "Memory linked (TDAI_PROXY_URL)"],
+  ["hub işleri projenin hafızası ve wiki'siyle başlar", "hub jobs start with the project's memory and wiki"],
+  ["Önkoşullar", "Prerequisites"],
+  ["ekip Node 22+, git, Claude Code ve (servisler bu Mac'te çalışıyorsa) Docker ile çalışır", "ekip runs on Node 22+, git, Claude Code and (when the services run on this Mac) Docker"],
+  ["ekip servisleri (ekip init)", "ekip services (ekip init)"],
+  ["ücretsiz model havuzu ve hafıza servisi olmadan işçiler ve proje hafızası çalışmaz", "without the free model pool and the memory service, workers and project memory do not work"],
+  ["Ücretsiz model anahtarları", "Free model keys"],
+  ["ücretsiz model havuzu küçük işleri, hafıza çıkarımını ve wiki'yi Claude kotan dışında yapar", "the free model pool does small tasks, memory extraction and the wiki outside your Claude quota"],
+  ["Vektör sağlayıcı (embedding)", "Embedding provider"],
+  ["vektör yoksa hafıza ve wiki araması anahtar kelimeye düşer, anlamca yakın kayıtlar bulunmaz", "without vectors, memory and wiki search fall back to keywords and miss records that match in meaning"],
+  ["İşçi CLI girişleri", "Worker CLI logins"],
+  ["iş, Claude kotan dışındaki en az iki havuza dağıtılabilsin", "so work can go to at least two pools outside your Claude quota"],
+  ["En az bir proje kaydı", "At least one registered project"],
+  ["projenin kartı, hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", "without the project's card, memory, wiki and code graph, workers start every task from scratch"],
+  ["Proje hafızası, wiki, kod grafiği ve vektör indeksi", "Project memory, wiki, code graph and vector index"],
+  ["eksik ya da bayat indeksle işçiler kodu, belgeleri ve eski kararları bulamaz", "with a missing or stale index, workers cannot find the code, the docs and past decisions"],
+  ["ekip'in kendi terminali (WezTerm)", "ekip's own terminal (WezTerm)"],
+  ["görev bölmesi, proje sekmeleri ve durum çubuğu en net WezTerm'de görünür", "the task pane, project tabs and status bar look clearest in WezTerm"],
+  ["Bildirimler (terminal-notifier)", "Notifications (terminal-notifier)"],
+  ["biten ve takılan işler ekip logosuyla macOS bildirimi olarak gelir", "finished and stuck work arrives as a macOS notification with the ekip logo"],
+  ["Hub (web paneli, Mac kapalıyken iş kuyruğu)", "Hub (web panel, job queue while the Mac is off)"],
+  ["web paneli ve Mac kapalıyken çalışan hafıza, ücretsiz havuz ve iş kuyruğu", "the web panel, and memory, the free pool and a job queue that run while your Mac is off"],
   ["Yolu kopyala", "Copy path"],
   ["kopyalandı", "copied"],
   ["main {sha} test ediliyor ({duration})", "main {sha} under test ({duration})"],
@@ -712,6 +761,20 @@ function getInitialLanguage(): Language {
 }
 
 let language: Language = getInitialLanguage()
+// a language the user picked here (switcher, stored) or put in the address: the Mac's setting does not override it
+const explicitChoice = (() => {
+  if (typeof window === 'undefined') return true
+  if (new URLSearchParams(window.location.search).get('lang')) return true
+  try { return !!window.localStorage.getItem('ekip-lang') } catch { return false }
+})()
+
+/** The Mac's `ekip lang` setting as the panel's default, until the user picks one in the panel. */
+export function adoptDefaultLanguage(value: Language | null | undefined) {
+  if (explicitChoice || !value || value === language) return
+  language = value
+  document.documentElement.lang = value
+  listeners.forEach((listener) => listener())
+}
 
 function subscribe(callback: () => void) {
   listeners.add(callback)

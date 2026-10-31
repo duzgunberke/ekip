@@ -11,6 +11,7 @@ import { painter, renderPane } from "./pane.js";
 import { bar as stateBar, barCells, glyph, icon, paint, rank, taskState } from "../core/status-style.js";
 import { leadId } from "../core/terminal.js";
 import { t as tr, lang } from "../core/i18n.js";
+import { setupBadge } from "../ops/setup.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -390,7 +391,10 @@ export function terminalStatus(all = read()) {
   } catch { /* no tracked jobs */ }
   let projects = [];
   try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")).filter((p) => p?.name && p?.path).map((p) => ({ name: p.name, path: p.path })); } catch { /* none registered */ }
-  return { ...n, projects };
+  // missing required setup steps, from the cached check (ekip setup); the status bar shows "kurulum 5/9"
+  let setup;
+  try { const b = setupBadge({ spawnRefresh: false }); if (b?.missing.length) setup = { done: b.done, total: b.total, missing: b.missing.length }; } catch { /* no state yet */ }
+  return { ...n, projects, ...(setup ? { setup } : {}) };
 }
 export function writeTerminalStatus(all) {
   try {
@@ -464,20 +468,31 @@ function render(t) {
   return [head, line, ...steps, ...asked, ...workers, ...waiting, ...tail].join("\n");
 }
 
-// Running/capacity of every ready pool, for the pane's footer. Which pools are ready is re-read
-// every 30 s (it spawns `command -v`), the running counts on every repaint.
-let ready = { at: 0, pools: [] };
+// The pools for the pane's footer (workers/pool-view.js): which pools are connected and their limits
+// are re-read every 30 s (it spawns `command -v`), the running counts on every repaint. While a
+// free-pool worker runs, freellmapi's routing snapshot is refreshed in the background every 2 min,
+// so the card says which provider and model it is on.
+let ready = { at: 0, workers: [] };
+let routingAsked = 0;
 async function poolData() {
   try {
     const a = await import("../workers/agents.js");
+    const lim = await import("../workers/limits.js");
     if (Date.now() - ready.at > 30_000) {
       // the pane outlives `ekip mesai on/off` and `ekip agents test`: pick up their settings
-      try { const cfg = JSON.parse(fs.readFileSync(path.join(HOME, "config.json"), "utf8")); for (const k of ["mesai", "mesaiClaude", "poolConcurrency", "agents", "autoOrder"]) SETTINGS[k] = cfg[k]; } catch { /* keep the old ones */ }
-      ready = { at: Date.now(), pools: [...a.readyPools(), ...(a.poolCapacity("claude") > 0 ? ["claude"] : []), "free"] };
+      try { const cfg = JSON.parse(fs.readFileSync(path.join(HOME, "config.json"), "utf8")); for (const k of ["mesai", "mesaiClaude", "poolConcurrency", "agents", "autoOrder", "disabledPools", "poolLogos"]) SETTINGS[k] = cfg[k]; } catch { /* keep the old ones */ }
+      ready = { at: Date.now(), workers: lim.workerPools() };
     }
     const load = a.poolLoad();
-    return ready.pools.map((n) => { const l = load[n] ?? { running: 0, capacity: a.poolCapacity(n) }; return { name: n, running: l.running, capacity: l.capacity }; });
-  } catch { return []; }
+    const rs = lim.cachedRouting();
+    const freeBusy = Object.entries(load).some(([n, l]) => l.running > 0 && a.onFreePool(n));
+    if (freeBusy && Date.now() - (rs?.at ?? 0) > 120_000 && Date.now() - routingAsked > 120_000) {
+      routingAsked = Date.now();
+      try { spawn(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "../../bin/ekip.js"), "limits", "--refresh"], { stdio: "ignore", detached: true }).unref(); } catch { /* next time */ }
+    }
+    const { freeServing } = await import("../workers/pool-view.js");
+    return { view: lim.currentView({ workers: ready.workers, load, rs }), serving: freeServing(rs), onFree: (via) => a.onFreePool(via) };
+  } catch { return { view: { pools: [], hidden: 0 }, serving: null, onFree: () => false }; }
 }
 
 const hhmm = (ms) => new Date(ms).toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -514,8 +529,10 @@ export function cardOf(t) {
 }
 
 /** Everything the pane shows, from the task file, the digest (counts, tracked jobs, loose workers) and the pools. */
-export function paneModel({ tasks = [], digest = null, pools = [], version = null, at = Date.now() } = {}) {
+export function paneModel({ tasks = [], digest = null, pools = [], version = null, at = Date.now(), setup = undefined, serving = null, onFree = (via) => via === "free", background = null } = {}) {
   const cards = tasks.map(cardOf);
+  // a running free-pool worker says which provider and model answer it: "free · NVIDIA nemotron-…"
+  if (serving) for (const x of cards) for (const w of x.workers ?? []) if (w.state === "running" && onFree(w.via)) w.note = [w.note, serving].filter(Boolean).join(" · ");
   const ids = new Set(tasks.map((t) => t.id));
   const loose = [];
   for (const x of digest?.running ?? []) {
@@ -525,14 +542,17 @@ export function paneModel({ tasks = [], digest = null, pools = [], version = nul
     if (x.pct != null) cards.push({ id: x.id, state: "running", title: x.title, project: x.project, pct: x.pct, status: tr("sürüyor"), when: [...(w?.rate ? [w.rate] : []), ...(x.eta ? [tr("bitiş ~{time}", { time: hhmm(Date.parse(x.eta)) })] : [])], step: null, workers: w ? [{ state: "running", via: w.via, label: null, note: w.lastLine || null }] : [] });
     else if (w) loose.push({ state: "running", via: w.via, label: x.title, note: w.since ? fmtDur(Date.now() - Date.parse(w.since)) : null });
   }
+  if (serving) for (const r of loose) if (onFree(r.via)) r.note = [r.note, serving].filter(Boolean).join(" · ");
   const counts = digest ? { waiting: digest.waiting.length, stuck: digest.stuck.length, running: digest.running.length, done: digest.done.length } : { waiting: 0, stuck: 0, running: tasks.filter((t) => t.status === "running").length, done: 0 };
   const recent = (digest?.done ?? []).slice(0, 3).map((d) => ({ title: d.title, result: d.result }));
-  return { clock: hhmm(at), version, counts, cards, loose, recent, pools, mesai: !!SETTINGS.mesai };
+  // missing required setup steps: one amber line under the header (cached check, refreshed in the background)
+  if (setup === undefined) { try { setup = setupBadge(); } catch { setup = null; } }
+  return { clock: hhmm(at), version, counts, cards, loose, recent, pools, mesai: !!SETTINGS.mesai, setup, background, logos: SETTINGS.poolLogos ?? "auto" };
 }
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
 // shows older logic than the web panel.
-const CODE = ["tasks/tasks.js", "tasks/pane.js", "tasks/digest.js", "workers/agents.js", "core/ui.js", "core/status-style.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
+const CODE = ["tasks/tasks.js", "tasks/pane.js", "tasks/digest.js", "workers/agents.js", "workers/pool-view.js", "workers/limits.js", "ops/background.js", "ops/setup.js", "core/ui.js", "core/status-style.js", "core/i18n.js"].map((f) => path.join(path.dirname(new URL(import.meta.url).pathname), "..", f));
 const codeStamp = () => CODE.map((f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join();
 const startedStamp = codeStamp();
 const codeChanged = () => codeStamp() !== startedStamp;
@@ -620,7 +640,10 @@ export async function main([sub = "ls", ...args]) {
       let digest = null;
       try { const dg = await import("./digest.js"); digest = await dg.collect(); } catch { /* the pane never stops for this */ }
       try { writeTerminalStatus(read()); } catch { /* best effort */ }
-      const model = paneModel({ tasks: pick(), digest, pools: await poolData(), version });
+      const pd = await poolData();
+      let background = null;
+      try { background = (await import("../ops/background.js")).backgroundJobs(); } catch { /* the pane never stops for this */ }
+      const model = paneModel({ tasks: pick(), digest, pools: pd.view, serving: pd.serving, onFree: pd.onFree, background, version });
       const width = process.stdout.columns || Number(process.env.COLUMNS) || 100, height = process.stdout.rows || Number(process.env.LINES) || 30;
       const lines = renderPane(model, { width, height: once ? Math.min(height, 200) : height });
       if (once) { process.stdout.write(`${lines.join("\n")}\n`); break; }

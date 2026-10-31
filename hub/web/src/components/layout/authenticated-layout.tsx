@@ -7,6 +7,17 @@ import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SkipToMain } from '@/components/skip-to-main'
+import { useLimits } from '@/hooks/queries'
+import { adoptDefaultLanguage } from '@/lib/i18n'
+import { useEffect } from 'react'
+
+// The language set on the Mac (`ekip lang`, sent with the limits snapshot) is the panel's default.
+function MacLanguage() {
+  const limits = useLimits()
+  const lang = limits.data?.lang
+  useEffect(() => { adoptDefaultLanguage(lang) }, [lang])
+  return null
+}
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -19,6 +30,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     <SearchProvider>
       <LayoutProvider>
         <SidebarProvider defaultOpen={defaultOpen}>
+          <MacLanguage />
           <SkipToMain />
           <AppSidebar />
           <SidebarInset

@@ -19,21 +19,53 @@ cd ekip
 node plugin/bin/ekip.js init
 ```
 
-`init` is interactive and safe to rerun. It links the `ekip` command, starts freellmapi and hoptell, launches the local TencentDB memory services, installs the Claude Code plugin with its skills and hooks, registers ekip and codegraph MCP servers, installs worker CLIs, opens the provider-key wizard, starts agent sign-in, and registers projects with commits from the last 30 days.
+`init` is safe to rerun. It first asks the language (Turkish or English, the system's by default), then links the `ekip` command, starts freellmapi and hoptell, launches the local TencentDB memory services, installs the Claude Code plugin with its skills and hooks, registers ekip and codegraph MCP servers, installs worker CLIs, starts the web panel and offers ekip's own terminal. At its end it hands over to the guided setup (`ekip setup`), which walks what is still missing.
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#10302B','primaryTextColor':'#ECEEF2','primaryBorderColor':'#2DD4BF','lineColor':'#5EEAD4','secondaryColor':'#24180F','tertiaryColor':'#15181E','fontFamily':'Inter, -apple-system, Segoe UI, sans-serif'}}}%%
 flowchart LR
   init["ekip init"] --> services["Start local services"]
   services --> plugin["Install plugin, hooks, and MCP servers"]
-  plugin --> workers["Install worker CLIs and sign in"]
-  workers --> keys["Configure provider keys"]
-  keys --> projects["Register recent projects"]
-  projects --> ready["Open a new terminal and run ekip"]
+  plugin --> workers["Install worker CLIs"]
+  workers --> setup["ekip setup: keys, embeddings, logins, projects, index, terminal"]
+  setup --> ready["Open a new terminal and run ekip"]
   classDef amber fill:#24180F,stroke:#F08A3C,color:#ECEEF2;
   classDef teal fill:#10302B,stroke:#2DD4BF,color:#ECEEF2;
-  class init,services,plugin,workers,keys,projects,ready teal;
+  class init,services,plugin,workers,setup,ready teal;
 ```
+
+## Guided setup
+
+`ekip setup` (or `ekip kurulum`) is one list of everything a working ekip needs, checked in about a second and cached for ten minutes (`data/setup-state.json`):
+
+| Step | Level | Done when | Command |
+|---|---|---|---|
+| Prerequisites | required | Node 22+, git, Claude Code, Docker running (not needed with a VPS hub), a git identity | `brew install node git && open -a Docker` |
+| ekip services | required | `ekip` on the PATH, freellmapi and the memory service answer | `ekip init`, `ekip up`, `ekip memory up` |
+| Free model keys | required | at least one provider key | `ekip keys` |
+| Embedding provider | required | an NVIDIA or OpenRouter key, or `MEMORY_EMBEDDING_BASE_URL` | `ekip key add nvidia <key>` |
+| Worker CLI logins | required | two pools ready (signed-in CLIs, plus the free pool when it has keys) | `ekip agents login` |
+| A project | required | at least one registered project | `ekip project add <folder>` / `ekip project scan <parent>` |
+| Project index | required | every project has its card, code graphs and wiki, its Claude history is imported, no records lack vectors | `ekip project sync <project>`, `ekip memory import-history`, `ekip memory reindex` |
+| ekip's terminal | recommended (macOS) | WezTerm installed and the default | `ekip terminal install` |
+| Notifications | recommended (macOS) | `terminal-notifier` installed | `brew install terminal-notifier` |
+| Hub | optional | a hub is linked | `ekip hub local` or `ekip hub link <url> <token>` |
+
+In a terminal it shows `Setup 5/9` with a bar, and for each missing step why it matters and the command, then asks **now / later / skip**. "Now" runs what needs you right there: `ekip keys` opens each provider's key page, the embedding step opens NVIDIA's key page and adds the key you paste, `ekip agents login` signs in to the worker CLIs, the project step asks for a folder. Indexing and the history import start in the background under `ekip track`. Each step is checked again when it finishes. "Skip" silences the step until `ekip setup unsnooze <id>`. Without a terminal (or with `--list`) it prints the list; `--json` gives the counts and steps to scripts.
+
+Without an embedding provider, memory and wiki search fall back to keywords and miss records that match in meaning. ekip embeds with `nemotron-3-embed-1b` through the free pool, which NVIDIA and OpenRouter both serve for free (a limit on one falls back to the other with identical vectors). Any OpenAI-compatible endpoint works too, through `MEMORY_EMBEDDING_BASE_URL` and `MEMORY_EMBEDDING_MODEL`; no separate vector database is needed.
+
+ekip reminds you without getting in the way:
+
+- **Task pane:** while a required step is missing, one amber line under the header: `setup 5/9 · missing: model keys, memory index → ekip setup`. It drops names from the end (`+2`) when the pane is narrow and never cuts a word. Recommended steps appear only in `ekip setup` and `ekip status`.
+- **WezTerm:** a small `setup 5/9` counter on the right of the tab bar, the first thing to drop when space runs out.
+- **Lead start:** the session-start hook offers the single most useful missing step once; if you decline, it is not offered again in that session.
+- **Other terminals:** started in iTerm2, Terminal.app or VS Code while WezTerm is not the default, the lead suggests `ekip terminal install` once per start. `ekip setup snooze terminal` silences it for seven days (`ekip setup snooze <id> <days>` for any step).
+- **`ekip status`:** a Setup section at the bottom lists what is missing with its command.
+
+The hub panel's overview shows the same checklist (sent with the Mac's limits snapshot), with the hub's own gaps under it: the CI folder (`EKIP_CI_DIR`), the commit it was built from (`EKIP_HUB_COMMIT`), its free pool and memory.
+
+<img src="screenshots/terminal-pools.png" alt="The task pane in WezTerm with the setup line, the background line and the pools row" width="100%">
 
 <img src="screenshots/terminal-banner.png" alt="The ekip terminal banner shown at startup" width="100%">
 
@@ -93,7 +125,9 @@ ekip memory import-history
 
 ## Language
 
-The CLI supports English and Turkish. Set `EKIP_LANG=en` or `EKIP_LANG=tr`; otherwise `data/config.json`'s `lang` value is used, followed by the system locale.
+ekip speaks English and Turkish. `ekip init` and `ekip setup` ask once (the system's language by default); `ekip lang` (or `ekip dil`) shows the setting and `ekip lang en` / `ekip lang tr` changes it in `data/config.json`. `EKIP_LANG=en` or `EKIP_LANG=tr` overrides it for one shell.
+
+The setting reaches every part: CLI texts, the task pane and WezTerm labels, hook output, the lead's system text (task titles, steps and notes on the panel are written in your language, with examples in it) and worker reports. The lead always answers in the language you write in. The web panel uses the Mac's setting as its default until you pick a language in the panel.
 
 <img src="screenshots/terminal-help.png" alt="English ekip help output in the terminal" width="100%">
 

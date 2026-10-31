@@ -7,6 +7,7 @@ import path from "node:path";
 import { Auth } from "./auth.js";
 import { CodeMap } from "./codemap.js";
 import { releaseInfo } from "./release.js";
+import { hubSetup } from "./setup.js";
 import { openStore, trim } from "./store.js";
 import { Worker } from "./worker.js";
 
@@ -334,7 +335,7 @@ async function status() {
       providers: (Array.isArray(snap.free) ? snap.free : []).map(({ platform, name, status, keys, resumeAt }) => ({ platform, name, status, keys, resumeAt })),
       providerCount: (snap.free ?? []).length, counts: { healthy: (snap.free ?? []).filter((p) => p.status === "healthy").length }, authError: null },
       tdai: { configured: true, up: true, version: "demo", memory: true }, github: { token: false, copilot: true }, queue: counts,
-      workers: worker.status(), links: cfg.links, clients: Object.values(store.clients.data) };
+      workers: worker.status(), links: cfg.links, clients: Object.values(store.clients.data), setup: hubSetup(cfg) };
   }
   const [ready, providers, tdai] = await Promise.all([
     cfg.freellmapiUrl ? getJson(`${cfg.freellmapiUrl}/readyz`) : null,
@@ -369,6 +370,8 @@ async function status() {
     workers: worker.status(),
     links: cfg.links,
     clients: Object.values(store.clients.data).sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? "")),
+    // the hub's own setup gaps, shown under the Mac's checklist on the panel
+    setup: hubSetup(cfg),
   };
 }
 

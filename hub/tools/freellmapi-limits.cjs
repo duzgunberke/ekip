@@ -23,6 +23,21 @@ for (const p of Object.keys(platforms)) {
       AND created_at > datetime('now', '-1 day') GROUP BY substr(error, 1, 80) ORDER BY n DESC LIMIT 1`).get(p);
   if (e) platforms[p].lastError = String(e.error).slice(0, 120);
 }
+// when the last cooling model of a platform comes back (the panel and pane say "dinleniyor ~12 dk")
+for (const r of db.prepare("SELECT platform, MIN(expires_at_ms) until FROM rate_limit_cooldowns WHERE expires_at_ms > ? GROUP BY platform").all(now)) {
+  if (platforms[r.platform]) platforms[r.platform].coolUntil = r.until;
+}
+const iso = (s) => (s ? `${String(s).replace(" ", "T")}Z` : null);
+// the newest chat request: which provider and model a free-pool worker is on right now
+const last = db.prepare("SELECT platform, model_id, status, created_at FROM requests WHERE request_type = 'chat' ORDER BY id DESC LIMIT 1").get();
+const recent = last ? { platform: last.platform, model: last.model_id, status: last.status, at: iso(last.created_at) } : null;
+// embeddings (memory vectors) per platform over the last day: served, failed, last success, last error
+const embeddings = {};
+for (const r of db.prepare(`SELECT platform, model_id, SUM(status = 'success') ok, SUM(status != 'success') bad, MAX(CASE WHEN status = 'success' THEN created_at END) last_ok, MAX(created_at) last_at
+    FROM requests WHERE request_type = 'embedding' AND created_at > datetime('now', '-1 day') GROUP BY platform`).all()) {
+  const lastRow = db.prepare("SELECT status, error FROM requests WHERE request_type = 'embedding' AND platform = ? ORDER BY id DESC LIMIT 1").get(r.platform);
+  embeddings[r.platform] = { model: r.model_id, ok24: r.ok, fail24: r.bad, lastOkAt: iso(r.last_ok), lastAt: iso(r.last_at), lastStatus: lastRow?.status ?? null, lastError: lastRow?.error ? String(lastRow.error).slice(0, 120) : null };
+}
 // profile order: explicit profile_models priority; the default profile falls back to intelligence rank
 const profile = (id) => {
   const rows = db.prepare(`SELECT m.platform, m.model_id FROM profile_models pm JOIN models m ON m.id = pm.model_db_id
@@ -35,4 +50,4 @@ const profile = (id) => {
 const active = Number(db.prepare("SELECT value FROM settings WHERE key = 'active_profile_id'").get()?.value ?? 1);
 const profiles = { auto: profile(active) };
 for (const p of db.prepare("SELECT id, name FROM profiles WHERE type = 'custom'").all()) profiles[`auto:${p.name}`] = profile(p.id);
-process.stdout.write(JSON.stringify({ platforms, profiles }));
+process.stdout.write(JSON.stringify({ platforms, profiles, recent, embeddings }));

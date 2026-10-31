@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { HOME, ROOT, RUNS, SETTINGS } from "../core/core.js";
 import { c, fit } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
+import { clip as paneClip } from "./pane.js";
 import { list, reapDead, paused, percent, eta, stalledFor, pidAlive, fmtDur } from "./tasks.js";
 
 const DAY = 24 * 3600_000;
@@ -160,6 +161,24 @@ export function releaseLine(r) {
 
 // ---- rendering ---------------------------------------------------------------------------------
 
+// Plain text over at most `max` lines of the terminal at word boundaries, the last one shortened
+// with "…" (the pane's word-safe clip).
+export function wrapText(text, width, max = 3) {
+  const words = String(text ?? "").replace(/\s+/g, " ").trim().split(" ");
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const next = cur ? `${cur} ${w}` : w;
+    if ([...next].length <= width || !cur) { cur = next; continue; }
+    lines.push(cur);
+    cur = w;
+  }
+  if (cur) lines.push(cur);
+  if (lines.length <= max) return lines.map((l) => ([...l].length > width ? paneClip(l, width) : l));
+  return [...lines.slice(0, max - 1), paneClip(lines.slice(max - 1).join(" "), width)];
+}
+const wrapped = (text, indent, paint = (x) => x) => wrapText(text, Math.max(20, (process.stdout.columns || Number(process.env.COLUMNS) || 100) - indent.length - 1)).map((l) => `${indent}${paint(l)}`);
+
 const head = (label, n, color = (s) => s) => `\n${color(c.bold(`${label} (${n})`))}`;
 const finishText = (iso) => `${t("bitiş ~{time}", { time: clock(iso) })} (${t("{duration} kaldı", { duration: fmtDur(Date.parse(iso) - Date.now()) })})`;
 
@@ -201,8 +220,9 @@ export function render(d, rel) {
   if (!d.stuck.length) out.push(c.gray(`  ${t("takılan iş yok")}`));
   for (const s of d.stuck) {
     out.push(fit(`  ${s.failed ? c.red("✗") : c.yellow("⚠")} ${c.bold(s.title)}${s.project ? c.gray(` · ${s.project}`) : ""}${s.since ? c.gray(` · ${ago(s.since)}`) : ""}`));
-    out.push(fit(`     ${t("neden")}: ${clip(s.why, 240)}`));
-    for (const a of s.actions) out.push(fit(`     ${c.gray(`${t("ekip ne yaptı")}: ${clip(a, 200)}`)}`));
+    // the reason in full words over up to three lines of the terminal, never cut on the right
+    out.push(...wrapped(`${t("neden")}: ${clip(s.why, 400)}`, "     "));
+    for (const a of s.actions) out.push(...wrapped(`${t("ekip ne yaptı")}: ${clip(a, 300)}`, "     ", c.gray));
   }
 
   out.push(head(t("Son 24 saatte biten"), d.done.length, d.done.length ? c.green : c.gray));
@@ -219,10 +239,23 @@ export function render(d, rel) {
   return `${out.join("\n")}\n`;
 }
 
+/** "Havuzlar": the same chips as the task pane (pool-view.js), wrapped to the terminal. */
+export async function poolsSection(stream = process.stdout) {
+  const [{ currentView }, pv, { styleFor }] = await Promise.all([import("../workers/limits.js"), import("../workers/pool-view.js"), import("./pane.js")]);
+  const st = styleFor(stream);
+  const width = Math.max(40, stream.columns || Number(process.env.COLUMNS) || 100);
+  const lines = pv.chipLines(currentView(), width, st, { proto: pv.imageProtocol(stream, process.env, SETTINGS.poolLogos), logos: SETTINGS.poolLogos ?? "auto", label: "" });
+  return [`\n${c.bold(t("Havuzlar"))}`, ...(lines.length ? lines : [c.gray(`  ${t("bağlı havuz yok → ekip setup")}`)])].join("\n");
+}
+
 export async function main(args = []) {
   const d = await collect();
   if (args.includes("--json")) { console.log(JSON.stringify({ ...d, release: await release() }, null, 2)); return 0; }
   const rel = args.includes("--offline") ? cachedRelease(Infinity) : await release();
   process.stdout.write(render(d, rel));
+  // the pools as connected, the work behind the tasks, and at the bottom what setup still misses
+  try { process.stdout.write(`${await poolsSection()}\n`); } catch { /* never fail the digest for it */ }
+  try { const b = await import("../ops/background.js"); process.stdout.write(`${b.statusSection(b.backgroundJobs())}\n`); } catch { /* idem */ }
+  try { const s = await import("../ops/setup.js"); process.stdout.write(`${s.statusSection(await s.checkSetup())}\n`); } catch { /* idem */ }
   return 0;
 }

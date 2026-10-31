@@ -345,6 +345,8 @@ export async function main([sub = "ls", ...names]) {
       console.log(fit(`  ${icon(st)} ${n.padEnd(9)} ${label}${" ".repeat(Math.max(1, 16 - labelText.length))}  ${c.gray(t(a.quota))}${perf}`));
     }
     console.log(fit(`\n  ${c.gray(t("auto sırası:"))} ${autoOrder().map((x) => c.cyan(x)).join(c.gray(" → "))}`));
+    // the summary every other screen shows: only the connected pools, with their state
+    try { console.log((await (await import("../tasks/digest.js")).poolsSection()).replace(/^\n/, "\n")); } catch { /* the list above is enough */ }
   } else if (sub === "install") {
     const pkgs = pick.filter((n) => AGENTS[n].pkg && !has(AGENTS[n].bin)).map((n) => AGENTS[n].pkg);
     if (pkgs.length) spawnSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });

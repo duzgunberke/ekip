@@ -3,6 +3,7 @@
 // a message is about and add that project's relevant facts (L1), skills and card summary to the
 // context. Matching is typo-tolerant ("my-ap" finds my-app); with no name in the message, the
 // project of the session's folder is used. Fails silently and never takes longer than ~6 s.
+import { t } from "../core/i18n.js";
 import fs from "node:fs";
 import path from "node:path";
 import { redact } from "../core/redact.js";
@@ -111,7 +112,7 @@ async function orphanNote() {
     };
     return {
       ids: new Set(list.map((t) => t.id)),
-      text: `## SAHİPSİZ: çalışan süreç yok, ya kapat ya yeniden başlat (mandatory, before anything else)\nThese tasks show as running on the user's panel, but no worker or tracked job is alive for them:\n${list.map(line).join("\n")}\nFor each one, in this turn: check whether the work really finished (its log, output files, remote state). Finished: \`ekip task step <id> N done\` and \`ekip task done <id> "<result>"\`. Not finished: restart it under a live process (\`ekip run --task <id>\`, or \`ekip track --task <id> --step N -- <command>\` for a shell command) or \`ekip task fail <id> "<why>"\`. Tell the user which one you did; do not leave any of them as it is.`,
+      text: `## ${t("SAHİPSİZ: çalışan süreç yok, ya kapat ya yeniden başlat")} (mandatory, before anything else)\nThese tasks show as running on the user's panel, but no worker or tracked job is alive for them:\n${list.map(line).join("\n")}\nFor each one, in this turn: check whether the work really finished (its log, output files, remote state). Finished: \`ekip task step <id> N done\` and \`ekip task done <id> "<result>"\`. Not finished: restart it under a live process (\`ekip run --task <id>\`, or \`ekip track --task <id> --step N -- <command>\` for a shell command) or \`ekip task fail <id> "<why>"\`. Tell the user which one you did; do not leave any of them as it is.`,
     };
   } catch { return { ids: new Set(), text: "" }; }
 }

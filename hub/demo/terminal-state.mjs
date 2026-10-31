@@ -2,9 +2,10 @@
 // waiting for you, one stuck, one finished), a tracked upload, worker logs and two "ready" pools.
 // Nothing is read from the user's own data.
 //
-//   node hub/demo/terminal-state.mjs DIR [busy|empty] [pid]   (pid: a live process the demo workers belong to)
+//   node hub/demo/terminal-state.mjs DIR [busy|empty|pools] [pid]   (pid: a live process the demo workers belong to)
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 export function writeDemoState(home, { scene = "busy", pid = process.pid } = {}) {
   const iso = (ms) => new Date(Date.now() + ms).toISOString();
@@ -53,8 +54,44 @@ export function writeDemoState(home, { scene = "busy", pid = process.pid } = {})
       done("g7k1ab", "Migrate auth to passkeys", "payments-api", 90, "passkey sign-in and recovery merged"),
     ];
   }
+  if (scene === "pools") pools(home, { iso, min, pid, run, runName });
   fs.writeFileSync(path.join(home, "tasks.json"), JSON.stringify(tasks, null, 2));
   return home;
+}
+
+// The pools row: three connected worker pools (one running, one ready, one limited) and the free pool
+// with the providers behind it (one resting), a running free worker on NVIDIA, the background
+// embedding work, and one missing setup step. Keys are fake rows in a throw-away freellmapi database.
+function pools(home, { iso, min, pid, run, runName }) {
+  for (const b of ["agy", "codex", "copilot"]) { fs.writeFileSync(path.join(home, "bin", b), "#!/bin/sh\nexit 0\n"); fs.chmodSync(path.join(home, "bin", b), 0o755); }
+  const free = path.join(home, "freellmapi");
+  fs.mkdirSync(path.join(free, "server/data"), { recursive: true });
+  spawnSync("sqlite3", [path.join(free, "server/data/freeapi.db"), "create table if not exists api_keys(platform text, enabled int); delete from api_keys; insert into api_keys values ('nvidia',1),('google',1),('groq',1),('openrouter',1);"]);
+  const cfg = JSON.parse(fs.readFileSync(path.join(home, "config.json"), "utf8"));
+  cfg.agents = { agy: { ok: true }, codex: { ok: true }, copilot: { ok: true, limitUntil: iso(min(60 * 26)), limitMessage: "monthly limit reached", limitAt: iso(-min(30)) } };
+  cfg.autoOrder = ["agy", "codex", "copilot"];
+  cfg.freellmapiDir = free;
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(cfg));
+  run(runName(3, "free"), "free", "docs-site", "Changelog for v2.4", "g7k3pb", ["drafting CHANGELOG.md"]);
+  const at = Date.now();
+  fs.writeFileSync(path.join(home, "freellmapi-routing-last.json"), JSON.stringify({ at, rs: {
+    platforms: {
+      nvidia: { models: 17, cooling: 0, ok24: 1762, fail24: 40, lastError: null },
+      google: { models: 15, cooling: 0, ok24: 84, fail24: 15, lastError: null },
+      groq: { models: 7, cooling: 7, ok24: 31, fail24: 60, lastError: "429: rate limit", coolUntil: at + min(12) },
+      openrouter: { models: 10, cooling: 0, ok24: 10, fail24: 8, lastError: null },
+    },
+    profiles: {}, recent: { platform: "nvidia", model: "nvidia/nemotron-3-super-120b-a12b", status: "success", at: iso(-20_000) },
+    embeddings: { nvidia: { model: "nvidia/nemotron-3-embed-1b", ok24: 3343, fail24: 4, lastOkAt: iso(-40_000), lastAt: iso(-40_000), lastStatus: "success", lastError: null } },
+  } }));
+  fs.writeFileSync(path.join(home, "vectors-status.json"), JSON.stringify({ at, missing: 0, never: false, layer: "L1", done: 1240, total: 1600, running: true, queue: 360 }));
+  const step = (id, level, short, done) => ({ id, level, title: short, short, why: "", command: "", done, detail: null });
+  fs.writeFileSync(path.join(home, "setup-state.json"), JSON.stringify({ at, lang: "en", steps: [
+    step("prereqs", "required", "prerequisites", true), step("services", "required", "services", true), step("keys", "required", "model keys", true),
+    step("embeddings", "required", "embeddings", true), step("agents", "required", "worker logins", true), step("project", "required", "project", true),
+    step("index", "required", "memory index", false), step("terminal", "recommended", "terminal", true), step("notify", "recommended", "notifications", false),
+  ] }));
+  void pid;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

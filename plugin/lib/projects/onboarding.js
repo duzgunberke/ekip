@@ -7,6 +7,7 @@ import { HOME, SETTINGS, healthy, keyCounts, tdaiUp } from "../core/core.js";
 import { findProject } from "./projects.js";
 import { detect } from "../core/terminal.js";
 import { t } from "../core/i18n.js";
+import { snoozed } from "../ops/snooze.js";
 
 const CACHE = path.join(HOME, "onboarding-cache.json");
 const TTL = 10 * 60_000;
@@ -23,6 +24,32 @@ export function envChecks() {
   return { gitIdentity: !!(git("user.name") && git("user.email")), ghInstalled: !gh.error || gh.error.code !== "ENOENT", ghAuth: gh.status === 0 || gh.error?.code === "ETIMEDOUT" };
 }
 
+// A registered project's own gaps: card, code graphs, wiki, imported Claude history. Local reads only
+// (the registry and a state file), so `ekip setup` can check every project at once.
+export function projectGaps(p) {
+  const out = [];
+  if (!p.card || !fs.existsSync(p.card)) out.push(gap("card", "Proje kartı eksik", "işçiler projenin yapısını ve komutlarını göremiyor", `ekip project card ${p.name}`));
+  if ((p.repo || p.repos?.length) && !fs.existsSync(path.join(p.path, ".codegraph"))) out.push(gap("local-graph", "Yerel kod grafiği eksik", "işçiler kodun yerel sembol ve çağrı dizininde arama yapamıyor", `ekip project sync ${p.name}`));
+  const repos = p.repos?.length ?? (p.repo ? 1 : 0);
+  if (repos && !(p.tdai?.codeGraphs ?? []).some((g) => g.id)) out.push(gap("graph", "Kod grafiği eksik", "işçiler kodun yapısını ve ilişkilerini keşfedemiyor", `ekip project sync ${p.name}`));
+  if (!p.tdai?.wikiId) out.push(gap("wiki", "Proje wiki'si eksik", "işçiler proje belgelerinde arama yapamıyor", `ekip project sync ${p.name}`));
+  const base = path.join(os.homedir(), ".claude/projects");
+  const stateFile = path.join(HOME, "memory-state/asset-import.json");
+  const done = (() => { try { return new Set(JSON.parse(fs.readFileSync(stateFile, "utf8")).done ?? []); } catch { return new Set(); } })();
+  let dirs = [];
+  try { dirs = fs.readdirSync(base).filter((d) => d.endsWith(`-Projects-${p.name}`) || d.includes(`-Projects-${p.name}-`)); } catch { /* Claude not used here yet */ }
+  // done keys are "<agent>::session:claude-code:<file path>"; a project dir counts as imported when
+  // any of its session files is in there
+  const keys = [...done].join("\n");
+  if (dirs.some((d) => !keys.includes(`/.claude/projects/${d}/`))) out.push(gap("history", "Claude geçmişi hafızaya aktarılmamış", "önceki oturumlardaki kararlar ve çözümler işçilere ulaşmıyor", "ekip memory import-history"));
+  return out;
+}
+
+// Memory vectors come from nemotron-3-embed-1b through the free pool, served by NVIDIA and OpenRouter;
+// a key for either (or an own OpenAI-compatible endpoint) turns them on.
+export const EMBEDDING_PLATFORMS = ["nvidia", "openrouter"];
+export const embeddingsReady = (keys) => !!process.env.MEMORY_EMBEDDING_BASE_URL || keys.some(([p]) => EMBEDDING_PLATFORMS.includes(p));
+
 export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   let real = path.resolve(cwd);
   try { real = fs.realpathSync(real); } catch { /* keep resolved cwd */ }
@@ -35,22 +62,7 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
   // only a code folder is worth registering: not the home folder or a folder outside any git repo
   const inRepo = (() => { for (let d = real; d !== path.dirname(d); d = path.dirname(d)) { if (d === os.homedir()) return false; if (fs.existsSync(path.join(d, ".git"))) return true; } return false; })();
   if (!p && inRepo) gaps.push(gap("project", "Bu klasör ekip'e kayıtlı değil", "projenin hafızası, wiki'si ve kod grafiği olmadan işçiler her işe sıfırdan başlar", "ekip project add ."));
-  else if (p) {
-    if (!p.card || !fs.existsSync(p.card)) gaps.push(gap("card", "Proje kartı eksik", "işçiler projenin yapısını ve komutlarını göremiyor", `ekip project card ${p.name}`));
-    if ((p.repo || p.repos?.length) && !fs.existsSync(path.join(p.path, ".codegraph"))) gaps.push(gap("local-graph", "Yerel kod grafiği eksik", "işçiler kodun yerel sembol ve çağrı dizininde arama yapamıyor", `ekip project sync ${p.name}`));
-    const repos = p.repos?.length ?? (p.repo ? 1 : 0);
-    if (repos && !(p.tdai?.codeGraphs ?? []).some((g) => g.id)) gaps.push(gap("graph", "Kod grafiği eksik", "işçiler kodun yapısını ve ilişkilerini keşfedemiyor", `ekip project sync ${p.name}`));
-    if (!p.tdai?.wikiId) gaps.push(gap("wiki", "Proje wiki'si eksik", "işçiler proje belgelerinde arama yapamıyor", `ekip project sync ${p.name}`));
-    const base = path.join(os.homedir(), ".claude/projects");
-    const stateFile = path.join(HOME, "memory-state/asset-import.json");
-    const done = (() => { try { return new Set(JSON.parse(fs.readFileSync(stateFile, "utf8")).done ?? []); } catch { return new Set(); } })();
-    let dirs = [];
-    try { dirs = fs.readdirSync(base).filter((d) => d.endsWith(`-Projects-${p.name}`) || d.includes(`-Projects-${p.name}-`)); } catch { /* Claude not used here yet */ }
-    // done keys are "<agent>::session:claude-code:<file path>"; a project dir counts as imported when
-    // any of its session files is in there
-    const keys = [...done].join("\n");
-    if (dirs.some((d) => !keys.includes(`/.claude/projects/${d}/`))) gaps.push(gap("history", "Claude geçmişi hafızaya aktarılmamış", "önceki oturumlardaki kararlar ve çözümler işçilere ulaşmıyor", "ekip memory import-history"));
-  }
+  else if (p) gaps.push(...projectGaps(p));
   // A newer release than this checkout (cached remote check, see update.js).
   try {
     const u = (await import("../ops/update.js")).checkUpdate();
@@ -77,22 +89,19 @@ export async function setupGaps({ cwd = process.cwd(), refresh = false } = {}) {
     if (logged < 2) gaps.push(gap("agents", "İki işçi havuzu henüz giriş yapmamış", "işler Claude kotan dışındaki havuzlara dağıtılamıyor", "ekip agents login"));
     if (!keys.length) gaps.push(gap("keys", "Ücretsiz havuz anahtarı yok", "ücretsiz model havuzu ek işler alamıyor", "ekip keys"));
   }
-  if (!process.env.MEMORY_EMBEDDING_BASE_URL && !keys.some(([p]) => p === "nvidia")) gaps.push(gap("embeddings", "Hafıza vektörü sağlayıcısı yok, arama anahtar kelimeye düşer", "ücretsiz bir NVIDIA NIM anahtarı (build.nvidia.com) vektörleri açar; OpenAI uyumlu herhangi bir embedding uç noktası MEMORY_EMBEDDING_BASE_URL / MEMORY_EMBEDDING_MODEL ile verilebilir; ek vektör veritabanı (Qdrant, Pinecone) gerekmez", "ekip keys"));
+  if (!embeddingsReady(keys)) gaps.push(gap("embeddings", "Hafıza vektörü sağlayıcısı yok, arama anahtar kelimeye düşer", "ücretsiz bir NVIDIA NIM anahtarı (build.nvidia.com) vektörleri açar; OpenAI uyumlu herhangi bir embedding uç noktası MEMORY_EMBEDDING_BASE_URL / MEMORY_EMBEDDING_MODEL ile verilebilir; ek vektör veritabanı (Qdrant, Pinecone) gerekmez", "ekip keys"));
   const env = envChecks();
   if (!env.gitIdentity) gaps.push(gap("git-identity", "Git kimliği tanımlı değil", "işçiler commit atamaz; user.name ve user.email boş", 'git config --global user.name "Ad Soyad" && git config --global user.email you@example.com'));
   if (!env.ghInstalled) gaps.push(gap("gh", "GitHub CLI (gh) kurulu değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "brew install gh && gh auth login", "info"));
   else if (!env.ghAuth) gaps.push(gap("gh-auth", "gh oturumu açık değil", "hub işleri ve özel depoların kod grafiği GitHub girişi ister", "gh auth login"));
   if (!SETTINGS.hubUrl || !SETTINGS.hubToken) gaps.push(gap("hub", "Hub bağlı değil", "web paneli ve Mac kapalıyken çalışan iş kuyruğu kullanılamıyor", "ekip hub local (bu bilgisayarda) ya da ekip hub link <url> <token> (VPS)", "info"));
-  // panes open in iTerm2, WezTerm and kitty; elsewhere ekip's own terminal is the fix. In iTerm2 it
-  // is only offered once (optional: iTerm2 keeps working), never when WezTerm is already in use.
+  // panes open in iTerm2, WezTerm and kitty; elsewhere ekip's own terminal is the fix. Outside WezTerm,
+  // while WezTerm is not the default, ekip's own terminal is offered at each start until it is set up
+  // or silenced for a week (`ekip setup snooze terminal`).
   const term = detect();
-  if (process.platform === "darwin" && term === "none") gaps.push(gap("pane", "Görev bölmesi bu terminalde açılamıyor", "görevleri terminalin altında canlı izleyemezsiniz; ekip'in kendi terminali (WezTerm) bunu açar", "ekip terminal install", "info"));
-  else if (term === "iterm" && !SETTINGS.terminal) {
-    const offered = path.join(HOME, "terminal-offered");
-    if (!fs.existsSync(offered)) {
-      gaps.push(gap("terminal", "İsteğe bağlı: ekip'in kendi terminali (WezTerm)", "renkli durumlar ve AppleScript'siz, hızlı görev bölmeleri; iTerm2 aynen çalışmaya devam eder", "ekip terminal install", "info"));
-      try { fs.writeFileSync(offered, new Date().toISOString()); } catch { /* shown again next time */ }
-    }
+  if (process.platform === "darwin" && term === "none" && !snoozed("terminal")) gaps.push(gap("pane", "Görev bölmesi bu terminalde açılamıyor", "görevleri terminalin altında canlı izleyemezsiniz; ekip'in kendi terminali (WezTerm) bunu açar", "ekip terminal install", "info"));
+  else if (process.platform === "darwin" && term !== "wezterm" && SETTINGS.terminal !== "wezterm" && !snoozed("terminal")) {
+    gaps.push(gap("terminal", "ekip'in kendi terminali daha net", "renkli durumlar, proje sekmeleri, kurulum sayacı ve hızlı görev bölmeleri; susturmak için: ekip setup snooze terminal", "ekip terminal install", "info"));
   }
   try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(CACHE, JSON.stringify({ at: Date.now(), cwd: real, gaps })); } catch { /* cache is best effort */ }
   return gaps;

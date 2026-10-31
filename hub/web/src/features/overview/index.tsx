@@ -36,6 +36,9 @@ import { SavingsChart } from './savings-chart'
 import { UsageOverviewCard } from '@/features/projects/knowledge-usage'
 import { ProviderLogo } from '@/components/provider-logo'
 import { useNow } from '@/hooks/use-now'
+import { PoolChips } from '@/components/pool-chips'
+import { BackgroundList } from '@/features/pools/background'
+import { SetupChecklist } from './setup-checklist'
 
 export function Overview() {
   const t = useT()
@@ -70,6 +73,8 @@ export function Overview() {
         />
 
         <ActiveTasksMini />
+
+        <SetupChecklist limits={limits.data} status={s} />
 
         <Card className='mb-5'>
           <CardHeader>
@@ -187,6 +192,11 @@ export function Overview() {
               </CardAction>
             </CardHeader>
             <CardContent>
+              {limits.data?.view && (
+                <div className='mb-4'>
+                  <PoolChips view={limits.data.view} serving={limits.data.serving} />
+                </div>
+              )}
               {status.isLoading && limits.isLoading ? (
                 <ListSkeleton rows={5} />
               ) : !s && !limits.data ? null : providers.length === 0 ? (
@@ -225,6 +235,12 @@ export function Overview() {
                   <ToneBadge tone={!s.tdai.configured ? 'off' : s.tdai.up ? 'ok' : 'bad'}>
                     {!s.tdai.configured ? t('ayarlı değil') : s.tdai.up ? t('açık') : t('kapalı')}
                   </ToneBadge>
+                </div>
+              )}
+              {(limits.data?.background ?? []).some((j) => j.state !== 'ok') && (
+                <div className='mt-4'>
+                  <p className='mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>{t('Arka plan')}</p>
+                  <BackgroundList jobs={(limits.data?.background ?? []).filter((j) => j.state !== 'ok')} />
                 </div>
               )}
             </CardContent>
