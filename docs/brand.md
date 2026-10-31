@@ -20,5 +20,5 @@ README banner, and it is drawn the same way in the terminal (`plugin/lib/core/ui
 
 Type: the system sans stack (Inter where available) for UI and the wordmark, a system monospace for ids.
 
-Files: `docs/brand/logo-mark.svg`, `logo-light.svg`, `logo-dark.svg`, `banner.svg`; the panel copies in
+Files: `docs/brand/logo-mark.svg`, `logo-light.svg`, `logo-dark.svg`, `banner.svg`, `app-icon.svg` (the macOS app icon: the mark on a Big Sur rounded square, rendered with `swift scripts/app-icon.swift docs/brand/app-icon.svg plugin/assets/ekip-app-icon.png`); the panel copies in
 `hub/web/public/`. No eyebrow pills, no numbered section rules, no decorative gradients beyond the mark's own.
