@@ -6,7 +6,7 @@ import { RunLogButton } from '@/components/run-log-button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { StatusDot } from '@/components/ekip/status-badge'
 import { TimeAgo } from '@/components/ekip/time-ago'
-import { ProgressBar, StepList, currentStep, elapsed, etaText, taskState } from './parts'
+import { ProgressBar, StepList, currentStep, elapsed, etaText, reviewLine, taskState } from './parts'
 import { formatNumber, formatPercent, useT } from '@/lib/i18n'
 
 const WORKER_STATUS: Record<string, string> = {
@@ -31,6 +31,7 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
   const lastEnded = t.workers.filter((w) => !isRunning(w)).sort((a, b) => String(b.endedAt).localeCompare(String(a.endedAt)))[0]
   const note = t.notes[t.notes.length - 1]
   const state = taskState(t)
+  const review = reviewLine(t)
   return (
     <Card className='min-w-0 gap-5 border-status-running/30'>
       <CardHeader className='grid-cols-[minmax(0,1fr)] gap-3'>
@@ -92,7 +93,17 @@ export function ActiveTaskCard({ task: t, now }: { task: Task; now: number }) {
             <h3 className='mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase'>
               {translate('Ajanlar')} ({formatNumber(runningCount)} {translate('çalışıyor')}{t.workers.length > runningCount ? ` · ${formatNumber(t.workers.length - runningCount)} ${translate('bitti')}` : ''})
             </h3>
-            {runningCount === 0 && lastEnded && t.status === 'running' && (
+            {review && (
+              <div className='mb-2 rounded-lg bg-muted/35 px-2.5 py-2 text-sm'>
+                <p className={`font-medium ${review.cls}`}>{review.text}</p>
+                {(t.review?.items?.length ?? 0) > 0 && (
+                  <ul className='mt-1 grid gap-0.5 text-xs text-muted-foreground'>
+                    {t.review!.items!.slice(0, 3).map((f, i) => <li key={i} className='break-words'>{f}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+            {!review && runningCount === 0 && lastEnded && t.status === 'running' && (
               <p className='mb-2 text-sm text-muted-foreground'>
                 {translate('{worker} bitirdi; lead (Claude) sonucu inceliyor.', { worker: lastEnded.via ?? lastEnded.label ?? 'işçi' })}
               </p>

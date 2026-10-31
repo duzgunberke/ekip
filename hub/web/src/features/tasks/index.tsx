@@ -14,7 +14,7 @@ import { EmptyState, QueryError } from '@/components/ekip/states'
 import { TimeAgo } from '@/components/ekip/time-ago'
 import { ActiveTaskCard } from './active-card'
 import { ResultLinks, StatusDigest } from './digest-card'
-import { StepList, elapsed } from './parts'
+import { StepList, elapsed, reviewLine } from './parts'
 import { formatNumber, useT } from '@/lib/i18n'
 import { ProviderLogo } from '@/components/provider-logo'
 import { RunLogButton } from '@/components/run-log-button'
@@ -99,6 +99,7 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
   const translate = useT()
   const [open, setOpen] = useState(false)
   const result = t.result?.text || t.notes[t.notes.length - 1]?.text
+  const review = reviewLine(t)
   const panelId = `task-${t.id}`
   return (
     <div>
@@ -124,6 +125,7 @@ function FinishedRow({ task: t, now }: { task: Task; now: number }) {
               {result}
             </p>
           )}
+          {review && <p className={`mt-0.5 text-xs font-medium ${review.cls}`}>{review.text}</p>}
         </div>
         <div className='hidden shrink-0 text-end text-xs text-muted-foreground sm:block'>
           <p className='tabular-nums'>{elapsed(t.createdAt, t.endedAt ?? t.updatedAt, now)}</p>
