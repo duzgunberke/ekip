@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HOME, ROOT, SETTINGS, ask, die, has, saveSettings } from "../core/core.js";
-import { TASK_TITLE, detect, paneShell, parseWeztermList, weztermBin } from "../core/terminal.js";
+import { TASK_TITLE, WORKER_BG, WORKER_BG_IDLE, detect, paneShell, parseWeztermList, weztermBin } from "../core/terminal.js";
 import { c } from "../core/ui.js";
 import { writeTerminalStatus } from "../tasks/tasks.js";
 import { t } from "../core/i18n.js";
@@ -62,7 +62,11 @@ local C = {
   bg = "#0E1014", card = "#15181E", text = "#ECEEF2", muted = "#98A1B0", border = "#252A33", faint = "#5B6472",
   lead = "#FFA95E", team = "#2DD4BF", done = "#3FCF7A", failed = "#F2555A", blocked = "#F5A524",
   waiting = "#FACC15", queued = "#60A5FA",
+  -- worker panes: their own darker, cooler background (deeper still while another pane has the focus);
+  -- the lines between panes in an accent colour
+  worker = ${lua(WORKER_BG)}, worker_idle = ${lua(WORKER_BG_IDLE)}, split = "#2B7F77",
 }
+local WHO = { lead = ${lua(t("lead"))}, worker = ${lua(t("işçi"))} }
 
 local function decode(s)
   if wezterm.serde and wezterm.serde.json_decode then return wezterm.serde.json_decode(s) end
@@ -153,7 +157,7 @@ function M.apply(config)
   config.colors = {
     foreground = C.text, background = C.bg,
     cursor_bg = C.lead, cursor_fg = C.bg, cursor_border = C.lead,
-    selection_bg = C.border, selection_fg = C.text, split = C.border,
+    selection_bg = C.border, selection_fg = C.text, split = C.split,
     scrollbar_thumb = C.border,
     ansi = { C.card, C.failed, C.done, C.blocked, C.queued, "#C084FC", C.team, C.text },
     brights = { C.muted, "#FF7A7F", "#6EE7A0", C.waiting, "#93C5FD", "#D8B4FE", "#5EEAD4", "#FFFFFF" },
@@ -176,8 +180,8 @@ function M.apply(config)
   config.show_new_tab_button_in_tab_bar = false
   config.hide_tab_bar_if_only_one_tab = false
   config.window_padding = { left = "10pt", right = "10pt", top = "6pt", bottom = "5pt" }
-  -- the pane you type in stands out; the others dim a little
-  config.inactive_pane_hsb = { saturation = 0.85, brightness = 0.72 }
+  -- the pane you type in stands out; the others dim (worker panes more: see worker_tint below)
+  config.inactive_pane_hsb = { saturation = 0.8, brightness = 0.68 }
   config.status_update_interval = 1000
   local envs = config.set_environment_variables or {}
   envs.COLORTERM = "truecolor"
@@ -306,7 +310,48 @@ local function counts_variants(n)
   return { { build("all") }, { build("some") }, { build("none") }, { build("none", true) } }
 end
 
+-- A pane's role, from the user variable its shell set (paneShell): "pane" for a worker, "tasks" for
+-- the task pane, nil for the lead and every pane the user opened.
+local function role(p)
+  local ok, vars = pcall(function() return p:get_user_vars() end)
+  return ok and type(vars) == "table" and vars.ekip_role or nil
+end
+
+-- Worker panes dim more than the lead when another pane has the focus: a deeper background and a muted
+-- text colour, given back when they get the focus again. Only panes whose own shell named them
+-- workers are touched; the lead and the user's own panes never get an escape sequence.
+local tinted = {}
+local function worker_tint(window, active)
+  local ok, panes = pcall(function() return window:active_tab():panes() end)
+  if not ok or type(panes) ~= "table" then return end
+  for _, p in ipairs(panes) do
+    if role(p) == "pane" then
+      local id = p:pane_id()
+      local state = id == active:pane_id() and "on" or "idle"
+      if tinted[id] ~= state then
+        tinted[id] = state
+        pcall(function()
+          p:inject_output(state == "on" and ("\\x1b]11;" .. C.worker .. "\\x07\\x1b]110\\x07")
+            or ("\\x1b]11;" .. C.worker_idle .. "\\x07\\x1b]10;" .. C.faint .. "\\x07"))
+        end)
+      end
+    end
+  end
+end
+
+-- Who has the keyboard, first on the right: "lead" in the lead colour (the pane runs claude) or "işçi"
+-- in the team colour; nothing for the task pane and the user's own panes.
+local function who(pane)
+  local r = role(pane)
+  if r == "pane" then return { C.team, "◆ " .. WHO.worker } end
+  if r then return nil end
+  local ok, name = pcall(function() return pane:get_foreground_process_name() end)
+  if ok and type(name) == "string" and (name:match("([^/]+)$") or ""):find("claude", 1, true) then return { C.lead, "❯ " .. WHO.lead } end
+  return nil
+end
+
 wezterm.on("update-status", function(window, pane)
+  worker_tint(window, pane)
   local n = status()
   window:set_left_status(wezterm.format({
     { Background = { Color = C.bg } }, { Text = "  " },
@@ -328,6 +373,21 @@ wezterm.on("update-status", function(window, pane)
     used = used + width(middle(name, t:tab_id() == active and MAX_TAB or MAX_OTHER)) + 4
   end
   local room = cols - used - 2
+  -- "lead" / "işçi" goes first and stays while it fits; the counts get what is left
+  local me = who(pane)
+  if me and width(me[2]) + 2 > room then me = nil end
+  if me then room = room - width(me[2]) - 3 end
+  local function right(items)
+    if me then
+      local all = {}
+      push(all, me[1], me[2])
+      if #items > 0 then push(all, C.muted, "   ") end
+      for _, it in ipairs(items) do table.insert(all, it) end
+      items = all
+      table.insert(items, { Text = "  " })
+    end
+    window:set_right_status(#items > 0 and wezterm.format(items) or "")
+  end
   -- the setup counter goes first and is the first to drop when the counts do not fit
   local setup = n.setup and (L.setup .. " " .. (tonumber(n.setup.done) or 0) .. "/" .. (tonumber(n.setup.total) or 0)) or nil
   for _, v in ipairs(counts_variants(n)) do
@@ -337,20 +397,20 @@ wezterm.on("update-status", function(window, pane)
       push(all, C.waiting, setup)
       push(all, C.muted, "   ")
       for _, it in ipairs(items) do table.insert(all, it) end
-      table.insert(all, { Text = "  " })
-      window:set_right_status(wezterm.format(all))
+      if not me then table.insert(all, { Text = "  " }) end
+      right(all)
       return
     end
   end
   for _, v in ipairs(counts_variants(n)) do
     local items, w = v[1], v[2]
     if w > 0 and w + 2 <= room then
-      table.insert(items, { Text = "  " })
-      window:set_right_status(wezterm.format(items))
+      if not me then table.insert(items, { Text = "  " }) end
+      right(items)
       return
     end
   end
-  window:set_right_status("")
+  right({})
 end)
 
 return M

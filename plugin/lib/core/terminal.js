@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { HOME, ROOT, SETTINGS } from "./core.js";
+import { t } from "./i18n.js";
 
 // The task pane's title: every back end finds the pane by it, so one lead never gets two.
 export const TASK_TITLE = "ekip · görevler";
@@ -40,14 +41,31 @@ export function leadId(env = process.env) {
   return env.ITERM_SESSION_ID?.split(":")[1] ?? env.TERM_SESSION_ID ?? null;
 }
 
+// Worker panes read as side panels next to the lead: a darker, cooler background than the lead's
+// (WORKER_BG; WORKER_BG_IDLE while another pane has the focus, set by ekip.lua) and a coloured header
+// line naming the worker. The colours are written by the worker pane's own shell, never into the lead.
+export const WORKER_BG = "#080A11";
+export const WORKER_BG_IDLE = "#040509";
+const HEADER = { bg: "21;24;30", fg: "45;212;191" }; // C.card and C.team of ekip.lua
+
 // The pane's command: a login zsh that first sets the pane title (and, for WezTerm's config, a user
-// variable naming the pane's role), then runs the command.
+// variable naming the pane's role), then runs the command. A worker pane (role "pane") also gets its
+// tint (OSC 11, reset by OSC 111 when the command ends) and the "işçi · <label>" header; the task
+// pane (role "tasks") keeps the lead's look.
 export function paneShell(command, { title = "", role = "" } = {}) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
   const pre = [
     ...(title ? [`printf '\\033]2;%s\\007' ${q(title)}`] : []),
     ...(role ? [`printf '\\033]1337;SetUserVar=%s=%s\\007' ekip_role ${q(Buffer.from(role).toString("base64"))}`] : []),
   ];
+  if (role === "pane") {
+    const label = String(title).replace(/^ekip · /, "").trim() || "ekip";
+    pre.push(
+      `trap 'printf "\\033]111\\007\\033]110\\007"' EXIT`,
+      `printf '\\033]11;%s\\007' ${q(WORKER_BG)}`,
+      `printf '\\033[48;2;${HEADER.bg}m\\033[38;2;${HEADER.fg}m\\033[1m %s \\033[K\\033[0m\\n' ${q(t("işçi · {label}", { label }))}`,
+    );
+  }
   return ["/bin/zsh", "-lc", pre.length ? `${pre.join("; ")}; ${command}` : command];
 }
 
