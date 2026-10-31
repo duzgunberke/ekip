@@ -18,6 +18,7 @@ run() {
 echo '== pool capacity test =='; node plugin/lib/workers/agents.test.mjs
 echo '== terminal back ends =='; node plugin/lib/core/terminal.test.mjs
 echo '== status styles =='; node plugin/lib/core/status-style.test.mjs
+echo '== statusline =='; node plugin/lib/ops/statusline.test.mjs
 echo '== task pane =='; node plugin/lib/tasks/pane.test.mjs
 echo '== WezTerm as the default terminal =='; node plugin/lib/ops/terminal.test.mjs
 echo '== guided setup =='; node plugin/lib/ops/setup.test.mjs

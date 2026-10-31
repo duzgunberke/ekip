@@ -15,6 +15,8 @@ export async function main([sub] = []) {
   if (sub === "off" || sub === "on") return toggle(sub === "on");
   let input = {};
   try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch { /* no stdin */ }
+  // the task pane under the lead already shows all of this: no second copy under the prompt
+  if (await taskPaneOpen()) return 0;
   const cwd = input.workspace?.current_dir ?? input.cwd ?? process.cwd();
   const parts = [c.cyan("ekip")];
 
@@ -51,6 +53,15 @@ export async function main([sub] = []) {
 
   process.stdout.write(parts.join(c.gray(" · ")));
   return 0;
+}
+
+/** True when this lead's tab shows ekip's task pane; unknown (no terminal, slow answer) counts as no. */
+export async function taskPaneOpen({ env = process.env, term = null } = {}) {
+  try {
+    const t = await import("../core/terminal.js");
+    if (!term && t.detect(env) === "none") return false;
+    return !!(term ?? t.backend({ env })).findTaskPane();
+  } catch { return false; }
 }
 
 const settingsFile = () => path.join(process.env.HOME ?? "", ".claude/settings.json");
