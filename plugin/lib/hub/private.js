@@ -38,15 +38,73 @@ export function parseServeEnableUrl(text) {
   return s.match(/To enable, visit:?\s*(https:\/\/\S+)/i)?.[1] ?? s.match(/https:\/\/login\.tailscale\.com\/\S+/)?.[0] ?? null;
 }
 
-/** `tailscale status --json` → { state, online, dnsName, ip } (dnsName without the trailing dot). */
+/**
+ * `tailscale status --json` → { state, online, dnsName, ip, tailnet } (dnsName without the trailing
+ * dot). tailnet is { name, suffix, login } from CurrentTailnet and the signed-in user, or null.
+ */
 export function parseStatus(json) {
   let s;
-  try { s = typeof json === "string" ? JSON.parse(json) : json; } catch { return { state: null, online: false, dnsName: null, ip: null }; }
+  try { s = typeof json === "string" ? JSON.parse(json) : json; } catch { return { state: null, online: false, dnsName: null, ip: null, tailnet: null }; }
   const self = s?.Self ?? {};
-  return { state: s?.BackendState ?? null, online: s?.BackendState === "Running", dnsName: parseDnsName(s), ip: self.TailscaleIPs?.[0] ?? null };
+  const dnsName = parseDnsName(s);
+  return { state: s?.BackendState ?? null, online: s?.BackendState === "Running", dnsName, ip: self.TailscaleIPs?.[0] ?? null, tailnet: parseTailnet(s, dnsName) };
 }
 
 export const parseDnsName = (s) => String(s?.Self?.DNSName ?? "").replace(/\.$/, "") || null;
+
+/** The tailnet a node is in: CurrentTailnet's Name and MagicDNSSuffix (the suffix of its DNSName on older CLIs). */
+export function parseTailnet(s, dnsName = parseDnsName(s)) {
+  const ct = s?.CurrentTailnet ?? {};
+  const suffix = String(ct.MagicDNSSuffix ?? "").replace(/\.$/, "") || dnsName?.split(".").slice(1).join(".") || null;
+  const name = ct.Name || null;
+  const login = s?.User?.[String(s?.Self?.UserID ?? "")]?.LoginName || null;
+  return name || suffix ? { name, suffix, login } : null;
+}
+
+/** Same tailnet: true, false, or null when either side does not say. The MagicDNS suffix is unique per tailnet. */
+export function sameTailnet(a, b) {
+  if (!a || !b) return null;
+  if (a.suffix && b.suffix) return a.suffix === b.suffix;
+  if (a.name && b.name) return a.name === b.name;
+  return null;
+}
+
+/** "alice@example.com · Example (tailnet-name.ts.net)": who is signed in, in which tailnet. */
+export function tailnetLabel(tn) {
+  if (!tn) return "?";
+  const net = [tn.name, tn.suffix && tn.suffix !== tn.name ? `(${tn.suffix})` : ""].filter(Boolean).join(" ");
+  return tn.login && tn.login !== tn.name ? `${tn.login} · ${net}` : net;
+}
+
+/**
+ * `tailscale serve status --json` → { state, lines } for port 443: "none" (nothing there), "hub"
+ * (exactly one handler, / → proxy http://127.0.0.1:<port>, no Funnel), "other" (something else, its
+ * handlers in lines) or "unknown" (no answer, not JSON).
+ */
+export function parseServe(json, port) {
+  if (json == null) return { state: "unknown", lines: [] };
+  if (typeof json === "string" && !json.trim()) return { state: "none", lines: [] };
+  let s;
+  try { s = typeof json === "string" ? JSON.parse(json) : json; } catch { return { state: "unknown", lines: [] }; }
+  if (!s || typeof s !== "object") return { state: "unknown", lines: [] };
+  const tcp = s.TCP?.["443"] ?? null;
+  const lines = [];
+  let handlers = 0, hub = 0, funnel = false;
+  for (const [hostPort, web] of Object.entries(s.Web ?? {})) {
+    if (!hostPort.endsWith(":443")) continue;
+    const host = hostPort.slice(0, -4);
+    for (const [mount, h] of Object.entries(web?.Handlers ?? {})) {
+      handlers++;
+      const what = h?.Proxy ? `proxy ${h.Proxy}` : h?.Path ? `path ${h.Path}` : h?.Text != null ? "text" : JSON.stringify(h);
+      lines.push(`https://${host}${mount} → ${what}`);
+      if (mount === "/" && String(h?.Proxy ?? "").replace(/\/$/, "") === `http://127.0.0.1:${port}`) hub++;
+    }
+    if (s.AllowFunnel?.[hostPort]) { funnel = true; lines.push(`Funnel: https://${host} (${t("internete açık")})`); }
+  }
+  if (tcp?.TCPForward) lines.push(`tcp 443 → ${tcp.TCPForward}`);
+  if (!handlers && !tcp) return { state: "none", lines: [] };
+  return { state: handlers === 1 && hub === 1 && !funnel && !tcp?.TCPForward ? "hub" : "other", lines, tcp: !!tcp?.TCPForward };
+}
 
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 /** A host only reachable from this machine, a private network or the tailnet. */
@@ -170,6 +228,19 @@ export async function ensureMac(io, { timeoutMs = 15 * 60_000 } = {}) {
 
 export const vpsStatus = (io, host) => parseStatus(io.ssh(host, vsh("$SU tailscale status --json 2>/dev/null"), { timeout: 20_000 }).stdout);
 
+/** What port 443 serves on the VPS now (parseServe). */
+export function vpsServe(io, host, port) {
+  const r = io.ssh(host, vsh("$SU timeout 10 tailscale serve status --json 2>/dev/null"), { timeout: 20_000 });
+  return parseServe(r.status === 0 ? r.stdout : null, port);
+}
+
+/** Mac and VPS in different tailnets: the message naming both and the way out; null when they match or one does not say. */
+export function tailnetMismatch(mac, vps, host) {
+  if (sameTailnet(mac?.tailnet, vps?.tailnet) !== false) return null;
+  return `${t("Mac ve VPS farklı tailnet'lerde")}: Mac: ${tailnetLabel(mac.tailnet)}, VPS: ${tailnetLabel(vps.tailnet)}\n  `
+    + t("VPS'in oturumunu kapatıp tekrar çalıştırın (ssh {host} sudo tailscale logout, sonra ekip hub private; giriş bağlantısı Mac'te açılır) ya da Mac'te Tailscale uygulamasında VPS'in hesabıyla oturum açın.", { host });
+}
+
 /** Tailscale installed and the VPS in the tailnet as `hostname`; the login link opens on the Mac. */
 export async function ensureVps(io, host, { hostname = DEFAULT_HOSTNAME, timeoutMs = 15 * 60_000 } = {}) {
   if (io.ssh(host, "command -v tailscale", { timeout: 20_000 }).status !== 0) {
@@ -216,6 +287,22 @@ export async function serve(io, host, port, { timeoutMs = 15 * 60_000 } = {}) {
     return null;
   }, { timeoutMs, everyMs: 10_000 });
   return ok === true;
+}
+
+/**
+ * Port 443 already serves something that is not the hub: show it and replace it only after a yes
+ * (default no; --yes ahead; without a terminal and without --yes it stops).
+ */
+export async function replaceServe(io, host, cur, { yes = false } = {}) {
+  io.log(`  ${t("VPS'te 443 portunda başka bir Serve ayarı var")}:`);
+  for (const l of cur.lines) io.log(`      ${l}`);
+  let go = yes;
+  if (!go && io.tty) go = /^(e|evet|y|yes)$/i.test((await io.ask(`    ${t("Bu ayar kaldırılıp yerine hub konsun mu? [e/H]")} `)).trim());
+  if (!go) { io.log(`  ✗ ${t("443'teki ayar değişmedi; yerine hub'ı koymak için --yes ile tekrar çalıştırın")}`); return false; }
+  const r = io.ssh(host, vsh(`$SU timeout 20 tailscale serve --https=443 off${cur.tcp ? "; $SU timeout 20 tailscale serve --tcp=443 off" : ""}`), { timeout: 60_000 });
+  if (r.status !== 0) { io.log(`  ✗ tailscale serve --https=443 off: ${(r.stderr || r.stdout).trim()}`); return false; }
+  io.log(`  ✓ ${t("eski 443 ayarı kaldırıldı")}`);
+  return true;
 }
 
 // ---- the old public route -------------------------------------------------------------------------
@@ -272,6 +359,27 @@ function options(args) {
 
 export const sshHost = (s, opt = {}) => opt.ssh ?? s.hubPrivate?.ssh ?? s.remote?.ssh ?? REMOTE?.ssh ?? s.vps?.ssh ?? null;
 
+/**
+ * Mac and VPS online in the same tailnet, 443 serves the hub, hubUrl is already its private URL and it
+ * answers: one line, exit 0, nothing touched (private mode is recorded when hubUrl was set by hand).
+ */
+async function alreadyReady(io, host, { hostname, port }) {
+  const s = io.settings;
+  let urlHost;
+  try { urlHost = new URL(s.hubUrl).hostname; } catch { return false; }
+  if (!urlHost.endsWith(".ts.net")) return false;
+  const mac = io.platform === "darwin" ? macStatus(io) : null;
+  if (io.platform === "darwin" && !mac.online) return false;
+  const vps = vpsStatus(io, host);
+  const url = vps.online && vps.dnsName ? `https://${vps.dnsName}` : null;
+  if (!url || s.hubUrl.replace(/\/$/, "") !== url) return false;
+  if (mac && sameTailnet(mac.tailnet, vps.tailnet) === false) return false;
+  if (vpsServe(io, host, port).state !== "hub" || !(await answers(io, url))) return false;
+  if (s.hubPrivate?.url !== url) io.save(privateSettings(s, { url, ssh: host, hostname, port }));
+  io.log(`✓ ${t("zaten hazır")}: ${url}`);
+  return true;
+}
+
 export async function enable(io, opt = {}) {
   const s = io.settings;
   const host = sshHost(s, opt);
@@ -279,18 +387,28 @@ export async function enable(io, opt = {}) {
   const hostname = opt.hostname ?? s.hubPrivate?.hostname ?? DEFAULT_HOSTNAME;
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(hostname)) { io.log(`--hostname: ${hostname}?`); return 2; }
   const port = Number(opt.port ?? s.hubPrivate?.port ?? DEFAULT_PORT);
+  if (await alreadyReady(io, host, { hostname, port })) return 0;
   if (!s.hubToken) io.log(`  ! ${t("hub token'ı yok; önce ekip hub link <url> <token>")}`);
   io.log(`\n› ${t("1/5 Mac'te Tailscale")}`);
-  if (io.platform === "darwin" && !(await ensureMac(io, opt))) { io.log(`  ✗ ${t("Mac tailnet'e katılmadı; Tailscale'de oturum açıp tekrar deneyin.")}`); return 1; }
+  const mac = io.platform === "darwin" ? await ensureMac(io, opt) : null;
+  if (io.platform === "darwin" && !mac) { io.log(`  ✗ ${t("Mac tailnet'e katılmadı; Tailscale'de oturum açıp tekrar deneyin.")}`); return 1; }
   io.log(`\n› ${t("2/5 VPS'te Tailscale")} (${host})`);
   const vps = await ensureVps(io, host, { hostname, timeoutMs: opt.timeoutMs });
   if (!vps?.dnsName) return 1;
+  // a VPS signed in to another account is online but unreachable from the Mac: stop before Serve
+  const mismatch = tailnetMismatch(mac, vps, host);
+  if (mismatch) { io.log(`  ✗ ${mismatch}`); return 1; }
   io.log(`\n› ${t("3/5 Hub'ı tailnet'te yayınla")} (127.0.0.1:${port})`);
   if (io.ssh(host, `curl -fsS -m 5 http://127.0.0.1:${port}/healthz`, { timeout: 20_000 }).status !== 0) {
     io.log(`  ✗ ${t("hub VPS'te 127.0.0.1:{port} adresinde cevap vermiyor; doğru portu --port ile verin", { port })}`);
     return 1;
   }
-  if (!(await serve(io, host, port, { timeoutMs: opt.timeoutMs }))) { io.log(`  ✗ ${t("tailscale serve tamamlanmadı")} (${SERVE_LOG})`); return 1; }
+  const cur = vpsServe(io, host, port);
+  if (cur.state === "hub") io.log(`  ✓ ${t("443 zaten hub'ı sunuyor (proxy http://127.0.0.1:{port})", { port })}`);
+  else {
+    if (cur.state === "other" && !(await replaceServe(io, host, cur, opt))) return 1;
+    if (!(await serve(io, host, port, { timeoutMs: opt.timeoutMs }))) { io.log(`  ✗ ${t("tailscale serve tamamlanmadı")} (${SERVE_LOG})`); return 1; }
+  }
   const url = `https://${vps.dnsName}`;
   io.log(`\n› ${t("4/5 Mac'ten kontrol")}: ${url}`);
   // the first request waits for the certificate
@@ -323,15 +441,18 @@ export async function status(io) {
   const cli = io.platform === "darwin" ? macCli(io) : io.has("tailscale") ? "tailscale" : null;
   const mac = macStatus(io, cli);
   const row = (k, v) => io.log(`${k.padEnd(9)}${v}`);
+  let mismatch = null;
   row("Mac", `${!cli ? t("Tailscale kurulu değil") : mac.online ? `✓ ${mac.dnsName}` : `✗ ${mac.state ?? t("kapalı")}`}`);
   const host = sshHost(s);
   if (host) {
     const v = vpsStatus(io, host);
     row("VPS", `${v.online ? `✓ ${v.dnsName}` : `✗ ${v.state ?? t("Tailscale yok ya da erişilemiyor")}`} (${host})`);
+    mismatch = mac.online && v.online ? tailnetMismatch(mac, v, host) : null;
+    if (mismatch) row("tailnet", `✗ ${mismatch.replace(/\n\s*/g, `\n${" ".repeat(9)}`)}`);
     const sv = io.ssh(host, vsh("$SU timeout 10 tailscale serve status 2>&1 | head -8"), { timeout: 20_000 }).stdout.trim();
     if (sv) row("serve", sv.split("\n").join(`\n${" ".repeat(9)}`));
   }
-  if (!p?.url) { row("hub", `${s.hubUrl ?? t("bağlı değil")} · ${t("gizli mod kapalı (ekip hub private)")}`); return 0; }
+  if (!p?.url) { row("hub", `${s.hubUrl ?? t("bağlı değil")} · ${t("gizli mod kapalı (ekip hub private)")}`); return mismatch ? 1 : 0; }
   const ok = await answers(io, p.url);
   row("hub", `${ok ? "✓" : "✗"} ${p.url}${s.hubUrl === p.url ? "" : ` (${t("hubUrl başka")}: ${s.hubUrl})`}`);
   if (p.publicUrl) {
@@ -339,7 +460,7 @@ export async function status(io) {
     row(t("genel"), `${open ? `! ${p.publicUrl} ${t("hâlâ cevap veriyor")}` : `✓ ${p.publicUrl} ${t("cevap vermiyor")}`}`);
   }
   if (p.route?.files?.length) row(t("yedek"), p.route.files.map((f) => f.backup).join(", "));
-  return ok ? 0 : 1;
+  return ok && !mismatch ? 0 : 1;
 }
 
 export async function off(io, opt = {}) {
@@ -348,8 +469,13 @@ export async function off(io, opt = {}) {
   // never touch a Serve config ekip did not set up
   if (!p) { io.log(t("gizli mod açık değil")); return 0; }
   if (host) {
-    const r = io.ssh(host, vsh("$SU timeout 20 tailscale serve --https=443 off"), { timeout: 40_000 });
-    io.log(r.status === 0 ? `✓ ${t("tailscale serve kapatıldı")}` : `! tailscale serve: ${(r.stderr || r.stdout).trim()}`);
+    const cur = vpsServe(io, host, Number(p.port ?? DEFAULT_PORT));
+    if (cur.state === "other") io.log(`! ${t("443 artık hub'dan başka bir şey sunuyor; dokunulmadı")}: ${cur.lines.join(", ")}`);
+    else if (cur.state === "none") io.log(`✓ ${t("tailscale serve zaten kapalı")}`);
+    else {
+      const r = io.ssh(host, vsh("$SU timeout 20 tailscale serve --https=443 off"), { timeout: 40_000 });
+      io.log(r.status === 0 ? `✓ ${t("tailscale serve kapatıldı")}` : `! tailscale serve: ${(r.stderr || r.stdout).trim()}`);
+    }
     for (const f of p?.route?.files ?? []) {
       if (!PATH_RE.test(f.path) || !PATH_RE.test(f.backup)) continue;
       const m = io.ssh(host, vsh(`[ -e ${q(f.path)} ] && echo exists || $SU mv -- ${q(f.backup)} ${q(f.path)}`), { timeout: 20_000 });
