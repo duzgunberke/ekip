@@ -324,3 +324,15 @@ if (process.platform === "darwin") { // iTerm2: the same AppleScript layout as b
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("terminal back ends: ok");
+
+// workers never get the lead's terminal identity; a test home never opens panes in the user's window
+{
+  const env = term.headlessEnv({ WEZTERM_PANE: "0", WEZTERM_UNIX_SOCKET: "/s", KITTY_WINDOW_ID: "1", ITERM_SESSION_ID: "w0:X", PATH: "/bin" });
+  assert.deepEqual(env, { PATH: "/bin" });
+  assert.equal(term.detect(env), "none");
+  let opened = 0;
+  const fake = { name: "wezterm", findTaskPane: () => "", openPane: () => { opened++; return "9"; }, layout: () => ({ me: { id: "0" } }) };
+  term.ensureTaskPane({ term: fake, env: { WEZTERM_PANE: "0", EKIP_HOME: "/tmp/some-test-home" }, home: "/tmp/some-test-home" });
+  assert.equal(opened, 0, "a test home opens nothing");
+  console.log("terminal: workers are headless");
+}

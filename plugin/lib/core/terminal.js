@@ -13,6 +13,16 @@ import { HOME, ROOT, SETTINGS } from "./core.js";
 export const TASK_TITLE = "ekip · görevler";
 const run0 = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", ...opts });
 
+// What tells ekip which terminal pane it runs in. Workers never get these: on 31 Oct a reviewer's test,
+// with its own temporary EKIP_HOME, took the lead's pane id from the inherited environment and opened
+// an empty task pane in the user's window.
+export const TERMINAL_VARS = ["WEZTERM_PANE", "WEZTERM_UNIX_SOCKET", "KITTY_WINDOW_ID", "KITTY_LISTEN_ON", "ITERM_SESSION_ID", "TERM_SESSION_ID"];
+export function headlessEnv(env = process.env) {
+  const out = { ...env };
+  for (const k of TERMINAL_VARS) delete out[k];
+  return out;
+}
+
 /** Which terminal ekip runs in: "wezterm", "kitty", "iterm" or "none". Reads only the environment. */
 export function detect(env = process.env) {
   if (env.WEZTERM_PANE != null && env.WEZTERM_PANE !== "") return "wezterm";
@@ -369,6 +379,8 @@ export const openSessions = () => iterm().openSessions();
 // truth; in iTerm2 a flag file keeps the pane's session id.
 export function ensureTaskPane({ term = backend(), env = process.env, home = HOME } = {}) {
   if (!term || SETTINGS.taskPane === false) return;
+  // a test or a worker with its own EKIP_HOME never opens panes in the user's window
+  if (env.EKIP_HOME && path.resolve(env.EKIP_HOME) !== path.resolve(ROOT, "data")) return;
   const lead = term.name === "iterm" ? env.ITERM_SESSION_ID?.split(":")[1] : leadId(env);
   if (!lead) return;
   const flag = path.join(home, "panes", `${lead}-tasks`);
