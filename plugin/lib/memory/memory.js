@@ -328,9 +328,19 @@ async function addConversation(p, sessionId, messages) {
   await identity();
   const s = scope(p);
   let sent = 0;
+  // a busy memory server times out on a full batch: the same messages go again once, in two halves
+  const add = async (batch, retry = true) => {
+    try { await coreData("/conversation/add", { ...s, session_id: sessionId, messages: batch }, 30000); }
+    catch (e) {
+      if (!retry || batch.length < 2 || !/timeout|aborted/i.test(String(e?.message ?? e))) throw e;
+      const half = Math.ceil(batch.length / 2);
+      await add(batch.slice(0, half), false);
+      await add(batch.slice(half), false);
+    }
+  };
   for (let i = 0; i < messages.length; i += MSGS_PER_CALL) {
     const batch = messages.slice(i, i + MSGS_PER_CALL);
-    await coreData("/conversation/add", { ...s, session_id: sessionId, messages: batch }, 30000);
+    await add(batch);
     sent += batch.length;
   }
   return sent;

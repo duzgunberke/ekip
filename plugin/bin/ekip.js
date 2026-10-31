@@ -2184,4 +2184,6 @@ switch (cmd) {
 }
 // Let hub pushes started by this command finish (task updates, run reports) before exiting.
 try { const { pending } = await import("../lib/tasks/tasks.js"); await Promise.race([Promise.allSettled([...pending]), sleep(5000)]); } catch { /* none */ }
-process.exit(code);
+// a command that failed through process.exitCode (memory catch-up, hub calls) keeps its code: a bare
+// exit(0) here made `ekip track` mark failed steps done (31 Oct)
+process.exit(code || process.exitCode || 0);
