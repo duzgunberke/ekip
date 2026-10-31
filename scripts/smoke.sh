@@ -4,6 +4,9 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export EKIP_HOME="$tmp/home"
+# The unit tests compare Turkish source strings; pin the language so a machine with an English locale
+# (the fresh-install CI) runs them the same way. The language checks below set EKIP_LANG themselves.
+export EKIP_LANG=tr
 mkdir -p "$EKIP_HOME"
 run() {
   local out status
