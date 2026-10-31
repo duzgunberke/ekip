@@ -2,9 +2,29 @@
 
 Follow a request from Claude's plan through worker routing, live progress, and review.
 
-[README](../README.md) · **How it works** · [Memory](memory.md) · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
+[README](../README.md) · **How it works** · [Memory](memory.md) · [Skills](skills.md) · [Reliability](reliability.md) · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
 
 <img src="assets/how-it-works.svg" alt="One Claude lead routes work to independent worker pools, all starting with project memory; an optional hub keeps services available" width="100%">
+
+## Why
+
+Claude Code's limit goes mostly to **reading**: files, logs, history, the same context again in every
+session. ekip changes who does what. Claude only decides: it understands the request, splits it, picks
+a worker for each part and reviews the result. Reading and typing go to agents on other quotas. Context
+is prepared once per project (memory, wiki, code graph, skills), so workers start from it instead of
+re-reading the repo.
+
+<img src="assets/savings.svg" alt="Share of the work that ran outside Claude, measured with ekip savings: 58% during the two-day setup, 81% the next day" width="100%">
+
+58% was the worst case: two days of building ekip itself and indexing 15 projects cold, work only the
+lead could do. The next day it was 81%. Measure it on your own work with `ekip savings`: it reads your
+Claude sessions, the workers' logs and the free pool, day by day.
+
+```text
+you  › make two promo videos, fix what's left in storefront-web, add passkeys to payments-api
+lead › 3 tasks · videos → Antigravity + film skill · storefront fix → Codex + its memory · passkeys → Copilot
+       reviews the diffs and renders, reports what shipped, what was verified, what is left
+```
 
 ## Request lifecycle
 
@@ -53,6 +73,19 @@ flowchart LR
 
 `ekip limits` shows pool readiness, recent success rates, cooldowns, quota reset times, free-provider model availability, and the route a new task would take. The `auto:memory` and `auto:translate` freellmapi profiles keep memory and translation work on their own routes.
 
+### Mesai mode: every pool at work at once
+
+With several pools signed in, `ekip mesai on` turns on the work shift: the lead splits each request
+into as many independent parts as the pools can take and dispatches them in parallel, racing the
+uncertain ones, while its own Claude only plans and reviews. Each pool has a capacity (codex, copilot
+and agy 2, qwen, opencode and grok 1, free 3; `poolConcurrency` in `data/config.json` changes it), and
+`--via auto` skips pools that are full or out of quota, so parallel runs spread out by themselves.
+`ekip mesai status` shows each pool's running/capacity and success rate; `ekip mesai all "task"` runs
+one task on every pool with a free slot, each on its own branch. The headless Claude pool joins only
+with `--include-claude`. Optional: [jcode](https://github.com/1jehuang/jcode) as one more harness on
+the free pool (about 60 MB per worker instead of 600; set `jcodeBin` and a jcode provider profile
+pointing at freellmapi).
+
 ## Seeing what is going on
 
 | Surface | What it shows |
@@ -85,6 +118,25 @@ Panes go through `plugin/lib/core/terminal.js`, one small interface per terminal
 Each lead records its own id on its tasks (`terminal.js` `leadId()`: the iTerm2 session, `wezterm-<pane>`, `kitty-<window>`), so a lead sees only its own tasks. `ekip terminal install` writes WezTerm's `ekip.lua`, which reads `data/terminal-status.json` (the waiting / stuck / running counts and the registered projects, rewritten by `tasks.js` when a task changes and by the task pane) at most once a second for the tab bar; it never starts ekip itself.
 
 Panel routes: `/tasks`, `/overview`, `/projects`, `/code-map`, `/jobs`, `/runs`, `/pools`, and `/panels`.
+
+## Agents that talk to each other
+
+Short tasks run headless and report back. Long-lived agents can open in their own terminals as team
+members and message each other through [hoptell](https://github.com/EminUZUN/hoptell): one asks another
+to review a file, or hands over the next step. `ekip team up --open` starts them.
+
+## Working against your environments (optional)
+
+Tests and migrations should never touch production. To let workers run against real data stores,
+give them an environment that is safe to break:
+
+- **Your own development environments.** Dev, test or UAT systems connect the way any tool connects to
+  Claude Code: an MCP server for the database or service, or connection settings in the project's
+  environment. Workers use them; production stays out of reach.
+- **Or let ekip host them.** `ekip dev` keeps one development Postgres and Redis on your own server,
+  gives every project an isolated database, and opens a local tunnel with a ready `.env.ekip-dev`. It
+  refuses anything that is not a development target. Jobs queued on the VPS hub get the same
+  environment, addressed for the server.
 
 ## Reliability and safety
 

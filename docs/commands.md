@@ -2,7 +2,7 @@
 
 Use the CLI reference below to launch the lead, manage workers and projects, and control the optional hub.
 
-[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Install](install.md) · **Commands** · [Operations](operations.md)
+[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Skills](skills.md) · [Reliability](reliability.md) · [Install](install.md) · **Commands** · [Operations](operations.md)
 
 ## CLI help
 

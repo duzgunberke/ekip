@@ -13,6 +13,14 @@ work runs on other quotas.
 
 ## v2: shared memory and teamwork
 
+<img src="assets/team-memory.svg" alt="Several people, each with their own ekip, feed and read one shared memory with personal, project and team layers" width="100%">
+
+Today ekip is one person, one Claude and a whole team of agents. Next: a whole team of people on one
+shared memory. Everyone keeps their own terminal and agents, connected to one hub. What one person
+solves in a project, a teammate's agent knows the next day: the fix, the test that caught it and what
+did not work. Personal notes stay personal; team-wide rules live in a team layer every agent reads.
+The foundation is already here: memory is isolated per project and per agent inside one store.
+
 The memory and the hub stop being one person's.
 
 - **Shared project memory.** Teammates who work on the same project read and write the same

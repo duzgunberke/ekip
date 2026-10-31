@@ -2,7 +2,7 @@
 
 Set up ekip on macOS, configure free-provider keys, and optionally connect an always-on VPS hub.
 
-[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · **Install** · [Commands](commands.md) · [Operations](operations.md)
+[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Skills](skills.md) · [Reliability](reliability.md) · **Install** · [Commands](commands.md) · [Operations](operations.md)
 
 ## Requirements
 
@@ -99,6 +99,23 @@ second WezTerm process, so the Dock keeps one icon. Other terminals are not clos
 lead starts in the current terminal with the reason. `ekip --here` or `EKIP_TERMINAL=current` stays
 put for one start; `ekip terminal default current` turns it off, `ekip terminal default wezterm` back
 on; `ekip terminal status` shows the setting. Subcommands, worker panes and hooks never switch.
+
+The tab bar carries the ekip mark, one tab per project (the registered project's name, `~` at home)
+and the open tasks on the right (waiting for you, stuck, running), read from a small status file ekip
+rewrites when a task changes. The task pane draws a card per task with its progress, step and
+workers; with nothing running it shows the last results instead.
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/terminal-wezterm-layout.png" alt="ekip in WezTerm: the lead, two workers on the right, the task pane below with a card per task"><br><sub>The lead, workers on the right, task cards below</sub></td>
+    <td width="50%"><img src="screenshots/terminal-empty.png" alt="The task pane with nothing running: the ekip logo and the last results"><br><sub>Nothing running: the last results</sub></td>
+  </tr>
+</table>
+
+WezTerm was picked over kitty because it is MIT licensed, installs with a Homebrew cask, lists and
+splits panes from the command line without extra settings (`wezterm cli` answers in milliseconds with
+a JSON pane list, so a busy machine cannot open the same task pane twice) and is configured in Lua.
+kitty works too (`kitty @`, with remote control on) but stays second.
 
 Your own `~/.wezterm.lua` or `~/.config/wezterm/wezterm.lua` is not changed; if you have one, add the
 two lines the command prints before `return config`. Without Homebrew the command prints the install
