@@ -42,7 +42,9 @@ running while the Mac is off, and serves the web panel.
   through `t()` with an English entry in `plugin/lib/core/i18n.js`.
 - ekip may be running from this checkout: give workers that edit it `ekip run --worktree`, so a
   half-finished edit cannot break the running lead, panes or hooks.
-- Update `README.md`, `README.tr.md` and `docs/` when behaviour changes; keep the README's
-  structure.
+- Update `README.md`, `README.tr.md` and `docs/` when behaviour changes. The README is a short
+  front page (about 170 lines: hero, quick start, "What you get" grid, skills, how it works, links);
+  details go to the matching `docs/` page, not into the README. Both READMEs keep the same structure
+  and images.
 - Work on a branch (`feat/…`, `fix/…`), merge into `main` when checks pass; a passing merge is
   released automatically (see `CONTRIBUTING.md`). Never tag or bump versions by hand.

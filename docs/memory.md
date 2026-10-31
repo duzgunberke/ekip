@@ -2,7 +2,7 @@
 
 See how ekip indexes projects and uses memory, skills, a wiki, and code graphs to prepare context.
 
-[README](../README.md) · [How it works](architecture.md) · **Memory** · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
+[README](../README.md) · [How it works](architecture.md) · **Memory** · [Skills](skills.md) · [Reliability](reliability.md) · [Install](install.md) · [Commands](commands.md) · [Operations](operations.md)
 
 ## Project indexing
 
@@ -71,6 +71,8 @@ flowchart TB
 
 ## Memory that follows your message
 
+<img src="assets/memory-follows.svg" alt="You write about ios-ap with a typo; ekip finds the ios-app project, searches its memory in about a second and adds the relevant facts and skills to Claude's context" width="100%">
+
 The `UserPromptSubmit` hook looks for registered project names and repository folder names in each message. Matching tolerates common typos; it adds relevant L1 facts, project skills, and the card summary to the prompt. It searches up to two named projects. If no project is named, it uses the registered project containing the current folder. L1 lookup is typically about a second, within a short hook time budget.
 
 ## Is the knowledge used?
@@ -123,4 +125,4 @@ For the background on vector databases, see the author's [2023 article on Medium
 
 ---
 
-[← Back to README](../README.md) · Next: [Install](install.md)
+[← Back to README](../README.md) · Next: [Skills](skills.md)

@@ -2,7 +2,7 @@
 
 Review the upstream patches ekip applies, diagnose common failures, and understand data flow and privacy.
 
-[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Install](install.md) · [Commands](commands.md) · **Operations**
+[README](../README.md) · [How it works](architecture.md) · [Memory](memory.md) · [Skills](skills.md) · [Reliability](reliability.md) · [Install](install.md) · [Commands](commands.md) · **Operations**
 
 ## Upstream patches
 
