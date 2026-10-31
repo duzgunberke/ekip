@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { HOME, ROOT, RUNS, SETTINGS } from "../core/core.js";
 import { c, fit } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
+import { clip as paneClip } from "./pane.js";
 import { list, reapDead, paused, percent, eta, stalledFor, pidAlive, fmtDur } from "./tasks.js";
 
 const DAY = 24 * 3600_000;
@@ -160,6 +161,24 @@ export function releaseLine(r) {
 
 // ---- rendering ---------------------------------------------------------------------------------
 
+// Plain text over at most `max` lines of the terminal at word boundaries, the last one shortened
+// with "…" (the pane's word-safe clip).
+export function wrapText(text, width, max = 3) {
+  const words = String(text ?? "").replace(/\s+/g, " ").trim().split(" ");
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const next = cur ? `${cur} ${w}` : w;
+    if ([...next].length <= width || !cur) { cur = next; continue; }
+    lines.push(cur);
+    cur = w;
+  }
+  if (cur) lines.push(cur);
+  if (lines.length <= max) return lines.map((l) => ([...l].length > width ? paneClip(l, width) : l));
+  return [...lines.slice(0, max - 1), paneClip(lines.slice(max - 1).join(" "), width)];
+}
+const wrapped = (text, indent, paint = (x) => x) => wrapText(text, Math.max(20, (process.stdout.columns || Number(process.env.COLUMNS) || 100) - indent.length - 1)).map((l) => `${indent}${paint(l)}`);
+
 const head = (label, n, color = (s) => s) => `\n${color(c.bold(`${label} (${n})`))}`;
 const finishText = (iso) => `${t("bitiş ~{time}", { time: clock(iso) })} (${t("{duration} kaldı", { duration: fmtDur(Date.parse(iso) - Date.now()) })})`;
 
@@ -201,8 +220,9 @@ export function render(d, rel) {
   if (!d.stuck.length) out.push(c.gray(`  ${t("takılan iş yok")}`));
   for (const s of d.stuck) {
     out.push(fit(`  ${s.failed ? c.red("✗") : c.yellow("⚠")} ${c.bold(s.title)}${s.project ? c.gray(` · ${s.project}`) : ""}${s.since ? c.gray(` · ${ago(s.since)}`) : ""}`));
-    out.push(fit(`     ${t("neden")}: ${clip(s.why, 240)}`));
-    for (const a of s.actions) out.push(fit(`     ${c.gray(`${t("ekip ne yaptı")}: ${clip(a, 200)}`)}`));
+    // the reason in full words over up to three lines of the terminal, never cut on the right
+    out.push(...wrapped(`${t("neden")}: ${clip(s.why, 400)}`, "     "));
+    for (const a of s.actions) out.push(...wrapped(`${t("ekip ne yaptı")}: ${clip(a, 300)}`, "     ", c.gray));
   }
 
   out.push(head(t("Son 24 saatte biten"), d.done.length, d.done.length ? c.green : c.gray));

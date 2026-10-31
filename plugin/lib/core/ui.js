@@ -24,10 +24,18 @@ export function fit(s, max = width()) {
   s = String(s);
   if (process.env.EKIP_NO_FIT === "1") return s;
   if (strip(s).length <= max) return s;
-  let out = "", n = 0;
+  // cut at the last word boundary (when it keeps most of the line), never in the middle of a word
+  let out = "", n = 0, space = -1, spaceN = 0;
   for (const part of s.split(/(\x1b\[[0-9;]*m)/g)) {
     if (part.startsWith("\x1b[")) { out += part; continue; }
-    for (const ch of part) { if (n >= Math.max(0, max - 1)) return `${out}…${on() ? "\x1b[0m" : ""}`; out += ch; n++; }
+    for (const ch of part) {
+      if (n >= Math.max(0, max - 1)) {
+        const head = space >= 0 && spaceN > max * 0.5 && ch !== " " ? out.slice(0, space).replace(/[\s,.;:·-]+$/, "") : out;
+        return `${head}…${on() ? "\x1b[0m" : ""}`;
+      }
+      if (ch === " ") { space = out.length; spaceN = n; }
+      out += ch; n++;
+    }
   }
   return out;
 }
