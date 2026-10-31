@@ -42,7 +42,10 @@ export async function main([sub] = []) {
   } catch { /* no pool data */ }
 
   // last CI result (saved by ekip doctor) and a pending update (from the update check cache)
-  const ci = readJson(path.join(HOME, "ci-last.json"), null);
+  // an old answer misleads (31 Oct: a failure two releases back still showed): only a fresh one counts
+  const ciFile = path.join(HOME, "ci-last.json");
+  let ciAge = Infinity; try { ciAge = Date.now() - fs.statSync(ciFile).mtimeMs; } catch { /* none */ }
+  const ci = ciAge < 3 * 3600_000 ? readJson(ciFile, null) : null;
   if (ci?.status === "pass") parts.push(c.green("CI ✓"));
   else if (ci?.status === "fail") parts.push(c.red(`CI ✗ ${ci.step ?? ""}`));
   const up = readJson(path.join(HOME, "update-check.json"), {});
