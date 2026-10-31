@@ -56,7 +56,7 @@ local STATUS = ${lua(statusFile)}
 local EKIP = ${lua(["/bin/zsh", "-lc", ekipCmd()])}
 local TASK_PANE = ${lua(tasksPane)}
 local TASK_TITLE = ${lua(TASK_TITLE)}
-local L = { waiting = ${lua(t("bekleyen"))}, blocked = ${lua(t("takılan"))}, running = ${lua(t("çalışan"))} }
+local L = { waiting = ${lua(t("bekleyen"))}, blocked = ${lua(t("takılan"))}, running = ${lua(t("çalışan"))}, setup = ${lua(t("kurulum"))} }
 local C = {
   bg = "#0E1014", card = "#15181E", text = "#ECEEF2", muted = "#98A1B0", border = "#252A33", faint = "#5B6472",
   lead = "#FFA95E", team = "#2DD4BF", done = "#3FCF7A", failed = "#F2555A", blocked = "#F5A524",
@@ -81,6 +81,8 @@ local function status()
     if ok and type(d) == "table" then
       for _, k in ipairs({ "waiting", "blocked", "running" }) do v[k] = tonumber(d[k]) or 0 end
       if type(d.projects) == "table" then v.projects = d.projects end
+      -- missing required setup steps (ekip setup): a small "kurulum 5/9" counter
+      if type(d.setup) == "table" and (tonumber(d.setup.missing) or 0) > 0 then v.setup = d.setup end
     end
   end
   cache = { at = now, v = v }
@@ -261,6 +263,20 @@ wezterm.on("update-status", function(window, pane)
     used = used + width(middle(name, t:tab_id() == active and MAX_TAB or MAX_OTHER)) + 4
   end
   local room = cols - used - 2
+  -- the setup counter goes first and is the first to drop when the counts do not fit
+  local setup = n.setup and (L.setup .. " " .. (tonumber(n.setup.done) or 0) .. "/" .. (tonumber(n.setup.total) or 0)) or nil
+  for _, v in ipairs(counts_variants(n)) do
+    local items, w = v[1], v[2]
+    if setup and w > 0 and w + width(setup) + 5 <= room then
+      local all = {}
+      push(all, C.waiting, setup)
+      push(all, C.muted, "   ")
+      for _, it in ipairs(items) do table.insert(all, it) end
+      table.insert(all, { Text = "  " })
+      window:set_right_status(wezterm.format(all))
+      return
+    end
+  end
   for _, v in ipairs(counts_variants(n)) do
     local items, w = v[1], v[2]
     if w > 0 and w + 2 <= room then

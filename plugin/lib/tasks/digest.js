@@ -224,5 +224,7 @@ export async function main(args = []) {
   if (args.includes("--json")) { console.log(JSON.stringify({ ...d, release: await release() }, null, 2)); return 0; }
   const rel = args.includes("--offline") ? cachedRelease(Infinity) : await release();
   process.stdout.write(render(d, rel));
+  // at the bottom: what setup still misses, with the command for each (cached check, ekip setup)
+  try { const s = await import("../ops/setup.js"); process.stdout.write(`${s.statusSection(await s.checkSetup())}\n`); } catch { /* never fail the digest for it */ }
   return 0;
 }

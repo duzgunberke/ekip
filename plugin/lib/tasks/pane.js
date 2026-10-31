@@ -8,6 +8,7 @@
 import { asciiOnly, bar as stateBar, colorMode, glyph, paint } from "../core/status-style.js";
 import { CHEVRON, FAN } from "../core/ui.js";
 import { t, lang } from "../core/i18n.js";
+import { stripText } from "../ops/setup.js";
 
 export const NARROW = 60;
 const HEX = {
@@ -134,6 +135,13 @@ export function header(m, width, st) {
   const items = COUNT.map(([k, state, sym, label]) => item(k, state, sym, label, false));
   const { text } = fitParts([{ text: markText, paint: () => mark }, ...items], inner, " ");
   return st.card(pad(` ${text}`, width));
+}
+
+// Under the header, only while a required setup step is missing: "kurulum 5/9 · eksik: … → ekip setup",
+// shortened by whole names (setup.js stripText), never cut mid-word.
+function setupLine(badge, width, st) {
+  const text = stripText(badge, width - 2, cols);
+  return text ? [` ${st.fg("waiting", text)}`] : [];
 }
 
 // ---- task cards ----------------------------------------------------------------------------------
@@ -276,7 +284,7 @@ function emptyState(m, width, st) {
 export function renderPane(m, { width = 100, height = 30, stream = process.stdout, env = process.env } = {}) {
   const st = styleFor(stream, env);
   width = Math.max(20, width);
-  const top = [header(m, width, st), ""];
+  const top = [header(m, width, st), ...setupLine(m.setup, width, st), ""];
   const foot = poolLines(m.pools, width, st, { mesai: m.mesai });
   const loose = (m.loose ?? []).map((r) => {
     const parts = fitParts([{ text: r.via, paint: st.bold }, { text: r.label, shrink: true }, ...(r.note ? [{ text: r.note, paint: st.muted }] : [])], width - 5, "  ");

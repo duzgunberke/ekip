@@ -11,6 +11,7 @@ import { painter, renderPane } from "./pane.js";
 import { bar as stateBar, barCells, glyph, icon, paint, rank, taskState } from "../core/status-style.js";
 import { leadId } from "../core/terminal.js";
 import { t as tr, lang } from "../core/i18n.js";
+import { setupBadge } from "../ops/setup.js";
 
 const FILE = path.join(HOME, "tasks.json");
 const read = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
@@ -390,7 +391,10 @@ export function terminalStatus(all = read()) {
   } catch { /* no tracked jobs */ }
   let projects = [];
   try { projects = JSON.parse(fs.readFileSync(path.join(HOME, "projects.json"), "utf8")).filter((p) => p?.name && p?.path).map((p) => ({ name: p.name, path: p.path })); } catch { /* none registered */ }
-  return { ...n, projects };
+  // missing required setup steps, from the cached check (ekip setup); the status bar shows "kurulum 5/9"
+  let setup;
+  try { const b = setupBadge({ spawnRefresh: false }); if (b?.missing.length) setup = { done: b.done, total: b.total, missing: b.missing.length }; } catch { /* no state yet */ }
+  return { ...n, projects, ...(setup ? { setup } : {}) };
 }
 export function writeTerminalStatus(all) {
   try {
@@ -514,7 +518,7 @@ export function cardOf(t) {
 }
 
 /** Everything the pane shows, from the task file, the digest (counts, tracked jobs, loose workers) and the pools. */
-export function paneModel({ tasks = [], digest = null, pools = [], version = null, at = Date.now() } = {}) {
+export function paneModel({ tasks = [], digest = null, pools = [], version = null, at = Date.now(), setup = undefined } = {}) {
   const cards = tasks.map(cardOf);
   const ids = new Set(tasks.map((t) => t.id));
   const loose = [];
@@ -527,7 +531,9 @@ export function paneModel({ tasks = [], digest = null, pools = [], version = nul
   }
   const counts = digest ? { waiting: digest.waiting.length, stuck: digest.stuck.length, running: digest.running.length, done: digest.done.length } : { waiting: 0, stuck: 0, running: tasks.filter((t) => t.status === "running").length, done: 0 };
   const recent = (digest?.done ?? []).slice(0, 3).map((d) => ({ title: d.title, result: d.result }));
-  return { clock: hhmm(at), version, counts, cards, loose, recent, pools, mesai: !!SETTINGS.mesai };
+  // missing required setup steps: one amber line under the header (cached check, refreshed in the background)
+  if (setup === undefined) { try { setup = setupBadge(); } catch { setup = null; } }
+  return { clock: hhmm(at), version, counts, cards, loose, recent, pools, mesai: !!SETTINGS.mesai, setup };
 }
 
 // The live pane runs for hours; after ekip is updated it restarts itself, so the terminal never
